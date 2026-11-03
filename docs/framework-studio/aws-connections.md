@@ -9,15 +9,41 @@ Declaration mode, connection, deployment target and operation approval are separ
 Every operational page uses the active declaration mode's association, even when its
 explicit destination uses another mode. Target account/region and ownership checks remain
 authoritative. Selecting a target never restores an older per-target profile. Changing
-the connection expires evidence/reviews and requires an explicit refresh before resource
-discovery. Running operations retain their captured connection.
+the connection expires evidence/reviews. Deploy accepts a selected target's declared mode
+through the unsaved-source guard and defaults to a matching target on entry or Source-mode
+changes; it refreshes read-only observations in the background. Other workspaces retain
+explicit inspection actions. Running operations retain their captured connection, and none
+of these selection changes approves or starts an operation.
 
 ## Profile management
 
 Open the navbar chevron, then Configure AWS profiles. The dialog discovers safe metadata
 without testing every profile. It shows profile usage, configured methods, source-role
 relationships, file editability and cached connection observations. Test connection checks
-the selected profile. The icon-only refresh reloads configuration metadata without checking
+the selected profile.
+
+The dialog pairs a profile list with an inspector panel in the inspector's grammar. Each
+two-line row shows the name, a Dev | Prod pill pair lit for the modes that use it, and the
+method and region; only a verified (check) or failing (warning) identity adds a status
+glyph, and an unchecked profile reads **Unverified** in its details. Pills only report
+usage. The panel's header shows the config section (`[profile name]`), source profile and
+session lines, then configuration issues. **Declaration modes** follows, in the Deployment
+section's form: a card per mode says whether it uses this profile or which profile it uses,
+and **Use for** (Dev + Prod, Dev only, Prod only, Not used) changes the selection; a mode the
+profile leaves keeps no profile rather than gaining another. Identity and Configuration follow.
+Identity ends in one right-aligned action row. **Test connection** becomes **Reconnect** (the
+primary action) when the last check reports sign-in required for a profile backed by a Console
+or Identity Center session, and **Review sign-out** appears only while such a session is
+verified; access-key and provider profiles only test. When a profile also configures access
+keys or another method, the verified identity decides how it is described: a Console or
+Identity Center session whose account differs from that identity is not in use, so the profile
+is labeled by the method that is and its session line and session actions are omitted. A
+completed sign-in from Reconnect checks the profile again. Edited fields carry the inspector's modified dot,
+with **Discard** beside **Review configuration changes**. Review, deletion, **Review
+sign-out** and sign-in replace the panel, with back/cancel before the commit action in a row
+that stays in view. A sign-in that finishes without another step returns to the view it
+began from and reports its outcome in the status line. Machine-level facts (AWS CLI version,
+credential environment variables, endpoint overrides) appear once, below the list. The icon-only refresh reloads configuration metadata without checking
 credentials; its spinner lasts at least one second. The viewport-bounded dialog keeps its
 height while profiles change, with scrolling within the list/details and a compact reserved
 status line for association changes and errors. Configuration file provenance stays in
@@ -49,7 +75,7 @@ Ambiguous touched definitions, linked/read-only files and credentials-file-owned
 remain externally managed. Renaming and method conversion are outside this release.
 Removing a mode association does not remove the AWS profile.
 
-Each configured profile card has a Delete action with explicit confirmation. Its review identifies
+Each configured profile row has a Delete action with explicit confirmation. Its review identifies
 which AWS files contain the profile and any Development/Production associations that will
 be cleared. Applying removes only that profile's sections from the effective config and
 credentials files; shared sessions, caches, unrelated profiles and standalone comments stay

@@ -91,13 +91,16 @@ test("baseline deployment review keeps typed confirmation and no implicit operat
   expect(studio.requests.filter(request => request.path === "/api/deploy/operations")).toHaveLength(0);
 });
 
-test("failed refresh preserves the deployment and shows persistent retry evidence", async ({ page, studio }) => {
+test("failed background refresh preserves the deployment and shows persistent retry evidence", async ({ page, studio }) => {
   let unavailable = false;
   studio.reply("GET", "/api/deploy/overview", route => route.fulfill(unavailable ? { status: 500, json: { error: "Fixture refresh failed" } } : { json: overview() }));
   await studio.goto("/deploy");
   await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
   unavailable = true;
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await studio.emit("deploy-changed", {});
   await expect(page.getByRole("alert").filter({ hasText: "Fixture refresh failed" })).toBeVisible({ timeout: 12_000 });
   await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
+  unavailable = false;
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Fixture refresh failed" })).toHaveCount(0);
 });

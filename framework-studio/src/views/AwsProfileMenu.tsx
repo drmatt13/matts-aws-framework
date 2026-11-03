@@ -44,12 +44,6 @@ function ProfileDetails({ onConfigure }: { readonly onConfigure: () => void }) {
     }
   };
   const id = useId();
-  const select = useRef<HTMLSelectElement>(null);
-  const configure = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!profiles.isPending)
-      (select.current?.disabled ? configure.current : select.current)?.focus();
-  }, [profiles.isPending]);
   return (
     <div className="grid gap-4 p-4">
       <div className="grid gap-2 text-label">
@@ -58,7 +52,6 @@ function ProfileDetails({ onConfigure }: { readonly onConfigure: () => void }) {
             AWS profile
           </label>
           <IconButton
-            ref={configure}
             variant="quiet"
             size="compact"
             aria-label="Configure AWS profiles"
@@ -69,7 +62,6 @@ function ProfileDetails({ onConfigure }: { readonly onConfigure: () => void }) {
           </IconButton>
         </div>
         <Select
-          ref={select}
           id={id}
           value={profile ?? ""}
           disabled={

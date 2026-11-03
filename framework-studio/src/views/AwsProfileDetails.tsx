@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { useId, type ReactNode } from "react";
 import type {
   AwsConnectionObservation,
   AwsProfileCatalog,
@@ -7,12 +7,36 @@ import type {
 import type { AwsEditableFields } from "../../shared/aws-connection-management";
 import type { Mode } from "../../shared/model";
 import type { ModeProfiles } from "../aws-profile-selection";
-import { connectionStateLabels, profileMethodLabels } from "../aws-profile-queries";
+import {
+  connectionStateLabels,
+  effectiveProfileKind,
+  profileMethodLabels,
+} from "../aws-profile-queries";
+import {
+  environmentCardClasses,
+  inspectorFieldLabelClasses,
+  inspectorHeaderClasses,
+  inspectorNoteClasses,
+  inspectorStackedFieldClasses,
+  inspectorTitleClasses,
+} from "../inspector-ui";
 import { Button } from "../ui/Button";
 import { cx } from "../ui/classes";
+import { Select } from "../ui/FormControls";
+import { Notice } from "../ui/Surface";
 import { ProfileFields } from "./AwsProfileForms";
-const note = "m-0 text-caption text-graphite";
-const sectionHeading = "m-0 text-body font-semibold";
+import { CopyCode } from "./CopyCode";
+import { EntityIcon } from "./EntityIcon";
+import { EnvironmentName, InspectorKind, InspectorSection } from "./InspectorUI";
+
+const MODES = ["dev", "prod"] as const;
+const usage = {
+  both: { label: "Dev + Prod", modes: ["dev", "prod"] },
+  dev: { label: "Dev only", modes: ["dev"] },
+  prod: { label: "Prod only", modes: ["prod"] },
+  none: { label: "Not used", modes: [] },
+} as const satisfies Record<string, { label: string; modes: readonly Mode[] }>;
+const regionSources = { environment: "from environment", explicit: "explicit" } as const;
 
 function profileChain(
   profile: AwsProfileDescriptor,
@@ -38,57 +62,101 @@ function terminalIdentityCommand(profile: string): string {
   return `aws sts get-caller-identity --profile ${quoted}`;
 }
 
+/** A dot and caption, as local values show theirs: the words carry the state, the colour repeats it. */
+export function ProfileStatusLine({
+  tone,
+  role,
+  title,
+  children,
+}: {
+  readonly tone: "accept" | "refuse" | "local" | "neutral";
+  readonly role?: "status" | "alert";
+  readonly title?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <p
+      role={role}
+      title={title}
+      className={cx(
+        "m-0 flex items-center gap-1.5 text-caption",
+        tone === "accept"
+          ? "text-accept"
+          : tone === "refuse"
+            ? "text-refuse"
+            : tone === "local"
+              ? "text-local"
+              : "text-graphite",
+      )}
+    >
+      <span className="size-1.5 flex-none rounded-full bg-current" aria-hidden />
+      <span className="min-w-0 wrap-anywhere">{children}</span>
+    </p>
+  );
+}
+
+function stateTone(state: AwsConnectionObservation["state"]) {
+  return state === "connected"
+    ? "accept"
+    : state === "checking"
+      ? "local"
+      : state === "unchecked"
+        ? "neutral"
+        : "refuse";
+}
+
 function ConnectionIdentity({ observation }: { readonly observation?: AwsConnectionObservation }) {
   const identity = observation?.identity ?? observation?.lastKnownIdentity;
-  const identityNote = "m-0 text-caption text-ink";
+  const state = observation?.state ?? "unchecked";
+  const checked = observation?.checkedAt ? new Date(observation.checkedAt) : undefined;
+  // The profile's own region is already its configuration field; only an override is news here.
+  const regionSource =
+    observation?.region.value && observation.region.source !== "profile"
+      ? regionSources[observation.region.source as keyof typeof regionSources]
+      : undefined;
   return (
-    <div className="grid gap-2 rounded-md border border-rule bg-wash p-3" role="status">
-      <strong className="text-label">
-        {observation ? connectionStateLabels[observation.state] : "Not checked"}
-      </strong>
+    <div className="grid min-w-0 gap-3" role="status">
+      <ProfileStatusLine tone={stateTone(state)} title={checked?.toLocaleString()}>
+        {connectionStateLabels[state]}
+        {checked ? ` · ${checked.toLocaleTimeString()}` : ""}
+      </ProfileStatusLine>
       {observation?.problem ? (
-        <p className="m-0 text-caption text-refuse">{observation.problem.message}</p>
+        <p className="m-0 text-caption text-refuse wrap-anywhere">{observation.problem.message}</p>
       ) : null}
       {identity ? (
-        <>
-          <span className="text-label wrap-anywhere">
-            {identity.summary}
-            {!observation?.identity ? " · last verified (stale)" : ""}
-          </span>
-          <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-caption">
-            <dt>Account</dt>
-            <dd className="m-0 font-mono">{identity.account}</dd>
-            <dt>Principal</dt>
-            <dd className="m-0 font-mono wrap-anywhere">{identity.arn}</dd>
-          </dl>
-          {identity.principalKind === "root" ? (
-            <p className="m-0 text-caption text-refuse">
-              This is the AWS account root identity. Use a dedicated workforce or IAM role for
-              development.
-            </p>
+        <dl className="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-2 text-caption">
+          <dt className="text-graphite">Principal</dt>
+          <dd className="m-0 grid min-w-0 gap-0.5">
+            <span className="wrap-anywhere">
+              {identity.summary}
+              {!observation?.identity ? " · last verified (stale)" : ""}
+            </span>
+            <code className="text-graphite wrap-anywhere">{identity.arn}</code>
+          </dd>
+          <dt className="text-graphite">Account</dt>
+          <dd className="m-0 min-w-0">
+            <code>{identity.account}</code>
+          </dd>
+          {regionSource ? (
+            <>
+              <dt className="text-graphite">Region</dt>
+              <dd className="m-0 min-w-0 wrap-anywhere">
+                <code>{observation!.region.value}</code> · {regionSource}
+              </dd>
+            </>
           ) : null}
-        </>
-      ) : (
-        <p className={identityNote}>
-          Test this profile to resolve its actual AWS account and principal.
-        </p>
-      )}
-      {observation?.checkedAt ? (
-        <span className={identityNote}>
-          Checked {new Date(observation.checkedAt).toLocaleString()}
-        </span>
-      ) : null}
-      {observation?.region.value ? (
-        <span className={identityNote}>
-          Region: {observation.region.value} · {observation.region.source}
-        </span>
-      ) : null}
-      {observation?.credentialExpiration ? (
-        <span className={identityNote}>
-          Native provider reports credential expiration:{" "}
-          {new Date(observation.credentialExpiration.at).toLocaleString()}. The upstream session may
-          refresh them.
-        </span>
+          {observation?.credentialExpiration ? (
+            <>
+              <dt className="text-graphite">Expires</dt>
+              <dd className="m-0 grid min-w-0 gap-0.5">
+                <span>{new Date(observation.credentialExpiration.at).toLocaleString()}</span>
+                <span className="text-graphite">
+                  Reported by the native provider. The upstream session may refresh them.
+                </span>
+              </dd>
+            </>
+          ) : null}
+        </dl>
       ) : null}
     </div>
   );
@@ -100,11 +168,11 @@ export function AwsProfileDetails({
   observation,
   associations,
   pending,
-  reviewOpen,
   onTest,
   onAuthenticate,
   onLogout,
   onUse,
+  onSelectProfile,
   onReview,
 }: {
   readonly profile: AwsProfileDescriptor;
@@ -112,113 +180,209 @@ export function AwsProfileDetails({
   readonly observation?: AwsConnectionObservation;
   readonly associations: ModeProfiles;
   readonly pending: boolean;
-  readonly reviewOpen: boolean;
   readonly onTest: () => void;
   readonly onAuthenticate: () => void;
   readonly onLogout: () => void;
-  readonly onUse: (mode: Mode) => void;
+  readonly onUse: (modes: readonly Mode[]) => void;
+  readonly onSelectProfile: (name: string) => void;
   readonly onReview: (fields: AwsEditableFields) => void;
 }) {
   const chain = profileChain(profile, catalog),
     root = chain.at(-1);
-  const nativeAuthentication = chain.some((item) => ["login", "sso"].includes(item.kind));
+  // The method the AWS CLI resolved this profile through; an unused session is not offered.
+  const kind = effectiveProfileKind(profile, observation);
+  const sessionInUse = root !== profile || kind === profile.kind;
+  const nativeAuthentication = chain.some((item, index) =>
+    ["login", "sso"].includes(index ? item.kind : kind),
+  );
+  const state = observation?.state ?? "unchecked";
+  const terminal =
+    profile.hasMfa || profile.kind === "process" || observation?.problem?.action === "terminal";
+  const source = profile.sourceProfile
+    ? catalog.profiles.find((item) => item.name === profile.sourceProfile)
+    : undefined;
+  const lines = [
+    profile.sourceProfile
+      ? {
+          label: "Source profile",
+          value: source ? (
+            <button
+              type="button"
+              className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-graphite underline decoration-rule-strong underline-offset-[3px] hover:text-ink hover:decoration-ink disabled:cursor-not-allowed"
+              disabled={pending}
+              onClick={() => onSelectProfile(source.name)}
+            >
+              <code>{source.name}</code>
+            </button>
+          ) : (
+            <code>{profile.sourceProfile}</code>
+          ),
+        }
+      : undefined,
+    !sessionInUse
+      ? undefined
+      : root?.ssoSession
+      ? { label: "SSO session", value: <code>{root.ssoSession}</code> }
+      : root?.loginSession
+        ? {
+            label: "Console session",
+            value: <code>{root.loginSession}</code>,
+          }
+        : undefined,
+    profile.credentialSource
+      ? {
+          label: "Credential source",
+          value: <code>{profile.credentialSource}</code>,
+        }
+      : undefined,
+  ].filter((line) => line !== undefined);
+  // The CLI's precedence among several configured methods is shown by the header's method label,
+  // which follows the verified identity; a backend still reporting it as a warning is not repeated.
+  const shown = profile.diagnostics.filter((item) => item.code !== "multiple-mechanisms");
+  const issues = [
+    ...shown.filter((item) => item.severity === "error"),
+    ...shown.filter((item) => item.severity === "warning"),
+  ];
+  const usageId = useId();
+  const selected = { dev: associations.dev === profile.name, prod: associations.prod === profile.name };
+  const used = selected.dev ? (selected.prod ? "both" : "dev") : selected.prod ? "prod" : "none";
+  const section = profile.provenance.config
+    ? profile.name === "default"
+      ? "[default]"
+      : `[profile ${profile.name}]`
+    : `[${profile.name}]`;
   return (
     <>
-      <div className="grid gap-1">
-        <h3 tabIndex={-1} className="m-0 text-[18px] font-semibold wrap-anywhere">
+      <header className={inspectorHeaderClasses}>
+        <InspectorKind
+          environments={{
+            availability: selected,
+            label: "Declaration modes",
+            descriptions: { dev: "uses this profile", prod: "uses this profile" },
+            unavailableDescription: "uses another profile or none",
+          }}
+        >
+          {profileMethodLabels[kind]}
+        </InspectorKind>
+        <h3 tabIndex={-1} className={inspectorTitleClasses}>
+          <span className="float-left mt-px mr-2 inline-flex size-6">
+            <EntityIcon size={24} icon={kind === "sso" ? "identityCenter" : "iam"} />
+          </span>
           {profile.name}
         </h3>
-        <p className={note}>{profileMethodLabels[profile.kind]}</p>
-      </div>
-      <ConnectionIdentity observation={observation} />
-      <div className="flex flex-wrap gap-2">
-        <Button variant="quiet" disabled={pending} onClick={onTest}>
-          Test connection
-        </Button>
-        {nativeAuthentication ? (
-          <>
-            <Button variant="primary" disabled={pending} onClick={onAuthenticate}>
-              {observation?.state === "needs-auth" ? "Reconnect" : "Connect"}
-            </Button>
-            <Button variant="quiet" disabled={pending} onClick={onLogout}>
-              Sign out…
-            </Button>
-          </>
+        <code className="block text-graphite text-meta wrap-anywhere" data-slot="ref">
+          {section}
+        </code>
+        {lines.length ? (
+          <dl className="mt-2 mb-0 grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-1 text-meta text-graphite">
+            {lines.map((line) => (
+              <div key={line.label} className="contents">
+                <dt>{line.label}</dt>
+                <dd className="m-0 flex min-h-5.5 min-w-0 items-center text-caption wrap-anywhere">
+                  {line.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
         ) : null}
-      </div>
-      <p className={note}>
-        A successful identity check confirms authentication. Permissions for each AWS operation are
-        checked separately.
-      </p>
-      {profile.hasMfa ||
-      profile.kind === "process" ||
-      observation?.problem?.action === "terminal" ? (
-        <div className="grid gap-1">
-          <p className={note}>
-            Complete any MFA or provider interaction in your terminal, then test this connection
-            again.
-          </p>
-          <code className="text-caption wrap-anywhere">
-            {terminalIdentityCommand(profile.name)}
-          </code>
+        {issues.length ? (
+          // The header closes with its issues, as IssueNotice does: errors are alerts; warnings are notes.
+          <div className="mt-3 grid gap-2" data-slot="issues">
+            {issues.map((issue, index) => (
+              <Notice
+                key={index}
+                tone={issue.severity}
+                role={issue.severity === "error" ? "alert" : "note"}
+              >
+                <p className="m-0 text-caption wrap-anywhere">{issue.message}</p>
+              </Notice>
+            ))}
+          </div>
+        ) : null}
+      </header>
+      <InspectorSection
+        title="Declaration modes"
+        contentClassName="grid gap-4"
+        data-slot="aws-profile-modes"
+      >
+        <div className="m-0 grid grid-cols-2 gap-2" aria-live="polite" aria-atomic="true">
+          {MODES.map((mode) => (
+            <div
+              key={mode}
+              className={environmentCardClasses({ mode, active: selected[mode] })}
+              data-mode={mode}
+            >
+              <EnvironmentName mode={mode} active={selected[mode]} />
+              <strong
+                className={cx("text-label font-medium", selected[mode] ? "text-ink" : "text-graphite")}
+              >
+                {selected[mode] ? "Uses this profile" : "Not selected"}
+              </strong>
+              {!selected[mode] && associations[mode] ? (
+                <span className="text-meta text-graphite wrap-anywhere">
+                  Uses <code>{associations[mode]}</code>
+                </span>
+              ) : null}
+            </div>
+          ))}
         </div>
-      ) : null}
-      {profile.kind === "sso" && !profile.ssoSession ? (
-        <p className={note}>
-          This profile uses legacy SSO configuration. Add a new Identity Center profile to use a
-          refreshable shared session.
-        </p>
-      ) : null}
-      {profile.sourceProfile ||
-      profile.ssoSession ||
-      profile.loginSession ||
-      profile.credentialSource ? (
-        <section className="grid gap-1">
-          <h4 className={sectionHeading}>Credential relationship</h4>
-          <p className="m-0 text-caption wrap-anywhere">
-            {chain.map((item) => item.name).join(" → ")}
-            {root?.ssoSession
-              ? ` → Identity Center session ${root.ssoSession}`
-              : root?.loginSession
-                ? ` → Console session ${root.loginSession}`
-                : profile.credentialSource
-                  ? ` → ${profile.credentialSource}`
-                  : ""}
-          </p>
-        </section>
-      ) : null}
-      {profile.diagnostics.map((diagnostic, index) => (
-        <p
-          key={index}
-          role={diagnostic.severity === "error" ? "alert" : undefined}
-          className={cx(
-            "m-0 text-caption wrap-anywhere",
-            diagnostic.severity === "error" ? "text-refuse" : "text-graphite",
-          )}
-        >
-          {diagnostic.message}
-        </p>
-      ))}
-      <div className="flex flex-wrap gap-2">
-        {(["dev", "prod"] as const).map((mode) => (
-          <Button
-            key={mode}
-            variant="quiet"
-            size="compact"
+        <div className={inspectorStackedFieldClasses} data-slot="field">
+          <label htmlFor={usageId} className={inspectorFieldLabelClasses()}>
+            Use for
+          </label>
+          <Select
+            id={usageId}
+            controlSize="panel"
+            className="w-full"
             disabled={pending}
-            aria-pressed={associations[mode] === profile.name}
-            onClick={() => onUse(mode)}
+            value={used}
+            onChange={(event) => onUse(usage[event.target.value as keyof typeof usage].modes)}
           >
-            <Check
-              size={14}
-              aria-hidden
-              className={associations[mode] === profile.name ? undefined : "invisible"}
-            />
-            Use for {mode === "dev" ? "Development" : "Production"}
-          </Button>
-        ))}
-      </div>
-      <div hidden={reviewOpen}>
+            {Object.entries(usage).map(([value, option]) => (
+              <option key={value} value={value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </InspectorSection>
+      <InspectorSection
+        title="Identity"
+        description="Confirms authentication only. Each AWS operation checks its own permissions."
+      >
+        <div className="grid min-w-0 gap-3">
+          <ConnectionIdentity observation={observation} />
+          {terminal ? (
+            <div className="grid min-w-0 gap-2">
+              <p className={inspectorNoteClasses}>
+                Complete any MFA or provider prompt in your terminal, then test this connection
+                again.
+              </p>
+              <CopyCode code={terminalIdentityCommand(profile.name)} label="identity check command" />
+            </div>
+          ) : null}
+          {/* One slot: Test becomes Reconnect when a session-backed profile needs sign-in;
+              sign-out appears only while a verified session exists to end. */}
+          <div className="flex flex-wrap justify-end gap-2" data-slot="aws-profile-identity-actions">
+            {nativeAuthentication && state === "connected" ? (
+              <Button variant="quiet" disabled={pending} onClick={onLogout}>
+                Review sign-out
+              </Button>
+            ) : null}
+            {nativeAuthentication && state === "needs-auth" ? (
+              <Button variant="primary" disabled={pending} onClick={onAuthenticate}>
+                Reconnect
+              </Button>
+            ) : (
+              <Button variant="quiet" disabled={pending} onClick={onTest}>
+                Test connection
+              </Button>
+            )}
+          </div>
+        </div>
+      </InspectorSection>
+      {/* The panel's last section: the status line's rule already closes it, so it draws none. */}
+      <InspectorSection title="Configuration" embedded className="px-5 py-4">
         <ProfileFields
           key={`${profile.name}:${catalog.revision}`}
           profile={profile}
@@ -227,7 +391,7 @@ export function AwsProfileDetails({
           busy={pending}
           onReview={onReview}
         />
-      </div>
+      </InspectorSection>
     </>
   );
 }

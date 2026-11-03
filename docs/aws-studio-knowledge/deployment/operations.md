@@ -23,6 +23,16 @@ Start with the [operational lifecycle](lifecycle.md) for the complete source-to-
 flow and the separate database, identity and frontend effect boundaries. This page owns
 Deploy's jobs, observation and local process supervision.
 
+Deploy's subnav contains machine checks and their local remedies, with no account summary
+or animated refresh button. Machine overview polls every 30 seconds; idle AWS discovery
+and target status poll every two minutes, while in-progress jobs retain four-second status
+reads and immediate event updates. Failed background reads keep last-good evidence and
+offer a contextual retry. Profile/configuration-session changes use fresh query scopes and
+invalidate pending reviews; running jobs keep their captured actor. Selecting a deployment
+accepts its declared mode through the unsaved-source guard, and entering Deploy or changing
+Source mode chooses a matching target. It never starts a deployment or restores an older
+per-target profile.
+
 `DeployService` in [service.ts](../../../framework-studio/server/deploy/service.ts) coordinates targets/preferences, prerequisites, plans, jobs, cloud observer and local environment state. `buildOperation` in [registry.ts](../../../framework-studio/server/deploy/registry.ts) maps recognized actions to fixed repository commands/argv: plan/apply/discard, export, destroy, drift, local start/stop, dependencies, Docker and AWS login. It is not an arbitrary terminal API.
 
 `process.ts` in [deploy/](../../../framework-studio/server/deploy/) launches commands without shell interpolation and delegates selected-profile environments to the shared host connection resolver. Deliberate `credential_source=Environment` dependencies retain their inputs; unrelated ambient sources are removed. [jobs.ts](../../../framework-studio/server/deploy/jobs.ts) locks overlapping operations in the server, persists job metadata/log lines, batches SSE events and permits client gap replay. Native sign-in now uses the separate ephemeral [AWS connection coordinator](../../framework-studio/aws-connections.md), never generic raw-output job logs. Old running records are restored as interrupted; this is not resumable CloudFormation execution. Watch/client child lifetimes use [tether.mjs](../../../framework-studio/server/deploy/tether.mjs). Process-tree cancellation does not undo AWS requests already accepted.

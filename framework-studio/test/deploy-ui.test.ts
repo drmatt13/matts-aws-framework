@@ -163,18 +163,17 @@ test("passed machine checks are available on demand while issues and their remed
   await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "docker-start", params: {} }));
 });
 
-test("the empty profile state can refresh and discover a newly configured profile", async () => {
+test("the empty profile state discovers a newly configured profile in the background", async () => {
   render({
     "/deploy/overview": overview({ targets: [], profiles: [], preferences: { profiles: {} } }),
     "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } },
   });
   await ui.screen.findByRole("heading", { name: "No AWS profiles on this machine" });
-  const refresh = ui.screen.getByRole("button", { name: "Refresh" });
-  assert.equal((refresh as HTMLButtonElement).disabled, false);
+  assert.equal(ui.screen.queryByRole("button", { name: "Refresh" }), null);
   answers["/deploy/overview"] = overview();
-  ui.fireEvent.click(refresh);
+  ui.act(() => emit("deploy-changed", {}));
   await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
-  assert.match(ui.screen.getByRole("banner", { name: "AWS account" }).textContent ?? "", /Connection: dev.*selected for Development/);
+  assert.ok(ui.screen.getByRole("region", { name: "Machine readiness" }));
   assert.equal(ui.screen.queryByRole("combobox", { name: "AWS profile" }), null);
   assert.equal(operations().length, 0);
 });
@@ -182,20 +181,18 @@ test("the empty profile state can refresh and discover a newly configured profil
 test("a failed refresh keeps deployment evidence visible, reports the error and supports retry", async () => {
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } });
   await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
-  const refresh = ui.screen.getByRole("button", { name: "Refresh" });
-  await ui.waitFor(() => assert.equal((refresh as HTMLButtonElement).disabled, false));
   let finish!: (response: Response) => void;
   answers["/deploy/overview"] = () => new Promise<Response>((resolve) => { finish = resolve; });
-  ui.fireEvent.click(refresh);
-  await ui.waitFor(() => assert.equal(refresh.getAttribute("aria-busy"), "true"));
-  assert.equal((refresh as HTMLButtonElement).disabled, true);
+  ui.act(() => emit("deploy-changed", {}));
+  await ui.waitFor(() => assert.ok(finish));
   finish(new Response(JSON.stringify({ error: "Machine probes timed out." }), { status: 503 }));
   const error = await ui.screen.findByRole("alert");
   assert.match(error.textContent ?? "", /Machine probes timed out/);
   assert.ok(ui.screen.getByRole("heading", { name: /my-aws-app Dev/ }), "last successful overview remains visible");
-  await ui.waitFor(() => assert.equal((refresh as HTMLButtonElement).disabled, false));
+  const retry = ui.screen.getByRole("button", { name: "Try again" });
+  await ui.waitFor(() => assert.equal((retry as HTMLButtonElement).disabled, false));
   answers["/deploy/overview"] = overview();
-  ui.fireEvent.click(refresh);
+  ui.fireEvent.click(retry);
   await ui.waitFor(() => assert.equal(Boolean(ui.screen.queryByRole("alert")), false));
   assert.equal(operations().length, 0);
 });
@@ -225,7 +222,7 @@ test("an expired session opens connection management without starting a raw-outp
 test("a production plan is applied only with its name typed", async () => {
   const waiting: PlanSummaryView = { key: "my-aws-app-prod-abc123", deployment: "my-aws-app-prod", mode: "prod", status: "ready", createdAt: "2026-10-17T12:00:00Z", expired: false };
   const plan: PlanView = {
-    key: waiting.key, planId: "plan-abc-123456", createdAt: waiting.createdAt, expiresAt: "2099-01-01T00:00:00Z", expired: false, status: "ready", review: "change-set", profile: "dev",
+    key: waiting.key, planId: "plan-abc-123456", createdAt: waiting.createdAt, expiresAt: "2099-01-01T00:00:00Z", expired: false, status: "ready", review: "change-set", profile: "prod",
     identity: { deployment: "my-aws-app-prod", mode: "prod", account: context.account, region: context.region }, guard: "absent",
     stacks: [{ name: "my-aws-app-prod-CognitoStack", fingerprint: { exists: false }, changes: [{ logicalId: "Pool", type: "AWS::Cognito::UserPool", action: "add", replacement: "False", stateful: true }], exportsInUse: [], noChanges: false }],
     secrets: [{ name: "my-aws-app-prod/secret/OPENAI_API_KEY", variable: "OPENAI_API_KEY", action: "unchanged" }], dockerImages: [], iamBroadening: false,
@@ -236,6 +233,8 @@ test("a production plan is applied only with its name typed", async () => {
     "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app-prod" } },
     "/deploy/plans": [waiting], [`/deploy/plans/${waiting.key}`]: plan,
   });
+  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
+  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }, { timeout: 3000 }));
   const apply = await ui.screen.findByRole("button", { name: `Apply to ${context.account}` });
   assert.equal((apply as HTMLButtonElement).disabled, true, "no name, no apply");
@@ -251,7 +250,7 @@ test("a production plan is applied only with its name typed", async () => {
   ui.fireEvent.change(ui.screen.getByLabelText("Type my-aws-app-prod to apply"), { target: { value: "my-aws-app-prod" } });
   assert.equal((apply as HTMLButtonElement).disabled, false);
   ui.fireEvent.click(apply);
-  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "deploy-apply", params: { plan: waiting.key, profile: "dev", confirm: "my-aws-app-prod" } }));
+  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "deploy-apply", params: { plan: waiting.key, profile: "prod", confirm: "my-aws-app-prod" } }));
 });
 
 test("deleting shows what AWS holds and what stays, and needs the typed name", async () => {
@@ -293,6 +292,8 @@ test("a plan job finishing while another plan is under review does not replace i
     "/deploy/plans/my-aws-app-prod-xxxxxx": plan("my-aws-app-prod-xxxxxx", "RdsStack"),
   });
   // A second plan is started from this page; then the waiting one is opened for review.
+  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
+  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
   const planItem = await ui.screen.findByRole("menuitem", { name: "Compare AWS templates (read-only)…" }, { timeout: 3000 });
   await ui.waitFor(() => assert.equal((planItem as HTMLButtonElement).disabled, false), { timeout: 3000 });
   ui.fireEvent.click(planItem);
@@ -334,13 +335,15 @@ test("named staging remains a production-mode destination with its own resolved 
   const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
   for (const target of targets) assert.ok(ui.within(rail).getByTitle(target.name).closest("button"));
   const selected = ui.within(rail).getByTitle(staging.name).closest("button")!;
+  ui.fireEvent.click(selected);
   await ui.waitFor(() => assert.equal(selected.getAttribute("aria-current"), "true"));
   assert.ok(selected.textContent?.includes("Prod"));
-  const header = ui.screen.getByRole("banner", { name: "AWS account" });
-  await ui.waitFor(() => assert.ok(ui.within(header).getByText(staging.region)));
-  assert.equal(ui.within(header).queryByText(context.region), null, "profile defaults are not presented as the selected deployment region");
+  const header = document.getElementById("deployment-heading")!.parentElement!;
+  await ui.waitFor(() => assert.ok(header.textContent?.includes(staging.region)));
+  assert.equal(header.textContent?.includes(context.region), false, "profile defaults are not presented as the selected deployment region");
   assert.equal(ui.within(header).queryByRole("combobox", { name: "AWS profile" }), null);
-  assert.match(header.textContent ?? "", /Connection: dev.*selected for Development/, "the active declaration profile is independent of the production destination");
+  assert.equal(activeStudio.mode, "prod");
+  assert.equal(activeStudio.awsProfile, "prod");
   assert.equal(operations().length, 0);
 });
 
@@ -373,6 +376,8 @@ test("a failed plan read offers retry without keeping its loading message", asyn
     "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app-prod" } },
     "/deploy/plans": [waiting],
   });
+  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
+  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
   assert.ok(await ui.screen.findByRole("alert"));
   assert.equal(ui.screen.queryByText("Reading the plan…"), null);
@@ -398,7 +403,7 @@ test("refreshing container logs preserves a reader's position until they return 
   assert.equal(log.getAttribute("tabindex"), "0", "keyboard users can scroll the log");
 });
 
-test("selected destination owns the header and survives unrelated discovery denial", async () => {
+test("selected destination owns the detail heading and survives unrelated discovery denial", async () => {
   const west = { ...context, region: "us-west-2" };
   const target = { name: "my-aws-app", mode: "dev" as const, origin: "declared" as const, account: context.account, region: west.region };
   const deployment = { ...deployed("my-aws-app", "dev"), region: west.region };
@@ -407,7 +412,8 @@ test("selected destination owns the header and survives unrelated discovery deni
     "/deploy/discover": { ok: false, problem: { kind: "denied", message: "Default region is denied" } },
     "/deploy/status": { ok: true, value: { ...discovery([deployment]), context: west, deployment: target.name, targets: [{ ...target, status: "deployed" }], detail: { ...deployment, events: [], changeSets: [] } } },
   });
-  const header = await ui.screen.findByRole("banner", { name: "AWS account" });
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  const header = document.getElementById("deployment-heading")!.parentElement!;
   await ui.waitFor(() => assert.ok(header.textContent?.includes("us-west-2")));
   assert.ok(await ui.screen.findByText("Deployed · 1 stack"));
   assert.equal(ui.screen.queryByText("Not readable with this profile."), null);
@@ -424,7 +430,7 @@ test("incomplete security analysis stays inside review and cannot be applied", a
   assert.equal(operations().length, 0);
 });
 
-test("switching targets never restores a remembered profile or changes the declaration association", async () => {
+test("switching targets follows declaration mode and its association without restoring legacy profiles", async () => {
   render({
     "/deploy/overview": overview({ preferences: { deployment: "my-aws-app", profile: "legacy", profiles: { "my-aws-app-prod": "legacy-production" } } }),
     "/deploy/discover": { ok: true, value: discovery() },
@@ -434,8 +440,8 @@ test("switching targets never restores a remembered profile or changes the decla
   const rail = ui.screen.getByRole("navigation", { name: "Deployments" });
   ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
   await ui.screen.findByRole("heading", { name: /my-aws-app-prod Prod/ });
-  assert.equal(activeStudio.awsProfile, "dev"); assert.equal(activeStudio.mode, "dev");
-  assert.ok(requested.some(url => url.startsWith("/deploy/status") && url.includes("deployment=my-aws-app-prod") && url.includes("profile=dev")));
+  assert.equal(activeStudio.awsProfile, "prod"); assert.equal(activeStudio.mode, "prod");
+  await ui.waitFor(() => assert.ok(requested.some(url => url.startsWith("/deploy/status") && url.includes("deployment=my-aws-app-prod") && url.includes("profile=prod"))));
   assert.ok(requested.every(url => !url.includes("profile=legacy")));
   assert.ok(posted.filter(entry => entry.path === "/deploy/preferences").every(entry => !Object.hasOwn(entry.body, "profile")));
   assert.equal(operations().length, 0);
@@ -444,23 +450,46 @@ test("switching targets never restores a remembered profile or changes the decla
 test("a missing global association prevents AWS reads and never adopts a legacy preference", async () => {
   render({ "/deploy/overview": overview() }, undefined, {});
   await ui.screen.findByRole("button", { name: "Choose connection" });
+  assert.ok(ui.within(ui.screen.getByRole("region", { name: "AWS", exact: true })).getByText("Not checked."));
   assert.equal(activeStudio.awsProfile, undefined);
   assert.equal(requested.some(url => /^\/deploy\/(?:discover|status)/.test(url)), false);
   assert.equal(operations().length, 0);
   assert.equal(ui.screen.queryByRole("combobox", { name: "AWS profile" }), null);
 });
 
-test("mode changes clear a pending operation review and require explicit account refresh", async () => {
+test("switching a deployment waits for the existing unsaved-source guard", async () => {
+  render({
+    "/deploy/overview": overview(),
+    "/deploy/discover": { ok: true, value: discovery() },
+    "/deploy/status": (url: URL) => ({ ok: true, value: { ...discovery(), deployment: url.searchParams.get("deployment") } }),
+  });
+  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
+  const prod = ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!;
+  ui.act(() => activeStudio.draft.setField("lambda:fixture-0", activeStudio.model.fields["lambda:fixture-0"]![0]!, 512));
+  ui.fireEvent.click(prod);
+  assert.equal(activeStudio.draftState.pendingNavigation, true);
+  assert.equal(activeStudio.mode, "dev");
+  assert.equal(prod.getAttribute("aria-current"), null);
+  assert.equal(posted.filter(entry => entry.path === "/deploy/preferences").length, 0);
+  ui.act(() => activeStudio.draft.keepEditing());
+  assert.equal(activeStudio.mode, "dev");
+  ui.fireEvent.click(prod);
+  ui.act(() => activeStudio.draft.discardAndContinue());
+  await ui.waitFor(() => assert.equal(activeStudio.mode, "prod"));
+  await ui.waitFor(() => assert.equal(prod.getAttribute("aria-current"), "true"));
+  assert.equal(activeStudio.awsProfile, "prod");
+  assert.equal(operations().length, 0);
+});
+
+test("mode changes clear a pending operation review and refresh the matching target in the background", async () => {
   const summary: PlanSummaryView = { key: "actor-review", deployment: "my-aws-app", mode: "dev", account: context.account, region: context.region, status: "ready", createdAt: "2026-10-22T00:00:00Z", expired: false };
   const plan: PlanView = { key: summary.key, planId: "plan-actor-review", profile: "dev", createdAt: summary.createdAt, expiresAt: "2099-01-01T00:00:00Z", expired: false, status: "ready", review: "template", identity: { deployment: summary.deployment, mode: "dev", account: context.account, region: context.region }, guard: "ready", stacks: [], secrets: [], dockerImages: [], iamBroadening: false, confirmation: { level: "click", reasons: [] }, uncertainties: [] };
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: summary.deployment } }, "/deploy/plans": [summary], [`/deploy/plans/${summary.key}`]: plan });
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
   await ui.screen.findByRole("button", { name: `Apply to ${context.account}` });
-  const count = requested.filter(url => /^\/deploy\/(?:discover|status)/.test(url)).length;
   ui.act(() => activeStudio.setMode("prod"));
   await ui.waitFor(() => assert.equal(ui.screen.queryByRole("button", { name: `Apply to ${context.account}` }), null));
   assert.equal(activeStudio.awsProfile, "prod");
-  assert.ok(ui.screen.getByText(/Connection changed. Refresh to inspect/));
-  assert.equal(requested.filter(url => /^\/deploy\/(?:discover|status)/.test(url)).length, count, "mode selection starts no account discovery");
+  await ui.waitFor(() => assert.ok(requested.some(url => url.startsWith("/deploy/status") && url.includes("deployment=my-aws-app-prod") && url.includes("profile=prod"))));
   assert.equal(operations().length, 0);
 });

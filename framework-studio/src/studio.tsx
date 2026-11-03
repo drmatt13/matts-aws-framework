@@ -17,7 +17,7 @@ interface StudioContextValue {
   readonly response: SnapshotResponse;
   readonly snapshot: Snapshot;
   readonly mode: Mode;
-  readonly setMode: (mode: Mode) => void;
+  readonly setMode: (mode: Mode, onAccepted?: () => void) => void;
   readonly awsProfiles: ModeProfiles;
   readonly awsProfile: string | undefined;
   readonly setAwsProfile: (mode: Mode, profile: string | undefined) => void;
@@ -136,7 +136,10 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   };
   return <StudioContext.Provider value={{ response, snapshot, mode: draftState.mode,
     awsProfiles: aws.profiles, awsProfile: aws.profiles[draftState.mode], setAwsProfile: aws.setProfile, awsProfileCacheError: aws.cacheError,
-    setMode: (next) => { if (next !== draftState.mode) draft.requestNavigation(() => setMode(next)); },
+    setMode: (next, onAccepted) => {
+      if (next !== draftState.mode) draft.requestNavigation(() => { setMode(next); onAccepted?.(); });
+      else onAccepted?.();
+    },
     model, index, selected: draftState.selected, select: inspection.select, inspect: inspection.inspect,
     inspectorNavigation: inspection.navigation, live, toast, toasts, draft, draftState, applyDraft, created: draftState.applied?.names ? undefined : created, entityAliases, namingRevision,
   }}>{props.children}</StudioContext.Provider>;

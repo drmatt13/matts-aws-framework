@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type {
   AwsProfileCatalog,
   AwsProfileDescriptor,
@@ -6,11 +6,65 @@ import type {
 } from "../../shared/aws-connections";
 import type { AwsEditableFields, AwsCliCapabilities } from "../../shared/aws-connection-management";
 import type { AuthenticationRequest } from "../aws-connections-api";
+import {
+  inspectorFieldClasses,
+  inspectorFieldLabelClasses,
+  inspectorHeaderClasses,
+  inspectorHelpClasses,
+  inspectorLockedClasses,
+  inspectorNoteClasses,
+  inspectorTitleClasses,
+} from "../inspector-ui";
 import { Button } from "../ui/Button";
+import { cx } from "../ui/classes";
 import { Select, TextInput } from "../ui/FormControls";
+import { CopyCode } from "./CopyCode";
+import { InspectorDisclosure, InspectorKind } from "./InspectorUI";
 
-const labelClass = "grid min-w-0 gap-1 text-label";
-const helpClass = "m-0 text-caption text-graphite";
+const methodHelp = {
+  login:
+    "Use your Console IAM or federated sign-in. Your browser handles authentication; AWS CLI manages temporary credentials.",
+  sso: "For organization access through an AWS access portal. After sign-in, choose an assigned account and permission set.",
+  role: "The source identity must be allowed to assume this role, and the role must trust it. Saving configuration grants no AWS permissions.",
+  static:
+    "Configure access keys in your terminal using the native AWS CLI. Credentials never pass through Studio’s browser.",
+  external:
+    "Configure your provider using its own tooling. Studio discovers and uses the resulting named profile without exposing its command or secrets.",
+} as const;
+
+/** One inspector field row: label → control → support on one left edge, ruled from its neighbours. */
+function ProfileField({
+  label,
+  modified = false,
+  help,
+  children,
+}: {
+  readonly label: string;
+  readonly modified?: boolean;
+  readonly help?: ReactNode;
+  readonly children: (control: { readonly id: string; readonly "aria-describedby"?: string }) => ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className={inspectorFieldClasses} data-slot="field">
+      <label htmlFor={id} className={inspectorFieldLabelClasses()}>
+        {label}
+        {/* The inspector's modified dot, kept out of the control's accessible name. */}
+        {modified ? (
+          <span aria-hidden className="text-dev">
+            {" •"}
+          </span>
+        ) : null}
+      </label>
+      {children({ id, ...(help ? { "aria-describedby": `${id}-help` } : {}) })}
+      {help ? (
+        <p id={`${id}-help`} className={cx("m-0", inspectorHelpClasses)}>
+          {help}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 export function ProfileFields({
   profile,
@@ -29,134 +83,175 @@ export function ProfileFields({
   const [fields, setFields] = useState<AwsEditableFields>({});
   const change = (field: keyof AwsEditableFields, value: string) =>
     setFields((current) => ({ ...current, [field]: value }));
-  const changed = Object.entries(fields).some(
-    ([key, value]) => value !== (original[key as keyof typeof original] ?? ""),
-  );
+  const modified = (field: keyof AwsEditableFields) =>
+    fields[field] !== undefined && fields[field] !== (original[field] ?? "");
+  const changed = (Object.keys(fields) as (keyof AwsEditableFields)[]).some(modified);
   return (
     <form
-      className="grid gap-4"
+      className="grid min-w-0 gap-3"
       onSubmit={(event) => {
         event.preventDefault();
         onReview(fields);
       }}
     >
-      <h4 className="m-0 text-body font-semibold">Configuration</h4>
       {!profile.editable ? (
-        <p className={helpClass}>
+        <p className={cx("m-0", inspectorLockedClasses)}>
           {profile.provenance.readOnlyReason ??
             "This profile is managed outside Studio. Inspect and authenticate here; edit it in your native AWS configuration."}
         </p>
       ) : null}
-      <fieldset
-        disabled={busy || !profile.editable}
-        className="m-0 grid min-w-0 gap-3 border-0 p-0"
-      >
-        <label className={labelClass}>
-          Default AWS region
-          <TextInput
-            value={fields.region ?? original.region ?? ""}
-            onChange={(event) => change("region", event.target.value)}
-            placeholder="For example, us-east-1"
-          />
-        </label>
+      <fieldset disabled={busy || !profile.editable} className="m-0 grid min-w-0 border-0 p-0">
+        <ProfileField label="Default AWS region" modified={modified("region")}>
+          {(control) => (
+            <TextInput
+              {...control}
+              controlSize="panel"
+              value={fields.region ?? original.region ?? ""}
+              onChange={(event) => change("region", event.target.value)}
+              placeholder="For example, us-east-1"
+            />
+          )}
+        </ProfileField>
         {profile.kind === "assume-role" ? (
           <>
-            <label className={labelClass}>
-              Role ARN
-              <TextInput
-                value={fields.role_arn ?? original.role_arn ?? ""}
-                onChange={(event) => change("role_arn", event.target.value)}
-              />
-            </label>
+            <ProfileField label="Role ARN" modified={modified("role_arn")}>
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  value={fields.role_arn ?? original.role_arn ?? ""}
+                  onChange={(event) => change("role_arn", event.target.value)}
+                />
+              )}
+            </ProfileField>
             {!profile.credentialSource ? (
-              <label className={labelClass}>
-                Source profile
-                <Select
-                  value={fields.source_profile ?? original.source_profile ?? ""}
-                  onChange={(event) => change("source_profile", event.target.value)}
-                >
-                  <option value="">Choose source profile…</option>
-                  {profiles
-                    .filter((item) => item.name !== profile.name)
-                    .map((item) => (
-                      <option key={item.name}>{item.name}</option>
-                    ))}
-                </Select>
-              </label>
+              <ProfileField label="Source profile" modified={modified("source_profile")}>
+                {(control) => (
+                  <Select
+                    {...control}
+                    controlSize="panel"
+                    value={fields.source_profile ?? original.source_profile ?? ""}
+                    onChange={(event) => change("source_profile", event.target.value)}
+                  >
+                    <option value="">Choose source profile…</option>
+                    {profiles
+                      .filter((item) => item.name !== profile.name)
+                      .map((item) => (
+                        <option key={item.name}>{item.name}</option>
+                      ))}
+                  </Select>
+                )}
+              </ProfileField>
             ) : (
-              <p className={helpClass}>
-                Credential source: {profile.credentialSource}. This provider relationship is managed
-                outside Studio.
-              </p>
+              <div className={inspectorFieldClasses} data-slot="field">
+                <span className={inspectorFieldLabelClasses()}>Credential source</span>
+                <code className="min-w-0 text-caption wrap-anywhere">{profile.credentialSource}</code>
+                <p className={cx("m-0", inspectorHelpClasses)}>
+                  This provider relationship is managed outside Studio.
+                </p>
+              </div>
             )}
-            <details className="grid gap-3">
-              <summary className="cursor-pointer text-label">Advanced role settings</summary>
-              <div className="grid gap-3 pt-3">
-                <label className={labelClass}>
-                  Role session name
+            <InspectorDisclosure
+              title="Advanced role settings"
+              embedded
+              className="border-t border-rule"
+              status={
+                modified("role_session_name") ||
+                modified("duration_seconds") ||
+                modified("mfa_serial")
+                  ? "modified"
+                  : undefined
+              }
+            >
+              <ProfileField label="Role session name" modified={modified("role_session_name")}>
+                {(control) => (
                   <TextInput
+                    {...control}
+                    controlSize="panel"
                     value={fields.role_session_name ?? original.role_session_name ?? ""}
                     onChange={(event) => change("role_session_name", event.target.value)}
                   />
-                </label>
-                <label className={labelClass}>
-                  Session duration in seconds
+                )}
+              </ProfileField>
+              <ProfileField label="Session duration in seconds" modified={modified("duration_seconds")}>
+                {(control) => (
                   <TextInput
+                    {...control}
+                    controlSize="panel"
                     inputMode="numeric"
                     value={fields.duration_seconds ?? original.duration_seconds ?? ""}
                     onChange={(event) => change("duration_seconds", event.target.value)}
                   />
-                </label>
-                <label className={labelClass}>
-                  MFA device ARN
+                )}
+              </ProfileField>
+              <ProfileField
+                label="MFA device ARN"
+                modified={modified("mfa_serial")}
+                help="Studio reuses native role credentials. If MFA interaction is needed, authenticate in your terminal."
+              >
+                {(control) => (
                   <TextInput
+                    {...control}
+                    controlSize="panel"
                     value={fields.mfa_serial ?? original.mfa_serial ?? ""}
                     onChange={(event) => change("mfa_serial", event.target.value)}
                   />
-                </label>
-                <p className={helpClass}>
-                  Studio reuses native role credentials. If MFA interaction is needed, authenticate
-                  in your terminal.
-                </p>
-              </div>
-            </details>
+                )}
+              </ProfileField>
+            </InspectorDisclosure>
           </>
         ) : null}
         {profile.ssoSession ? (
           <>
-            <label className={labelClass}>
-              Identity Center session
-              <Select
-                value={fields.sso_session ?? original.sso_session ?? profile.ssoSession}
-                onChange={(event) => change("sso_session", event.target.value)}
-              >
-                {!sessions.some((session) => session.name === profile.ssoSession) ? (
-                  <option value={profile.ssoSession}>{profile.ssoSession}</option>
-                ) : null}
-                {sessions.map((session) => (
-                  <option key={session.name}>{session.name}</option>
-                ))}
-              </Select>
-            </label>
-            <label className={labelClass}>
-              AWS account ID
-              <TextInput
-                value={fields.sso_account_id ?? original.sso_account_id ?? ""}
-                onChange={(event) => change("sso_account_id", event.target.value)}
-              />
-            </label>
-            <label className={labelClass}>
-              Permission set
-              <TextInput
-                value={fields.sso_role_name ?? original.sso_role_name ?? ""}
-                onChange={(event) => change("sso_role_name", event.target.value)}
-              />
-            </label>
+            <ProfileField label="Identity Center session" modified={modified("sso_session")}>
+              {(control) => (
+                <Select
+                  {...control}
+                  controlSize="panel"
+                  value={fields.sso_session ?? original.sso_session ?? profile.ssoSession}
+                  onChange={(event) => change("sso_session", event.target.value)}
+                >
+                  {!sessions.some((session) => session.name === profile.ssoSession) ? (
+                    <option value={profile.ssoSession}>{profile.ssoSession}</option>
+                  ) : null}
+                  {sessions.map((session) => (
+                    <option key={session.name}>{session.name}</option>
+                  ))}
+                </Select>
+              )}
+            </ProfileField>
+            <ProfileField label="AWS account ID" modified={modified("sso_account_id")}>
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  value={fields.sso_account_id ?? original.sso_account_id ?? ""}
+                  onChange={(event) => change("sso_account_id", event.target.value)}
+                />
+              )}
+            </ProfileField>
+            <ProfileField label="Permission set" modified={modified("sso_role_name")}>
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  value={fields.sso_role_name ?? original.sso_role_name ?? ""}
+                  onChange={(event) => change("sso_role_name", event.target.value)}
+                />
+              )}
+            </ProfileField>
           </>
         ) : null}
-        <Button type="submit" variant="quiet" className="justify-self-start" disabled={!changed}>
-          Review configuration changes
-        </Button>
+        <div className="flex flex-wrap gap-2 pt-3">
+          {changed ? (
+            <Button type="button" variant="quiet" onClick={() => setFields({})}>
+              Discard
+            </Button>
+          ) : null}
+          <Button type="submit" variant={changed ? "primary" : "quiet"} disabled={!changed}>
+            Review configuration changes
+          </Button>
+        </div>
       </fieldset>
     </form>
   );
@@ -177,7 +272,7 @@ export function AddProfile({
   readonly onAuthenticate: (request: AuthenticationRequest) => void;
   readonly onReview: (name: string, fields: AwsEditableFields) => void;
 }) {
-  const [method, setMethod] = useState("login");
+  const [method, setMethod] = useState<keyof typeof methodHelp>("login");
   const [name, setName] = useState(fixedName ?? "");
   const [region, setRegion] = useState("");
   const [session, setSession] = useState("");
@@ -185,8 +280,8 @@ export function AddProfile({
   const [ssoRegion, setSsoRegion] = useState("");
   const [source, setSource] = useState("");
   const [roleArn, setRoleArn] = useState("");
-  const nameHelp = useId();
   const [nameTouched, setNameTouched] = useState(false);
+  const collisionId = useId();
   const collision = catalog.profiles.some((profile) => profile.name === name.trim());
   const validName = /^[\w][\w.@+-]{0,127}$/.test(name.trim());
   const nativeOnly = method === "static" || method === "external";
@@ -204,7 +299,7 @@ export function AddProfile({
     (method !== "role" || (!!source && !!roleArn));
   return (
     <form
-      className="grid gap-4"
+      className="grid min-w-0"
       onSubmit={(event) => {
         event.preventDefault();
         if (!valid || nativeOnly) return;
@@ -223,181 +318,198 @@ export function AddProfile({
           });
       }}
     >
-      <div className="grid gap-1">
-        <h3 tabIndex={-1} className="m-0 text-body font-semibold">
+      <header className={inspectorHeaderClasses}>
+        <InspectorKind>New profile</InspectorKind>
+        <h3 tabIndex={-1} className={inspectorTitleClasses}>
           {fixedName === "default" ? "Configure default profile" : "Add AWS profile"}
         </h3>
-        <p className={helpClass}>
-          Connect using your existing AWS account access. Temporary credentials are recommended.
-        </p>
-      </div>
-      <fieldset disabled={busy} className="m-0 grid min-w-0 gap-4 border-0 p-0">
-        <label className={labelClass}>
-          How do you connect to AWS?
-          <Select value={method} onChange={(event) => setMethod(event.target.value)}>
-            <option value="login">Sign in with AWS Console</option>
-            <option value="sso">IAM Identity Center</option>
-            <option value="role">Assume an IAM role</option>
-            <option value="static">Access keys</option>
-            <option value="external">External credential provider</option>
-          </Select>
-        </label>
-        {method === "login" ? (
-          <p className={helpClass}>
-            Use your Console IAM or federated sign-in. Your browser handles authentication; AWS CLI
-            manages temporary credentials.
-          </p>
-        ) : null}
-        {method === "sso" ? (
-          <p className={helpClass}>
-            For organization access through an AWS access portal. After sign-in, choose an assigned
-            account and permission set.
-          </p>
-        ) : null}
+      </header>
+      <fieldset disabled={busy} className="m-0 grid min-w-0 border-0 px-5 py-4">
+        <ProfileField label="How do you connect to AWS?" help={methodHelp[method]}>
+          {(control) => (
+            <Select
+              {...control}
+              controlSize="panel"
+              value={method}
+              onChange={(event) => setMethod(event.target.value as keyof typeof methodHelp)}
+            >
+              <option value="login">Sign in with AWS Console</option>
+              <option value="sso">IAM Identity Center</option>
+              <option value="role">Assume an IAM role</option>
+              <option value="static">Access keys</option>
+              <option value="external">External credential provider</option>
+            </Select>
+          )}
+        </ProfileField>
         {!nativeOnly ? (
           <>
-            <label className={labelClass}>
-              Profile name
-              <TextInput
-                required
-                readOnly={!!fixedName}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                onBlur={() => setNameTouched(true)}
-                aria-describedby={fixedName ? undefined : nameHelp}
-                aria-invalid={collision || (nameTouched && !validName) || undefined}
-                placeholder="For example, team-developer"
-              />
-            </label>
-            {!fixedName ? (
-              <p id={nameHelp} className={helpClass}>
-                Use letters, numbers, dots, underscores, +, @ or hyphens, starting with a letter,
-                number or underscore.
-              </p>
-            ) : null}
-            {collision ? (
-              <p className="m-0 text-caption text-refuse" role="alert">
-                A profile with this name already exists. Choose a new name.
-              </p>
-            ) : null}
-            <label className={labelClass}>
-              Default AWS region
-              <TextInput
-                required={method === "login"}
-                value={region}
-                onChange={(event) => setRegion(event.target.value)}
-                placeholder="For example, us-east-1"
-              />
-            </label>
+            <ProfileField
+              label="Profile name"
+              help={
+                fixedName
+                  ? undefined
+                  : "Use letters, numbers, dots, underscores, +, @ or hyphens, starting with a letter, number or underscore."
+              }
+            >
+              {(control) => (
+                <>
+                  <TextInput
+                    {...control}
+                    aria-describedby={
+                      [control["aria-describedby"], collision ? collisionId : undefined]
+                        .filter(Boolean)
+                        .join(" ") || undefined
+                    }
+                    controlSize="panel"
+                    required
+                    readOnly={!!fixedName}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    onBlur={() => setNameTouched(true)}
+                    aria-invalid={collision || (nameTouched && !validName) || undefined}
+                    placeholder="For example, team-developer"
+                  />
+                  {collision ? (
+                    <p id={collisionId} className={cx("m-0", inspectorLockedClasses)} role="alert">
+                      A profile with this name already exists. Choose a new name.
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </ProfileField>
+            <ProfileField label="Default AWS region">
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  required={method === "login"}
+                  value={region}
+                  onChange={(event) => setRegion(event.target.value)}
+                  placeholder="For example, us-east-1"
+                />
+              )}
+            </ProfileField>
           </>
         ) : null}
         {method === "sso" ? (
           <>
-            <label className={labelClass}>
-              Identity Center session
-              <Select
-                value={catalog.sessions.some((item) => item.name === session) ? session : ""}
-                onChange={(event) => {
-                  const chosen = catalog.sessions.find((item) => item.name === event.target.value);
-                  setSession(chosen?.name ?? "");
-                  setStartUrl(chosen?.startUrl ?? "");
-                  setSsoRegion(chosen?.region ?? "");
-                }}
-              >
-                <option value="">Create a new session…</option>
-                {catalog.sessions.map((item) => (
-                  <option key={item.name}>{item.name}</option>
-                ))}
-              </Select>
-            </label>
-            <label className={labelClass}>
-              Session name
-              <TextInput
-                required
-                value={session}
-                onChange={(event) => setSession(event.target.value)}
-              />
-            </label>
-            <label className={labelClass}>
-              AWS access portal or issuer URL
-              <TextInput
-                required
-                type="url"
-                value={startUrl}
-                onChange={(event) => setStartUrl(event.target.value)}
-                placeholder="https://your-team.awsapps.com/start"
-              />
-            </label>
-            <label className={labelClass}>
-              Identity Center region
-              <TextInput
-                required
-                value={ssoRegion}
-                onChange={(event) => setSsoRegion(event.target.value)}
-              />
-            </label>
-            <p className={helpClass}>
-              Your organization’s Identity Center region can differ from the AWS region where you
-              run operations.
-            </p>
+            <ProfileField label="Identity Center session">
+              {(control) => (
+                <Select
+                  {...control}
+                  controlSize="panel"
+                  value={catalog.sessions.some((item) => item.name === session) ? session : ""}
+                  onChange={(event) => {
+                    const chosen = catalog.sessions.find(
+                      (item) => item.name === event.target.value,
+                    );
+                    setSession(chosen?.name ?? "");
+                    setStartUrl(chosen?.startUrl ?? "");
+                    setSsoRegion(chosen?.region ?? "");
+                  }}
+                >
+                  <option value="">Create a new session…</option>
+                  {catalog.sessions.map((item) => (
+                    <option key={item.name}>{item.name}</option>
+                  ))}
+                </Select>
+              )}
+            </ProfileField>
+            <ProfileField label="Session name">
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  required
+                  value={session}
+                  onChange={(event) => setSession(event.target.value)}
+                />
+              )}
+            </ProfileField>
+            <ProfileField label="AWS access portal or issuer URL">
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  required
+                  type="url"
+                  value={startUrl}
+                  onChange={(event) => setStartUrl(event.target.value)}
+                  placeholder="https://your-team.awsapps.com/start"
+                />
+              )}
+            </ProfileField>
+            <ProfileField
+              label="Identity Center region"
+              help="Your organization’s Identity Center region can differ from the AWS region where you run operations."
+            >
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  required
+                  value={ssoRegion}
+                  onChange={(event) => setSsoRegion(event.target.value)}
+                />
+              )}
+            </ProfileField>
           </>
         ) : null}
         {method === "role" ? (
           <>
-            <label className={labelClass}>
-              Source profile
-              <Select required value={source} onChange={(event) => setSource(event.target.value)}>
-                <option value="">Choose source profile…</option>
-                {catalog.profiles.map((item) => (
-                  <option key={item.name}>{item.name}</option>
-                ))}
-              </Select>
-            </label>
-            <label className={labelClass}>
-              Role ARN
-              <TextInput
-                required
-                value={roleArn}
-                onChange={(event) => setRoleArn(event.target.value)}
-                placeholder="arn:aws:iam::123456789012:role/Developer"
-              />
-            </label>
-            <p className={helpClass}>
-              The source identity must be allowed to assume this role, and the role must trust it.
-              Saving configuration grants no AWS permissions.
-            </p>
+            <ProfileField label="Source profile">
+              {(control) => (
+                <Select
+                  {...control}
+                  controlSize="panel"
+                  required
+                  value={source}
+                  onChange={(event) => setSource(event.target.value)}
+                >
+                  <option value="">Choose source profile…</option>
+                  {catalog.profiles.map((item) => (
+                    <option key={item.name}>{item.name}</option>
+                  ))}
+                </Select>
+              )}
+            </ProfileField>
+            <ProfileField label="Role ARN">
+              {(control) => (
+                <TextInput
+                  {...control}
+                  controlSize="panel"
+                  required
+                  value={roleArn}
+                  onChange={(event) => setRoleArn(event.target.value)}
+                  placeholder="arn:aws:iam::123456789012:role/Developer"
+                />
+              )}
+            </ProfileField>
           </>
         ) : null}
         {nativeOnly ? (
-          <div className="grid gap-2 rounded-md border border-rule bg-wash p-3">
-            <p className={helpClass}>
-              {method === "static"
-                ? "Configure access keys in your terminal using the native AWS CLI. Credentials never pass through Studio’s browser."
-                : "Configure your provider using its own tooling. Studio discovers and uses the resulting named profile without exposing its command or secrets."}
-            </p>
+          <div className="grid min-w-0 gap-2 border-t border-rule pt-3">
             {method === "static" ? (
-              <code className="text-caption wrap-anywhere">
-                aws configure --profile {fixedName ?? "your-profile-name"}
-              </code>
+              <CopyCode
+                code={`aws configure --profile ${fixedName ?? "your-profile-name"}`}
+                label="access key setup command"
+              />
             ) : null}
-            <p className={helpClass}>Then refresh the profile list.</p>
+            <p className={inspectorNoteClasses}>Then refresh the profile list.</p>
           </div>
         ) : null}
         {!supported ? (
-          <p className="m-0 text-caption text-refuse" role="alert">
+          <p className={cx("mt-3 mb-0", inspectorLockedClasses)} role="alert">
             Update AWS CLI to use this authentication method. Console login requires 2.32.0; modern
             Identity Center sessions require 2.9.0.
           </p>
         ) : null}
         {!nativeOnly ? (
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!valid || !supported}
-            className="justify-self-start"
-          >
-            {method === "role" ? "Review new profile" : "Continue to sign in"}
-          </Button>
+          <div className="flex pt-3">
+            <Button type="submit" variant="primary" disabled={!valid || !supported}>
+              {method === "role" ? "Review new profile" : "Continue to sign in"}
+            </Button>
+          </div>
         ) : null}
       </fieldset>
     </form>

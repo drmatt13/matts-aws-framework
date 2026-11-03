@@ -30,6 +30,7 @@ import { DeploymentIdentities, FrontendRelease } from "./deploy/FrontendRelease"
 import { LifecycleDisclosure } from "./DataRetention";
 import { useStudio } from "../studio";
 import { openAwsProfileConfiguration } from "../aws-profile-queries";
+import type { Mode } from "../../shared/model";
 
 /**
  * Deploy & Run: what this repository intends, what the chosen account holds,
@@ -39,17 +40,14 @@ import { openAwsProfileConfiguration } from "../aws-profile-queries";
  * an operation the studio server runs as a job, whose progress streams below.
  */
 export function Deploy() {
-  const { awsProfile: profile, mode: declarationMode, live } = useStudio();
+  const { awsProfile: profile, mode: declarationMode, setMode, live } = useStudio();
   const connectionKey = `${declarationMode}|${profile ?? ""}|${live.awsConnectionRevision}`;
   const currentConnection = useRef(connectionKey);
   currentConnection.current = connectionKey;
-  const [readConnection, setReadConnection] = useState(connectionKey);
-  const connectionReady = readConnection === connectionKey;
   const queryClient = useQueryClient();
-  const overviewQuery = useQuery({ ...deploymentOverviewQuery(), refetchInterval: 15_000 });
+  const overviewQuery = useQuery({ ...deploymentOverviewQuery(), refetchInterval: 30_000 });
   const overview = overviewQuery.data;
-  const [selected, setSelected] = useState<string>();
-  const [refreshing, setRefreshing] = useState(false);
+  const [selected, setSelected] = useState<Partial<Record<Mode, string>>>({});
   const refreshInFlight = useRef(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityJob, setActivityJob] = useState<string>();
@@ -73,18 +71,17 @@ export function Deploy() {
     setTimeout(() => setToasts((current) => current.filter((entry) => entry.id !== id)), 7000);
   }, []);
 
-  // Targets are independent from the active declaration mode's connection.
-  useEffect(() => {
-    if (!overview) return;
-    setSelected(
-      (current) => current ?? overview.preferences.deployment ?? overview.targets[0]?.name,
-    );
-  }, [overview]);
-
-  const select = (name: string) => {
-    setReadConnection(connectionKey);
-    setSelected(name);
-    void deployApi.preferences({ deployment: name }).catch(() => {});
+  const select = (name: string, mode?: Mode) => {
+    const targetMode = mode ?? overview?.targets.find(target => target.name === name)?.mode
+      ?? rows.find(entry => entry.name === name)?.mode;
+    if (!targetMode) return;
+    setMode(targetMode, () => {
+      setSelected(current => ({ ...current, [targetMode]: name }));
+      setReviewKey(undefined);
+      setTeardown(undefined);
+      afterSuccess.current.clear();
+      void deployApi.preferences({ deployment: name }).catch(() => {});
+    });
   };
 
   useEffect(() => {
@@ -107,29 +104,37 @@ export function Deploy() {
   // Discovery (every deployment in the account) and the selected deployment's
   // status are read side by side: status carries a full discovery too, so the
   // page shows whichever answers first.
-  const selectedName = selected ?? overview?.targets[0]?.name;
+  const preferredTarget = overview?.targets.find(target =>
+    target.name === overview.preferences.deployment && target.mode === declarationMode);
+  const selectedName = selected[declarationMode] ?? preferredTarget?.name
+    ?? overview?.targets.find(target => target.mode === declarationMode)?.name;
   // A target pinned to a region is read from that region, as deploying it would use.
   const selectedRegion = overview?.targets.find((target) => target.name === selectedName)?.region;
+  // Configuration/session changes get fresh observations, even for the same profile name.
+  const discoveryKey = [...deploymentDiscoveryQuery(profile).queryKey, connectionKey];
+  const statusKey = [...deploymentStatusQuery(profile, selectedName, selectedRegion).queryKey, connectionKey];
   const discoveryQuery = useQuery({
     ...deploymentDiscoveryQuery(profile),
-    enabled: Boolean(profile && connectionReady),
+    queryKey: discoveryKey,
+    enabled: Boolean(profile),
     staleTime: 20_000,
-    refetchInterval: 60_000,
+    refetchInterval: 120_000,
   });
   const busySelected = Boolean(runningFor(selectedName));
   const statusQuery = useQuery({
     ...deploymentStatusQuery(profile, selectedName, selectedRegion),
-    enabled: Boolean(profile && selectedName && connectionReady),
+    queryKey: statusKey,
+    enabled: Boolean(profile && selectedName),
     staleTime: 3_000,
     refetchInterval: (query) => {
       const data = query.state.data;
       return busySelected || (data?.ok && data.value.detail?.state.kind === "in-progress")
         ? 4_000
-        : 60_000;
+        : 120_000;
     },
   });
-  const status = connectionReady && statusQuery.data?.ok ? statusQuery.data.value : undefined;
-  const discovery = connectionReady && discoveryQuery.data?.ok ? discoveryQuery.data.value : status;
+  const status = statusQuery.data?.ok ? statusQuery.data.value : undefined;
+  const discovery = discoveryQuery.data?.ok ? discoveryQuery.data.value : status;
   const problem =
     statusQuery.data && !statusQuery.data.ok
       ? statusQuery.data.problem
@@ -174,17 +179,16 @@ export function Deploy() {
       }));
     return [...repository, ...others];
   }, [overview?.targets, discovery, status]);
-  const row = rows.find((entry) => entry.name === selectedName) ?? rows[0];
+  const row = rows.find((entry) => entry.name === selectedName);
   const plansQuery = useQuery(deploymentPlansQuery());
   const driftQuery = useQuery({
-    queryKey: ["deploy", "drift", selectedContext?.account, selectedContext?.region, row?.name],
+    queryKey: ["deploy", "drift", selectedContext?.account, selectedContext?.region, row?.name, connectionKey],
     queryFn: () => deployApi.drift(row!.name, selectedContext?.account, selectedContext?.region),
     enabled: Boolean(row && selectedContext),
   });
 
   useDeployLive({
     onConnectionChange: () => {
-      setReadConnection("");
       setReviewKey(undefined);
       setTeardown(undefined);
       afterSuccess.current.clear();
@@ -264,19 +268,18 @@ export function Deploy() {
   const refreshAll = async () => {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
-    setRefreshing(true);
-    setReadConnection(connectionKey);
     // Fetch through the query cache so pending/errors are observable and a failed
     // refresh keeps the last successful evidence on screen.
     await Promise.allSettled([
       queryClient.fetchQuery({ ...deploymentOverviewQuery(true), staleTime: 0 }),
       ...(profile
-        ? [queryClient.fetchQuery({ ...deploymentDiscoveryQuery(profile, true), staleTime: 0 })]
+        ? [queryClient.fetchQuery({ ...deploymentDiscoveryQuery(profile, true), queryKey: discoveryKey, staleTime: 0 })]
         : []),
       ...(profile && row
         ? [
             queryClient.fetchQuery({
               ...deploymentStatusQuery(profile, row.name, row.target?.region, true),
+              queryKey: statusKey,
               staleTime: 0,
             }),
           ]
@@ -284,7 +287,6 @@ export function Deploy() {
       queryClient.fetchQuery({ ...deploymentPlansQuery(), staleTime: 0 }),
     ]);
     refreshInFlight.current = false;
-    setRefreshing(false);
   };
 
   // Until AWS has answered (or refused), nothing is said about what it holds.
@@ -401,6 +403,10 @@ export function Deploy() {
 
   const readError =
     overviewQuery.error ?? discoveryQuery.error ?? statusQuery.error ?? plansQuery.error;
+  const readNotice = discoveryQuery.data && !discoveryQuery.data.ok && status
+    ? "Account discovery in the profile's default region could not be read: " +
+      discoveryQuery.data.problem.message + ". The selected deployment's observation below is separate."
+    : undefined;
   if (overviewQuery.error && !overview)
     return (
       <div className="max-w-[640px] px-6 py-8" role="alert">
@@ -428,33 +434,20 @@ export function Deploy() {
     );
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] vp-900:h-auto">
+    <div className={cx("grid h-full min-h-0 grid-cols-[minmax(0,1fr)] vp-900:h-auto",
+      readError || readNotice ? "grid-rows-[auto_auto_minmax(0,1fr)_auto]" : "grid-rows-[auto_minmax(0,1fr)_auto]")}>
       <AccountBar
-        profiles={overview.profiles}
-        profile={profile}
-        context={selectedContext}
-        problem={problem}
-        loading={
-          refreshing ||
-          overviewQuery.isFetching ||
-          discoveryQuery.isFetching ||
-          statusQuery.isFetching
-        }
-        readError={readError ? readError.message : undefined}
-        scopeNotice={
-          !connectionReady
-            ? "Connection changed. Refresh to inspect this account and the selected target."
-            : discoveryQuery.data && !discoveryQuery.data.ok && status
-            ? "Account discovery in the profile's default region could not be read: " +
-              discoveryQuery.data.problem.message +
-              ". The selected deployment's observation below is separate."
-            : undefined
-        }
-        onRefresh={refreshAll}
-        onSignIn={openAwsProfileConfiguration}
         prerequisites={overview.prerequisites}
         onRemedy={remedy}
       />
+      {readError || readNotice ? (
+        <div className="flex flex-wrap items-center gap-3 border-b border-rule px-6 py-2 text-caption text-refuse" role="alert">
+          <span>{readError ? `Some information could not be refreshed. ${readError.message}` : readNotice}</span>
+          {readError ? <button className={buttonClasses({ variant: "link", size: "compact" })}
+            disabled={overviewQuery.isFetching || discoveryQuery.isFetching || statusQuery.isFetching}
+            onClick={() => void refreshAll()}>Try again</button> : null}
+        </div>
+      ) : null}
       {overview.profiles.length === 0 ? (
         <div className="max-w-[640px] px-6 py-8">
           <h1 className="mt-0 mb-2.5 font-condensed text-[26px] font-semibold">
@@ -462,7 +455,7 @@ export function Deploy() {
           </h1>
           <p>
             Studio reads AWS through named profiles in ~/.aws/config. Create one with{" "}
-            <code>aws configure sso</code> (or <code>aws configure</code>), then refresh.
+            <code>aws configure sso</code> (or <code>aws configure</code>). Studio checks for changes in the background.
           </p>
         </div>
       ) : (
@@ -485,6 +478,8 @@ export function Deploy() {
               record={discovery?.records[row.name]}
               findings={findings}
               awsKnown={awsKnown}
+              connectionMissing={!profile}
+              onChooseConnection={openAwsProfileConfiguration}
               next={next}
               local={overview.local}
               events={events}
@@ -524,7 +519,7 @@ export function Deploy() {
             />
           ) : (
             <p className="px-6 py-20 text-center text-graphite">
-              No deployments are declared in this repository.
+              No {declarationMode === "dev" ? "development" : "production"} deployment is declared in this repository.
             </p>
           )}
         </div>

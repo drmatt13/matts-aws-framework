@@ -381,6 +381,10 @@ merely because a control or inspector was opened.
 ## Extending the system
 
 Use the section primitives and shared tokens before adding a new panel-specific rule.
+Surfaces outside the map follow the same grammar where they inspect one subject: the AWS
+profile configuration modal's detail panel uses `InspectorKind` and its read-only pills, the
+header ref line, source-line lists, environment cards with a select (as Deployment does),
+`InspectorSection`, field rows and `InspectorDisclosure`.
 Scope form styling to the interaction surfaces; map graphics have their own visual model.
 Keep primary controls visible and explanations discoverable. Do not add empty metadata
 sections, nested scrolling regions, repeated source excerpts or long provenance strings

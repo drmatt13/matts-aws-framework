@@ -1,14 +1,53 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type {
   ProfileReview,
   ProfileDeletionReview as DeletionReview,
   LogoutReview,
 } from "../aws-connections-api";
 import type { ModeProfiles } from "../aws-profile-selection";
+import {
+  inspectorFieldClasses,
+  inspectorHeaderClasses,
+  inspectorNoteClasses,
+  inspectorTitleClasses,
+} from "../inspector-ui";
 import { Button } from "../ui/Button";
+import { InspectorKind } from "./InspectorUI";
 
-const note = "m-0 text-caption text-graphite";
-const heading = "m-0 text-body font-semibold";
+/**
+ * A review or sign-in replaces the profile view: an inspector header naming the step, its
+ * content, then back/cancel before the commit action in a row that stays in view.
+ */
+export function ProfileFlow({
+  label,
+  kind,
+  title,
+  actions,
+  children,
+}: {
+  readonly label: string;
+  readonly kind: string;
+  readonly title: string;
+  readonly actions?: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <section aria-label={label} className="flex min-w-0 flex-1 flex-col">
+      <header className={`${inspectorHeaderClasses} sticky top-0 z-10 bg-sheet`}>
+        <InspectorKind>{kind}</InspectorKind>
+        <h3 tabIndex={-1} className={inspectorTitleClasses}>
+          {title}
+        </h3>
+      </header>
+      <div className="grid min-w-0 content-start gap-3 px-5 py-4">{children}</div>
+      {actions ? (
+        <div className="sticky bottom-0 z-10 mt-auto flex flex-wrap justify-end gap-2 border-t border-rule bg-sheet px-5 py-3">
+          {actions}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 export function ProfileDeletionReview({
   review,
@@ -33,33 +72,48 @@ export function ProfileDeletionReview({
     ? `${review.files.join(" and ")} ${review.files.length === 1 ? "file" : "files"}`
     : "configuration";
   return (
-    <section
-      className="grid gap-4 rounded-md border border-rule-strong p-4"
-      aria-label="Delete AWS profile confirmation"
+    <ProfileFlow
+      label="Delete AWS profile confirmation"
+      kind="Review deletion"
+      title={`Delete profile ${review.name}?`}
+      actions={
+        <>
+          <Button ref={cancel} variant="quiet" disabled={pending} onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            tone="danger"
+            disabled={pending || !!review.blockers.length}
+            onClick={onConfirm}
+          >
+            Delete profile
+          </Button>
+        </>
+      }
     >
-      <h3 className={`${heading} sticky top-0 z-10 bg-sheet py-1`}>
-        Delete profile {review.name}?
-      </h3>
       <p className="m-0 text-label">
         Remove this profile from your machine’s AWS {files}. Other profiles and shared sign-in
         sessions will be kept. AWS resources are unaffected.
       </p>
       {review.name === "default" ? (
-        <p className={note}>
+        <p className={inspectorNoteClasses}>
           The default entry will remain in Studio as not configured, ready to set up again.
         </p>
       ) : null}
       {modes.length ? (
-        <p className={note}>
+        <p className={inspectorNoteClasses}>
           {modes.join(" and ")} will have no selected profile in this repository. Choose another
           profile before running AWS operations.
         </p>
       ) : null}
       {review.dependentProfiles.length ? (
-        <p className={note}>Profiles using this source: {review.dependentProfiles.join(", ")}.</p>
+        <p className={inspectorNoteClasses}>
+          Profiles using this source: {review.dependentProfiles.join(", ")}.
+        </p>
       ) : null}
       {review.blockers.length ? (
-        <div className="grid gap-2" role="alert">
+        <div className="grid gap-1 border-l-2 border-refuse pl-2" role="alert">
           <p className="m-0 text-label font-medium text-refuse">
             This profile cannot be deleted yet.
           </p>
@@ -70,20 +124,7 @@ export function ProfileDeletionReview({
           </ul>
         </div>
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button ref={cancel} disabled={pending} onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button
-          variant="primary"
-          tone="danger"
-          disabled={pending || !!review.blockers.length}
-          onClick={onConfirm}
-        >
-          Delete profile
-        </Button>
-      </div>
-    </section>
+    </ProfileFlow>
   );
 }
 
@@ -99,40 +140,48 @@ export function ProfileChangeReview({
   readonly onSave: () => void;
 }) {
   return (
-    <section
-      className="grid gap-3 rounded-md border border-rule-strong p-4"
-      aria-label="AWS profile change review"
+    <ProfileFlow
+      label="AWS profile change review"
+      kind={review.create ? "Review new profile" : "Review configuration changes"}
+      title={review.name}
+      actions={
+        <>
+          <Button variant="quiet" disabled={pending} onClick={onBack}>
+            Back
+          </Button>
+          <Button variant="primary" disabled={pending} onClick={onSave}>
+            Save profile
+          </Button>
+        </>
+      }
     >
-      <h3 className={heading}>
-        Review {review.create ? "new profile" : "configuration changes"}: {review.name}
-      </h3>
-      <p className={note}>
+      <p className={inspectorNoteClasses}>
         Only these settings will change. Existing comments and unrelated configuration are
         preserved.
       </p>
-      <dl className="m-0 grid gap-3 text-label">
+      <dl className="m-0 grid min-w-0">
         {review.changes.map((change) => (
-          <div key={change.field} className="grid min-w-0 gap-1">
-            <dt className="font-medium">{change.field}</dt>
-            <dd className="m-0 font-mono text-caption wrap-anywhere">
-              {change.before ? `${change.before} → ` : ""}
-              {change.after || "Remove setting"}
+          <div key={change.field} className={inspectorFieldClasses}>
+            <dt className="text-label font-medium">
+              <code>{change.field}</code>
+            </dt>
+            <dd className="m-0 text-caption wrap-anywhere">
+              {change.before ? (
+                <>
+                  <code className="text-graphite">{change.before}</code> →{" "}
+                </>
+              ) : null}
+              {change.after ? <code>{change.after}</code> : "Remove setting"}
             </dd>
           </div>
         ))}
       </dl>
       {review.affectedProfiles.length ? (
-        <p className={note}>Affected profiles: {review.affectedProfiles.join(", ")}</p>
+        <p className={inspectorNoteClasses}>
+          Affected profiles: {review.affectedProfiles.join(", ")}
+        </p>
       ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={pending} onClick={onBack}>
-          Back
-        </Button>
-        <Button variant="primary" disabled={pending} onClick={onSave}>
-          Save profile
-        </Button>
-      </div>
-    </section>
+    </ProfileFlow>
   );
 }
 
@@ -148,28 +197,30 @@ export function ProfileLogoutReview({
   readonly onConfirm: () => void;
 }) {
   return (
-    <section
-      className="grid gap-3 rounded-md border border-rule-strong p-4"
-      aria-label="AWS sign-out review"
-    >
-      <h3 className={heading}>
-        {review.method === "sso"
+    <ProfileFlow
+      label="AWS sign-out review"
+      kind="Review sign-out"
+      title={
+        review.method === "sso"
           ? "Sign out of all Identity Center sessions"
-          : "Sign out of shared Console session"}
-      </h3>
+          : "Sign out of shared Console session"
+      }
+      actions={
+        <>
+          <Button variant="quiet" disabled={pending} onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button tone="danger" disabled={pending} onClick={onConfirm}>
+            Sign out
+          </Button>
+        </>
+      }
+    >
       <p className="m-0 text-label">{review.message}</p>
-      <p className={note}>
+      <p className={inspectorNoteClasses}>
         Affected profiles: {review.affectedProfiles.join(", ") || "This session"}. Already-issued
         role credentials can remain valid until they expire.
       </p>
-      <div className="flex flex-wrap gap-2">
-        <Button disabled={pending} onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button tone="danger" disabled={pending} onClick={onConfirm}>
-          Sign out
-        </Button>
-      </div>
-    </section>
+    </ProfileFlow>
   );
 }

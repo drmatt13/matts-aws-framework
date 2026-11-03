@@ -30,7 +30,7 @@ for (const { name, path: pathname } of destinations) test(`baseline ${name} desk
   await studio.goto(pathname);
   if (name === "Map") await expect(page.getByRole("searchbox", { name: "Search isometric map" })).toBeVisible();
   if (name === "Database") await expect(page.getByRole("textbox", { name: "Prisma schema source" })).toBeVisible();
-  if (name === "Deploy") await expect(page.getByRole("button", { name: /Refresh/ }).first()).toBeVisible();
+  if (name === "Deploy") await expect(page.getByRole("region", { name: "Machine readiness", exact: true })).toBeVisible();
   if (name === "Cognito") await expect(page.getByRole("navigation", { name: "Cognito sections" })).toBeVisible();
   if (name === "Domains") await expect(page.getByRole("heading", { name: "DNS / Domains" })).toBeVisible();
   if (name === "WebSockets") await expect(page.getByRole("button", { name: /^Connect/ }).first()).toBeVisible();

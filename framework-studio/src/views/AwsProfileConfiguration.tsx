@@ -1,8 +1,15 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, RefreshCw, Trash2, X } from "lucide-react";
-import { dialogClasses, dialogHeaderClasses, dialogTitleClasses } from "../inspector-ui";
+import { Check, ChevronLeft, Plus, RefreshCw, TriangleAlert, Trash2, X } from "lucide-react";
+import {
+  dialogClasses,
+  dialogHeaderClasses,
+  dialogTitleClasses,
+  inspectorContentClasses,
+  inspectorContextClasses,
+  inspectorNoteClasses,
+} from "../inspector-ui";
 import { cx } from "../ui/classes";
 import { IconButton } from "../ui/IconButton";
 import { Button } from "../ui/Button";
@@ -13,6 +20,7 @@ import {
   awsProfileIdentityQuery,
   checkAwsProfile,
   connectionStateLabels,
+  effectiveProfileKind,
   profileMethodLabels,
 } from "../aws-profile-queries";
 import {
@@ -25,18 +33,48 @@ import {
   type ProfileDeletionReview,
 } from "../aws-connections-api";
 import type { AwsCliCapabilities, AwsEditableFields } from "../../shared/aws-connection-management";
-import type { AwsConnectionObservation, AwsProfileCatalog } from "../../shared/aws-connections";
+import type {
+  AwsConnectionObservation,
+  AwsProfileCatalog,
+  AwsProfileDescriptor,
+} from "../../shared/aws-connections";
 import { AddProfile } from "./AwsProfileForms";
 import { AwsProfileDetails } from "./AwsProfileDetails";
 import { AuthenticationProgress } from "./AwsProfileAuthentication";
+import { EnvironmentPills } from "./DeploymentBadge";
+import type { Mode } from "../../shared/model";
 import {
   ProfileChangeReview,
   ProfileDeletionReview as ProfileDeletionConfirmation,
   ProfileLogoutReview,
 } from "./AwsProfileReviews";
 
-const note = "m-0 text-caption text-graphite";
-const sectionHeading = "m-0 text-body font-semibold";
+const MODE_NAMES = { dev: "Development", prod: "Production" } as const;
+/** Master-list rows: the Resource browser's two-line grammar, selected with the shared wash and rule. */
+const profileRowClasses =
+  "group/profile grid min-h-[52px] w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] content-center items-center gap-x-2 gap-y-0.5 rounded-md border border-transparent bg-transparent py-1.5 pr-10 pl-2.5 text-left font-[inherit] text-ink enabled:hover:bg-wash aria-[current=true]:border-rule aria-[current=true]:bg-wash disabled:cursor-default disabled:opacity-55";
+const backClasses =
+  "-ml-2 inline-flex min-h-(--control-height-sm) min-w-0 cursor-pointer items-center gap-0.5 rounded-md border-0 bg-transparent py-0 pr-2 pl-1 font-sans text-label leading-none font-semibold text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-45 coarse:min-h-11";
+
+/** Supporting text reads in ink on a washed (hovered or selected) row, keeping 4.5:1 in the light theme. */
+const rowSupportClasses =
+  "text-graphite group-hover/profile:text-ink group-aria-[current=true]/profile:text-ink";
+
+/** Only exceptions get labels: a verified or failing check marks the row; an unchecked one stays quiet. */
+function profileHealth(
+  profile: AwsProfileDescriptor,
+  observation: AwsConnectionObservation | undefined,
+): { readonly state: AwsConnectionObservation["state"]; readonly attention: boolean } {
+  const state =
+    observation?.state ??
+    (profile.diagnostics.some((diagnostic) => diagnostic.severity === "error")
+      ? "configuration-error"
+      : "unchecked");
+  return {
+    state,
+    attention: state === "needs-auth" || state === "configuration-error" || state === "unavailable",
+  };
+}
 
 export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => void }) {
   const { awsProfile, awsProfiles, setAwsProfile, live, mode: activeMode } = useStudio();
@@ -76,6 +114,24 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
   currentAuthentication.current = authentication;
   const currentAssociations = useRef(awsProfiles);
   currentAssociations.current = awsProfiles;
+  const currentRequest = useRef(authenticationRequest);
+  currentRequest.current = authenticationRequest;
+  /** A finished sign-in with no further step returns to the view it began from; the status line keeps its outcome. */
+  const receive = (session: AuthenticationSession) => {
+    const followUp =
+      session.state === "complete" &&
+      (currentRequest.current?.method === "sso" || !!session.reviewRequired);
+    if (!authenticationFinished(session) || followUp) {
+      setAuthentication(session);
+      return;
+    }
+    setAuthentication(undefined);
+    if (session.state === "failed") setError(session.message);
+    else setMessage(session.message);
+    // Reconnecting an existing profile is confirmed by checking it, so its state reflects the sign-in.
+    const profile = currentRequest.current?.profile;
+    if (session.state === "complete" && profile) void check(profile).catch(() => {});
+  };
   const profile = catalog.data?.profiles.find((item) => item.name === selectedName);
   const defaultUnconfigured = !!catalog.data && !catalog.data.profiles.some((item) => item.name === "default");
   useEffect(() => {
@@ -113,7 +169,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
       try {
         const next = await awsConnectionsApi.authentication(authentication.id, controller.signal);
         if (!active) return;
-        setAuthentication(next);
+        receive(next);
         if (authenticationFinished(next))
           void queryClient.invalidateQueries({ queryKey: ["aws-connections"] });
       } catch (reason) {
@@ -209,11 +265,12 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
       setLogoutReview(undefined);
       setDeletionReview(undefined);
       setAuthenticationRequest(request);
+      currentRequest.current = request;
       setAccounts([]);
       setRoles([]);
       setAccount("");
       setRole("");
-      setAuthentication(await awsConnectionsApi.authenticate(request));
+      receive(await awsConnectionsApi.authenticate(request));
     });
   const reviewFields = (
     name: string,
@@ -304,6 +361,57 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
       restoreDeleteFocus();
     });
   };
+  /** Selects the profile for exactly these modes; a mode it leaves keeps no profile, never another. */
+  const associate = (name: string, modes: readonly Mode[]) => {
+    for (const mode of ["dev", "prod"] as const) {
+      const current = currentAssociations.current[mode] === name;
+      if (modes.includes(mode) && !current) {
+        setAwsProfile(mode, name);
+        if (mode === activeMode)
+          void queryClient.fetchQuery(awsProfileIdentityQuery(name)).catch(() => {});
+      } else if (!modes.includes(mode) && current) setAwsProfile(mode, undefined);
+    }
+    setMessage(
+      modes.length
+        ? `${name} is selected for ${modes.map((mode) => MODE_NAMES[mode]).join(" and ")}.`
+        : `${name} is not selected for Development or Production.`,
+    );
+  };
+  const deleteProfile = () =>
+    void run("Deleting profile…", async () => {
+      if (!deletionReview) return;
+      const result = await awsConnectionsApi.deleteProfile(deletionReview.id);
+      for (const mode of ["dev", "prod"] as const)
+        if (currentAssociations.current[mode] === result.name) setAwsProfile(mode, undefined);
+      setDeletionReview(undefined);
+      setSelectedName("");
+      setDetailVisible(false);
+      setAuthentication(undefined);
+      setAdding(false);
+      setChecks((current) => {
+        const next = { ...current };
+        delete next[result.name];
+        return next;
+      });
+      queryClient.removeQueries({ queryKey: awsProfileIdentityQuery(result.name).queryKey });
+      setMessage(
+        result.name === "default" ? "Default profile cleared." : `Deleted profile ${result.name}.`,
+      );
+      try {
+        await refreshCatalog();
+      } catch {
+        setError(
+          "The profile was deleted, but the profile list could not refresh. Refresh the list to try again.",
+        );
+      }
+      window.requestAnimationFrame(() => {
+        if (addTrigger.current?.getClientRects().length) addTrigger.current.focus();
+        else detailScroll.current?.querySelector<HTMLButtonElement>("button")?.focus();
+      });
+    });
+  const environment = catalog.data?.environment;
+  // A review or sign-in replaces the profile view; the view stays mounted so Back restores its fields.
+  const flowOpen = !!deletionReview || !!review || !!logoutReview || !!authentication;
   return createPortal(
     <dialog
       ref={dialog}
@@ -332,18 +440,14 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
           <X size={16} aria-hidden />
         </IconButton>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4 vp-420:px-4">
-        <p className={cx(note, "flex-none")}>
-          Profiles live in your machine’s AWS configuration. Declaration modes choose a profile;
-          deployments retain their own target and approval.
-        </p>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {catalog.isPending ? (
-          <p role="status" className={note}>
+          <p role="status" className={cx(inspectorNoteClasses, "px-5 py-4")}>
             Loading AWS profiles…
           </p>
         ) : catalog.isError && !catalog.data ? (
-          <div className="grid gap-2">
-            <p role="alert" className="m-0 text-label text-refuse">
+          <div className="grid justify-items-start gap-2 px-5 py-4">
+            <p role="alert" className="m-0 text-label text-refuse wrap-anywhere">
               Could not load AWS profiles. {catalog.error.message}
             </p>
             <Button variant="quiet" onClick={() => void catalog.refetch()}>
@@ -352,15 +456,15 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
           </div>
         ) : null}
         {catalog.data ? (
-          <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[240px_minmax(0,1fr)] gap-5 vp-760:grid-cols-1">
+          <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[272px_minmax(0,1fr)] vp-760:grid-cols-1">
             <aside
               aria-label="Configured AWS profiles"
               className={cx(
-                "flex min-h-0 min-w-0 flex-col gap-3",
+                "flex min-h-0 min-w-0 flex-col gap-3 py-4 pr-3 pl-4 vp-760:pr-4",
                 detailVisible && "vp-760:hidden",
               )}
             >
-              <div className="flex flex-none flex-wrap gap-2">
+              <div className="flex flex-none flex-wrap gap-2 px-1">
                 <Button
                   ref={addTrigger}
                   size="compact"
@@ -387,47 +491,58 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                 </IconButton>
               </div>
               {!catalog.data.profiles.length ? (
-                <p className={note}>
+                <p className={cx(inspectorNoteClasses, "px-1")}>
                   No AWS profiles yet. Add a profile to connect your first account.
                 </p>
               ) : null}
               <ul
                 ref={profileList}
-                className="m-0 grid min-h-0 list-none content-start gap-1 overflow-y-auto p-1 [scrollbar-gutter:stable]"
+                className="m-0 grid min-h-0 flex-1 list-none content-start overflow-y-auto p-1 [scrollbar-gutter:stable]"
               >
                 {defaultUnconfigured ? (
-                  <li data-slot="aws-profile-card" data-profile="default">
+                  <li
+                    data-slot="aws-profile-card"
+                    data-profile="default"
+                    className="relative border-b border-rule py-0.5 last:border-b-0"
+                  >
                     <button
                       disabled={pending}
                       aria-label="Configure default AWS profile"
                       aria-current={adding && addingName === "default" ? "true" : undefined}
                       onClick={(event) => addProfile(event.currentTarget, "default")}
-                      className={cx(
-                        "group/profile grid h-[124px] w-full min-w-0 cursor-pointer grid-rows-[28px_18px_18px_18px] gap-1 rounded-md border border-rule bg-sheet p-3 text-left text-ink enabled:hover:bg-wash disabled:opacity-55",
-                        adding && addingName === "default" && "border-rule-strong bg-wash",
-                      )}
+                      className={profileRowClasses}
                     >
-                      <strong className="self-center text-label">default</strong>
-                      <span className="text-caption">Not configured</span>
-                      <span className="text-caption">Click to configure</span>
+                      <strong className={cx("truncate text-label font-medium", rowSupportClasses)}>
+                        default
+                      </strong>
+                      <span className={cx("col-span-full truncate text-caption", rowSupportClasses)}>
+                        Not configured · Click to configure
+                      </span>
                     </button>
                   </li>
                 ) : null}
                 {catalog.data.profiles.map((item) => {
                   const selected = !adding && item.name === selectedName;
-                  const metadata = cx(
-                    "m-0 truncate text-caption group-hover/profile:text-ink",
-                    selected ? "text-ink" : "text-graphite",
-                  );
-                  const health =
+                  const cached =
                     checks[item.name] ??
                     queryClient.getQueryData<AwsConnectionObservation>(
                       awsProfileIdentityQuery(item.name).queryKey,
                     );
+                  const { state, attention } = profileHealth(item, cached);
+                  const modes = (["dev", "prod"] as const).filter(
+                    (mode) => awsProfiles[mode] === item.name,
+                  );
+                  const method = `${profileMethodLabels[effectiveProfileKind(item, cached)]}${item.region ? ` · ${item.region}` : ""}`;
+                  const spoken = [
+                    state === "connected" || attention ? connectionStateLabels[state] : undefined,
+                    modes.length
+                      ? `selected for ${modes.map((mode) => MODE_NAMES[mode]).join(" and ")}`
+                      : undefined,
+                  ].filter((part) => part !== undefined);
                   return (
                     <li
                       key={item.name}
-                      className="relative"
+                      className="relative border-b border-rule py-0.5 last:border-b-0"
                       data-slot="aws-profile-card"
                       data-profile={item.name}
                     >
@@ -435,42 +550,48 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                         disabled={pending}
                         aria-current={selected ? "true" : undefined}
                         onClick={(event) => chooseProfile(item.name, event.currentTarget)}
-                        className={cx(
-                          "group/profile grid h-[124px] w-full min-w-0 cursor-pointer grid-rows-[28px_18px_18px_18px] gap-1 rounded-md border border-rule bg-sheet p-3 text-left text-ink enabled:hover:bg-wash disabled:opacity-55",
-                          selected && "border-rule-strong bg-wash",
-                        )}
+                        className={profileRowClasses}
                       >
-                        <strong className="self-center truncate pr-8 text-label" title={item.name}>
-                          {item.name}
-                        </strong>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <strong
+                            className={cx(
+                              "truncate text-label font-medium",
+                              attention && "text-refuse",
+                            )}
+                            title={item.name}
+                          >
+                            {item.name}
+                          </strong>
+                          {state === "connected" ? (
+                            <Check size={12} strokeWidth={2.5} className="shrink-0 text-accept" aria-hidden />
+                          ) : attention ? (
+                            <TriangleAlert size={12} strokeWidth={2.5} className="shrink-0 text-refuse" aria-hidden />
+                          ) : null}
+                        </span>
                         <span
-                          className={metadata}
-                          title={`${profileMethodLabels[item.kind]}${item.region ? ` · ${item.region}` : ""}`}
+                          aria-hidden
+                          className="flex group-hover/profile:[&_[data-enabled=false]]:text-ink group-aria-[current=true]/profile:[&_[data-enabled=false]]:text-ink"
                         >
-                          {profileMethodLabels[item.kind]}
-                          {item.region ? ` · ${item.region}` : ""}
+                          <EnvironmentPills
+                            availability={{ dev: modes.includes("dev"), prod: modes.includes("prod") }}
+                          />
                         </span>
-                        <span className={metadata}>
-                          {health
-                            ? connectionStateLabels[health.state]
-                            : item.diagnostics.some((diagnostic) => diagnostic.severity === "error")
-                              ? "Configuration issue"
-                              : "Not checked"}
-                        </span>
-                        <span className={cx(metadata, "min-h-[18px]")}>
-                          {[
-                            awsProfiles.dev === item.name && "Development",
-                            awsProfiles.prod === item.name && "Production",
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
+                        <span
+                          className={cx("col-span-full truncate text-caption", rowSupportClasses)}
+                          title={method}
+                        >
+                          {method}
+                          {/* After the method, so the row's name still begins "name method". */}
+                          {spoken.length ? (
+                            <span className="sr-only">· {spoken.join(" · ")}</span>
+                          ) : null}
                         </span>
                       </button>
                       <IconButton
                         variant="quiet"
                         size="compact"
                         tone="danger"
-                        className="absolute top-2 right-2"
+                        className="absolute top-1/2 right-1 -translate-y-1/2"
                         aria-label={`Delete AWS profile ${item.name}`}
                         disabled={pending}
                         onClick={(event) => {
@@ -488,313 +609,276 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                   );
                 })}
               </ul>
-              {capabilities ? (
-                <p className={cx(note, "flex-none")}>
-                  {capabilities.available
-                    ? `AWS CLI ${capabilities.version ?? "available"}`
-                    : "AWS CLI unavailable"}
-                </p>
-              ) : null}
+              <div className="grid flex-none gap-1 px-1">
+                {capabilities ? (
+                  <p
+                    className={
+                      capabilities.available
+                        ? inspectorNoteClasses
+                        : "m-0 text-caption text-refuse wrap-anywhere"
+                    }
+                  >
+                    {capabilities.available
+                      ? `AWS CLI ${capabilities.version ?? "available"}`
+                      : "AWS CLI unavailable. Install AWS CLI v2 to sign in from Studio."}
+                  </p>
+                ) : null}
+                {environment?.credentialsPresent ? (
+                  <p className={inspectorNoteClasses}>
+                    Credential environment variables are set. Only a profile whose credential source
+                    is Environment uses them.
+                  </p>
+                ) : null}
+                {environment?.endpointOverridesPresent ? (
+                  <p className={inspectorNoteClasses}>
+                    AWS endpoint overrides are set. Identity checks still use trusted AWS endpoints.
+                  </p>
+                ) : null}
+                {catalog.data.diagnostics.map((diagnostic, index) => (
+                  <p
+                    key={index}
+                    className={
+                      diagnostic.severity === "error"
+                        ? "m-0 text-caption text-refuse wrap-anywhere"
+                        : inspectorNoteClasses
+                    }
+                  >
+                    {diagnostic.message}
+                  </p>
+                ))}
+              </div>
             </aside>
             <section
               ref={detailScroll}
               data-slot="aws-profile-detail-scroll"
               className={cx(
-                "grid min-h-0 min-w-0 content-start gap-4 overflow-y-auto p-1 [scrollbar-gutter:stable]",
+                inspectorContextClasses,
+                inspectorContentClasses,
+                "flex min-w-0 flex-col border-l border-rule vp-760:border-l-0",
                 !detailVisible && "vp-760:hidden",
               )}
               aria-label="AWS profile details"
             >
-              <Button
-                variant="link"
-                size="compact"
-                className="hidden justify-self-start vp-760:inline-flex"
-                disabled={pending}
-                onClick={showProfiles}
-              >
-                <ArrowLeft size={14} aria-hidden />
-                All profiles
-              </Button>
+              <div className="hidden flex-none border-b border-rule px-5 py-1.5 vp-760:flex">
+                <button className={backClasses} disabled={pending} onClick={showProfiles}>
+                  <ChevronLeft size={16} className="shrink-0 text-graphite" aria-hidden />
+                  <span className="truncate">All profiles</span>
+                </button>
+              </div>
               {deletionReview ? (
                 <ProfileDeletionConfirmation
                   review={deletionReview}
                   associations={awsProfiles}
                   pending={pending}
                   onCancel={cancelDeletion}
-                  onConfirm={() =>
-                    void run("Deleting profile…", async () => {
-                      const result = await awsConnectionsApi.deleteProfile(deletionReview.id);
-                      for (const mode of ["dev", "prod"] as const)
-                        if (currentAssociations.current[mode] === result.name)
-                          setAwsProfile(mode, undefined);
-                      setDeletionReview(undefined);
-                      setSelectedName("");
-                      setDetailVisible(false);
+                  onConfirm={deleteProfile}
+                />
+              ) : review ? (
+                <ProfileChangeReview
+                  review={review}
+                  pending={pending}
+                  onBack={() =>
+                    void run("Discarding review…", async () => {
+                      await awsConnectionsApi.discard(review.id);
+                      setReview(undefined);
+                    })
+                  }
+                  onSave={() =>
+                    void run("Saving profile…", async () => {
+                      const result = await awsConnectionsApi.apply(review.id);
+                      setReview(undefined);
                       setAuthentication(undefined);
                       setAdding(false);
-                      setChecks((current) => {
-                        const next = { ...current };
-                        delete next[result.name];
-                        return next;
-                      });
-                      queryClient.removeQueries({
-                        queryKey: awsProfileIdentityQuery(result.name).queryKey,
-                      });
-                      setMessage(result.name === "default"
-                        ? "Default profile cleared."
-                        : `Deleted profile ${result.name}.`);
-                      try {
-                        await refreshCatalog();
-                      } catch {
-                        setError(
-                          "The profile was deleted, but the profile list could not refresh. Refresh the list to try again.",
-                        );
-                      }
+                      setSelectedName(result.name);
+                      setDetailVisible(true);
+                      setMessage(result.message || "Profile saved.");
+                      await refreshCatalog();
+                      await check(result.name);
+                      detailScroll.current?.scrollTo({ top: 0 });
                       window.requestAnimationFrame(() => {
-                        if (addTrigger.current?.getClientRects().length) addTrigger.current.focus();
-                        else
-                          detailScroll.current?.querySelector<HTMLButtonElement>("button")?.focus();
+                        detailScroll.current
+                          ?.querySelector<HTMLElement>("h3")
+                          ?.focus({ preventScroll: true });
                       });
                     })
                   }
                 />
-              ) : null}
-              <div hidden={!!deletionReview} className="grid min-w-0 content-start gap-4">
-                {authentication ? (
-                  <AuthenticationProgress
-                    session={authentication}
-                    pending={!!busy}
-                    onCancel={() =>
-                      void run("Canceling sign-in…", async () =>
-                        setAuthentication(await awsConnectionsApi.cancel(authentication.id)),
-                      )
-                    }
-                    onConfirm={(accepted) =>
-                      void run("Confirming identity…", async () =>
-                        setAuthentication(
-                          await awsConnectionsApi.confirm(authentication.id, accepted),
-                        ),
-                      )
-                    }
-                  />
-                ) : null}
-                {authentication?.state === "complete" && authenticationRequest?.method === "sso" ? (
-                  <div className="grid gap-3">
-                    <h3 className={sectionHeading}>Choose an account and permission set</h3>
-                    {!accounts.length ? (
+              ) : logoutReview ? (
+                <ProfileLogoutReview
+                  review={logoutReview}
+                  pending={pending}
+                  onCancel={() => setLogoutReview(undefined)}
+                  onConfirm={() =>
+                    void run("Signing out…", async () => {
+                      const result = await awsConnectionsApi.logout(logoutReview.id);
+                      setLogoutReview(undefined);
+                      setMessage(result.message);
+                      await refreshCatalog();
+                    })
+                  }
+                />
+              ) : authentication ? (
+                <AuthenticationProgress
+                  session={authentication}
+                  pending={!!busy}
+                  onCancel={() =>
+                    void run("Canceling sign-in…", async () =>
+                      receive(await awsConnectionsApi.cancel(authentication.id)),
+                    )
+                  }
+                  onConfirm={(accepted) =>
+                    void run("Confirming identity…", async () =>
+                      receive(await awsConnectionsApi.confirm(authentication.id, accepted)),
+                    )
+                  }
+                >
+                  {authentication.state === "complete" && authenticationRequest?.method === "sso" ? (
+                    <div className="grid min-w-0 justify-items-start gap-3">
+                      <h4 className="m-0 text-label font-semibold">
+                        Choose an account and permission set
+                      </h4>
+                      {!accounts.length ? (
+                        <Button
+                          variant="quiet"
+                          disabled={pending}
+                          onClick={() =>
+                            void run("Loading AWS accounts…", async () => {
+                              const next = await awsConnectionsApi.accounts(authentication.id);
+                              setAccounts(next.accounts);
+                              if (!next.accounts.length)
+                                setMessage(
+                                  "No AWS accounts are assigned to this session. Ask your administrator for an account assignment.",
+                                );
+                            })
+                          }
+                        >
+                          Load assigned accounts
+                        </Button>
+                      ) : null}
+                      {accounts.length ? (
+                        <label className="grid w-full min-w-0 gap-1 text-label font-medium">
+                          AWS account
+                          <Select
+                            controlSize="panel"
+                            value={account}
+                            disabled={pending}
+                            onChange={(event) => chooseAccount(event.target.value)}
+                          >
+                            <option value="">Choose account…</option>
+                            {accounts.map((item) => (
+                              <option key={item.accountId} value={item.accountId}>
+                                {item.accountName ? `${item.accountName} · ` : ""}
+                                {item.accountId}
+                              </option>
+                            ))}
+                          </Select>
+                        </label>
+                      ) : null}
+                      {account ? (
+                        <label className="grid w-full min-w-0 gap-1 text-label font-medium">
+                          Permission set
+                          <Select
+                            controlSize="panel"
+                            value={role}
+                            disabled={pending}
+                            onChange={(event) => setRole(event.target.value)}
+                          >
+                            <option value="">Choose permission set…</option>
+                            {roles.map((item) => (
+                              <option key={item.roleName}>{item.roleName}</option>
+                            ))}
+                          </Select>
+                        </label>
+                      ) : null}
                       <Button
-                        disabled={pending}
+                        variant="primary"
+                        disabled={pending || !account || !role}
                         onClick={() =>
-                          void run("Loading AWS accounts…", async () => {
-                            const next = await awsConnectionsApi.accounts(authentication.id);
-                            setAccounts(next.accounts);
-                            if (!next.accounts.length)
-                              setMessage(
-                                "No AWS accounts are assigned to this session. Ask your administrator for an account assignment.",
-                              );
-                          })
+                          reviewFields(
+                            authentication.profile,
+                            {
+                              ...(authenticationRequest.region
+                                ? { region: authenticationRequest.region }
+                                : {}),
+                              sso_session: authenticationRequest.session!,
+                              sso_account_id: account,
+                              sso_role_name: role,
+                            },
+                            true,
+                            authentication.id,
+                          )
                         }
                       >
-                        Load assigned accounts
+                        Review new profile
                       </Button>
-                    ) : null}
-                    {accounts.length ? (
-                      <label className="grid gap-1 text-label">
-                        AWS account
-                        <Select
-                          value={account}
-                          disabled={pending}
-                          onChange={(event) => chooseAccount(event.target.value)}
-                        >
-                          <option value="">Choose account…</option>
-                          {accounts.map((item) => (
-                            <option key={item.accountId} value={item.accountId}>
-                              {item.accountName ? `${item.accountName} · ` : ""}
-                              {item.accountId}
-                            </option>
-                          ))}
-                        </Select>
-                      </label>
-                    ) : null}
-                    {account ? (
-                      <label className="grid gap-1 text-label">
-                        Permission set
-                        <Select
-                          value={role}
-                          disabled={pending}
-                          onChange={(event) => setRole(event.target.value)}
-                        >
-                          <option value="">Choose permission set…</option>
-                          {roles.map((item) => (
-                            <option key={item.roleName}>{item.roleName}</option>
-                          ))}
-                        </Select>
-                      </label>
-                    ) : null}
+                    </div>
+                  ) : authentication.state === "complete" && authentication.reviewRequired ? (
                     <Button
                       variant="primary"
-                      disabled={pending || !account || !role}
+                      disabled={pending}
                       className="justify-self-start"
                       onClick={() =>
                         reviewFields(
                           authentication.profile,
-                          {
-                            ...(authenticationRequest.region
-                              ? { region: authenticationRequest.region }
-                              : {}),
-                            sso_session: authenticationRequest.session!,
-                            sso_account_id: account,
-                            sso_role_name: role,
-                          },
-                          true,
+                          authenticationRequest?.region
+                            ? { region: authenticationRequest.region }
+                            : {},
+                          !authenticationRequest?.profile,
                           authentication.id,
                         )
                       }
                     >
-                      Review new profile
+                      Review signed-in profile
                     </Button>
-                  </div>
-                ) : authentication?.state === "complete" && authentication.reviewRequired ? (
-                  <Button
-                    variant="primary"
-                    disabled={pending}
-                    className="justify-self-start"
-                    onClick={() =>
-                      reviewFields(
-                        authentication.profile,
-                        authenticationRequest?.region
-                          ? { region: authenticationRequest.region }
-                          : {},
-                        !authenticationRequest?.profile,
-                        authentication.id,
-                      )
-                    }
-                  >
-                    Review signed-in profile
-                  </Button>
-                ) : null}
-                {review ? (
-                  <ProfileChangeReview
-                    review={review}
-                    pending={pending}
-                    onBack={() =>
-                      void run("Discarding review…", async () => {
-                        await awsConnectionsApi.discard(review.id);
-                        setReview(undefined);
-                      })
-                    }
-                    onSave={() =>
-                      void run("Saving profile…", async () => {
-                        const result = await awsConnectionsApi.apply(review.id);
-                        setReview(undefined);
-                        setAuthentication(undefined);
-                        setAdding(false);
-                        setSelectedName(result.name);
-                        setDetailVisible(true);
-                        setMessage(
-                          result.message ||
-                            "Profile saved.",
-                        );
-                        await refreshCatalog();
-                        await check(result.name);
-                        detailScroll.current?.scrollTo({ top: 0 });
-                        window.requestAnimationFrame(() => {
-                          detailScroll.current?.querySelector<HTMLElement>("h3")?.focus({ preventScroll: true });
-                        });
-                      })
-                    }
+                  ) : null}
+                </AuthenticationProgress>
+              ) : null}
+              <div hidden={flowOpen} className="min-w-0">
+                {adding ? (
+                  <AddProfile
+                    key={addingName ?? "new"}
+                    catalog={catalog.data}
+                    capabilities={capabilities}
+                    fixedName={addingName}
+                    busy={pending}
+                    onAuthenticate={authenticate}
+                    onReview={(name, fields) => reviewFields(name, fields, true)}
                   />
-                ) : null}
-                {logoutReview ? (
-                  <ProfileLogoutReview
-                    review={logoutReview}
-                    pending={pending}
-                    onCancel={() => setLogoutReview(undefined)}
-                    onConfirm={() =>
-                      void run("Signing out…", async () => {
-                        const result = await awsConnectionsApi.logout(logoutReview.id);
-                        setLogoutReview(undefined);
-                        setMessage(result.message);
-                        await refreshCatalog();
-                      })
-                    }
-                  />
-                ) : null}
-                {adding && !authentication ? (
-                  <div hidden={!!review}>
-                    <AddProfile
-                      key={addingName ?? "new"}
-                      catalog={catalog.data}
-                      capabilities={capabilities}
-                      fixedName={addingName}
-                      busy={pending}
-                      onAuthenticate={authenticate}
-                      onReview={(name, fields) => reviewFields(name, fields, true)}
-                    />
-                  </div>
-                ) : null}
-                {!adding && profile ? (
+                ) : profile ? (
                   <AwsProfileDetails
                     profile={profile}
                     catalog={catalog.data}
                     observation={checks[profile.name] ?? observation.data}
                     associations={awsProfiles}
                     pending={pending}
-                    reviewOpen={!!review}
                     onTest={() => void run("Checking connection…", () => check(profile.name))}
                     onAuthenticate={() => authenticate({ profile: profile.name })}
                     onLogout={() =>
-                      void run("Preparing sign-out…", async () =>
+                      void run("Preparing sign-out review…", async () =>
                         setLogoutReview(await awsConnectionsApi.logoutReview(profile.name)),
                       )
                     }
-                    onUse={(mode) => {
-                      setAwsProfile(mode, profile.name);
-                      if (mode === activeMode)
-                        void queryClient
-                          .fetchQuery(awsProfileIdentityQuery(profile.name))
-                          .catch(() => {});
-                      setMessage(
-                        `${profile.name} is selected for ${mode === "dev" ? "Development" : "Production"}.`,
-                      );
-                    }}
+                    onUse={(modes) => associate(profile.name, modes)}
+                    onSelectProfile={(name) => chooseProfile(name)}
                     onReview={(fields) => reviewFields(profile.name, fields, false)}
                   />
-                ) : null}
-                {!adding && !profile ? (
-                  <div className="grid gap-3">
-                    <h3 className={sectionHeading}>Your AWS connections</h3>
-                    <p className={note}>
-                      Choose a profile to inspect its configuration, or add a connection. Profiles
-                      can be shared by both declaration modes.
+                ) : (
+                  <div className="grid justify-items-start gap-3 px-5 py-4">
+                    <h3 tabIndex={-1} className="m-0 text-label font-semibold">
+                      Your AWS connections
+                    </h3>
+                    <p className={inspectorNoteClasses}>
+                      Choose a profile to inspect it, or add one. Development and Production each
+                      select a profile; deployments keep their own target and approval.
                     </p>
                     <Button
-                      className="justify-self-start"
                       disabled={pending}
                       onClick={(event) => addProfile(event.currentTarget)}
                     >
                       Add AWS profile
                     </Button>
                   </div>
-                ) : null}
-                {catalog.data.environment.credentialsPresent ? (
-                  <p className={note}>
-                    AWS credential environment variables are present in the Studio process. They do
-                    not replace a selected profile; an explicitly configured Environment source can
-                    use them.
-                  </p>
-                ) : null}
-                {catalog.data.environment.endpointOverridesPresent ? (
-                  <p className={note}>
-                    AWS endpoint overrides are present. Identity verification uses trusted AWS
-                    endpoints.
-                  </p>
-                ) : null}
-                {catalog.data.diagnostics.map((diagnostic, index) => (
-                  <p key={index} className={note}>
-                    {diagnostic.message}
-                  </p>
-                ))}
+                )}
               </div>
             </section>
           </div>

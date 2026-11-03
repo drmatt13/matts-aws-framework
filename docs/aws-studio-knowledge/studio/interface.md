@@ -33,6 +33,8 @@ completed. Start Studio with `npm run studio`, then open `http://127.0.0.1:4590/
 [main.tsx](../../../framework-studio/src/main.tsx) owns the routes. The navbar has seven
 workspaces and a shared **Source** Development/Production selector. Source mode selects a
 declaration graph. Its trailing chevron opens an AWS profile popover for the accepted mode.
+Opening it leaves focus on the chevron; Tab moves through its controls without automatically
+highlighting the profile selector, including when discovery finishes.
 `StudioProvider` exposes `awsProfile`, `awsProfiles` and `setAwsProfile(mode, name)` globally.
 Only profile names are cached in browser local storage, keyed by repository root and mode;
 both modes may use the same profile. Missing profiles remain visible as unavailable until
@@ -48,19 +50,30 @@ opens a foreground **AWS profile configuration** modal with profile discovery, c
 health, explicit connection tests, native sign-in, reviewed non-secret edits, and guided
 Console/Identity Center/role creation. Its fixed viewport-bounded height, scrolling panes,
 icon-only refresh and reserved feedback space keep profile/association changes stable.
-Each configured profile card offers confirmed deletion with dependency/file checks; successful deletion
+The modal is a profile list beside an inspector panel that follows the inspector grammar: an
+eyebrow whose Dev | Prod pills report which declaration modes use the profile, the config
+section as the ref line, credential-source lines, then Declaration modes, Identity and
+Configuration sections. Declaration modes mirrors the Deployment section: a Development and a
+Production card, then a **Use for** select (Dev + Prod, Dev only, Prod only, Not used). A review, deletion, sign-out or sign-in replaces that panel until it finishes or is
+canceled; the panel stays mounted so Back restores edited fields.
+Each configured profile row offers confirmed deletion with dependency/file checks; successful deletion
 clears matching mode associations without selecting a replacement. Cancel/Escape restores
-focus to that card's delete button. An absent or deleted `default` remains visible as an
+focus to that row's delete button. An absent or deleted `default` remains visible as an
 unconfigured setup action; it becomes selectable for operations only after configuration.
 Closing the modal returns focus to the navbar chevron.
 
 Operational workspaces consume the active declaration mode's profile association and retain
-independent deployment/region controls and approvals. Target selection never restores a
-remembered profile. Domains still edits Production intent while the global source selector
+explicit deployment/region controls and approvals. In Deploy, selecting a target also accepts
+its declared Development/Production mode through the unsaved-source guard; changing Source
+mode selects a matching target. Entry honors the current mode and only reuses a saved target
+from that mode. Profile names and legacy per-target profile preferences never choose a mode
+or override its association. The Deploy subnav shows only machine checks and their remedies;
+AWS connection details live in the global chevron. Domains still edits Production intent while the global source selector
 may display Development: its operational connection is explicitly the active association.
 Changing that association or its authentication/configuration invalidates evidence and
-pending reviews; it does not start resource discovery or retarget running jobs. Refresh or
-explicit target selection inspects the new context. See [AWS connections](../../framework-studio/aws-connections.md).
+pending reviews; it never retargets running jobs. Deploy refreshes read-only evidence in the
+background for the current context; other operational workspaces retain their explicit
+inspection actions. See [AWS connections](../../framework-studio/aws-connections.md).
 
 | Workspace | Route | What the interface controls |
 | --- | --- | --- |

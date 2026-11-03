@@ -39,7 +39,7 @@ function Panel(props: {
       <h3
         className={cx(
           "mt-0 mb-3 font-sans text-label font-semibold leading-[1.5]",
-          props.tone === "machine" ? "text-local" : "text-graphite",
+          props.tone === "machine" ? "text-[color-mix(in_srgb,var(--local)_75%,var(--ink))]" : "text-graphite",
         )}
       >
         {props.title}
@@ -97,6 +97,8 @@ export function Detail(props: {
   readonly findings: readonly Finding[];
   /** Whether AWS has answered for this profile yet. */
   readonly awsKnown: boolean;
+  readonly connectionMissing?: boolean;
+  readonly onChooseConnection?: () => void;
   readonly next?: Action;
   readonly local?: LocalRunView;
   readonly events: readonly StackEventView[];
@@ -146,7 +148,7 @@ export function Detail(props: {
     >
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="m-0 text-meta tracking-[0.08em] text-graphite uppercase group-data-[mode=dev]/detail:text-dev group-data-[mode=prod]/detail:text-prod">
+          <p className="m-0 text-meta tracking-[0.08em] text-graphite uppercase group-data-[mode=dev]/detail:text-[color-mix(in_srgb,var(--dev)_85%,var(--ink))] group-data-[mode=prod]/detail:text-prod">
             {origin}
           </p>
           <h1
@@ -305,7 +307,12 @@ export function Detail(props: {
       ) : null}
 
       <section className="grid gap-2" aria-label="What needs attention">
-        {!props.awsKnown ? (
+        {props.connectionMissing ? (
+          <div className="grid justify-items-start gap-2">
+            <p className="m-0 text-graphite">Choose an AWS profile for {row.mode === "dev" ? "Development" : "Production"} to inspect this deployment.</p>
+            <button className={buttonClasses({ variant: "quiet", size: "compact" })} onClick={props.onChooseConnection}>Choose connection</button>
+          </div>
+        ) : !props.awsKnown ? (
           <p className="m-0 text-graphite">
             Reading what {context?.account ?? "the account"} holds…
           </p>
@@ -418,7 +425,9 @@ export function Detail(props: {
               {message}
             </p>
           ))}
-          {props.problem ? (
+          {props.connectionMissing ? (
+            <p className="m-0 [&+p]:mt-2 text-graphite">Not checked.</p>
+          ) : props.problem ? (
             <p className="m-0 [&+p]:mt-2 text-graphite">Not readable with this profile.</p>
           ) : !deployment && props.statusLoading ? (
             <p className="m-0 [&+p]:mt-2 text-graphite">Reading CloudFormation…</p>

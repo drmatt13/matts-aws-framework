@@ -70,6 +70,8 @@ export const ICON_TINT: Readonly<Record<IconKey, string>> = {
   value: NEUTRAL,
   construct: NEUTRAL,
   route: NEUTRAL,
+  identityCenter: AWS.security,
+  iam: AWS.security,
 };
 
 /** Trim by island: the category of what stands on it. */

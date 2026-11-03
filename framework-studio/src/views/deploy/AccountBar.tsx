@@ -1,131 +1,21 @@
 import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
-
-import { AwsConnectionSummary } from "../AwsConnectionSummary";
 import { workspaceToolbarClasses } from "../../ui/Surface";
-
-import { AlertTriangle, Check, ChevronDown, CircleDashed, LogIn, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, CircleDashed, X } from "lucide-react";
 import { useId, useState } from "react";
-import type {
-  AccountContext,
-  AwsProblem,
-  AwsProfileInfo,
-  OperationRequest,
-  PrerequisiteView,
-} from "../../../shared/deploy";
-import { callerName } from "./format";
+import type { OperationRequest, PrerequisiteView } from "../../../shared/deploy";
 
-/**
- * The account in play: a profile chosen here resolves, through the AWS CLI, to
- * the caller, account and region everything below is read from. A profile's
- * name never implies a mode.
- */
+/** Machine checks stay local; the global Source menu owns AWS connection details. */
 export function AccountBar(props: {
-  readonly profiles: readonly AwsProfileInfo[];
-  readonly profile: string | undefined;
-  readonly context?: AccountContext;
-  readonly problem?: AwsProblem;
-  readonly loading: boolean;
-  readonly readError?: string;
-  readonly scopeNotice?: string;
-  readonly onRefresh: () => void;
-  readonly onSignIn?: () => void;
   readonly prerequisites: readonly PrerequisiteView[];
   readonly onRemedy: (request: OperationRequest) => void;
 }) {
-  const selected = props.profiles.find((entry) => entry.name === props.profile);
   const [showReady, setShowReady] = useState(false);
   const readyId = useId();
   const ready = props.prerequisites.filter((item) => item.status === "ok");
   const attention = props.prerequisites.filter((item) => item.status !== "ok");
   return (
-    <header className={cx(workspaceToolbarClasses, "grid gap-2")} aria-label="AWS account">
-      <div className="grid min-h-8 min-w-0 grid-cols-[minmax(200px,280px)_minmax(0,1fr)_auto] items-center gap-3 vp-900:grid-cols-[minmax(0,1fr)_auto]">
-        <AwsConnectionSummary />
-        {props.problem ? (
-          <span
-            className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-label text-refuse wrap-anywhere vp-900:col-span-full vp-900:row-start-2"
-            role="status"
-          >
-            <AlertTriangle size={15} className="flex-none" aria-hidden />
-            <span>{props.problem.message}</span>
-            {props.onSignIn &&
-            (props.problem.kind === "expired" || props.problem.kind === "no-credentials") &&
-            (selected?.kind === "sso" || selected?.kind === "login") ? (
-              <button
-                className={buttonClasses({ variant: "primary", size: "compact" })}
-                onClick={props.onSignIn}
-              >
-                <LogIn size={14} aria-hidden /> Sign in
-              </button>
-            ) : null}
-          </span>
-        ) : props.context ? (
-          <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-label wrap-anywhere vp-900:col-span-full vp-900:row-start-2">
-            <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
-              <span className="text-caption text-graphite">Account</span>
-              <strong className="font-mono text-label font-medium">{props.context.account}</strong>
-            </span>
-            <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
-              <span className="text-caption text-graphite">Region</span>
-              <span>{props.context.region}</span>
-            </span>
-            <span
-              className="inline-flex min-w-0 items-center gap-2 wrap-anywhere text-graphite"
-              title={props.context.arn}
-            >
-              <Check size={14} className="flex-none text-accept" aria-label="Signed in" />
-              {callerName(props.context.arn)}
-            </span>
-          </span>
-        ) : (
-          <span
-            className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-label wrap-anywhere vp-900:col-span-full vp-900:row-start-2 text-graphite"
-            role="status"
-          >
-            {props.profile
-              ? props.loading
-                ? "Resolving the account…"
-                : "AWS account unverified"
-              : "Choose the profile whose account to inspect."}
-          </span>
-        )}
-        <button
-          className={cx(
-            buttonClasses({ variant: "quiet", size: "regular" }),
-            "min-w-[112px] vp-900:col-start-2 vp-900:row-start-1 vp-420:self-end",
-          )}
-          onClick={props.onRefresh}
-          disabled={props.loading}
-          aria-label="Refresh"
-          aria-busy={props.loading}
-          title="Read AWS and this machine again"
-        >
-          <RefreshCw
-            size={14}
-            className={props.loading ? "animate-spin motion-reduce:animate-none" : undefined}
-            aria-hidden
-          />{" "}
-          {props.loading ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
-      {props.readError ? (
-        <p
-          className="m-0 flex items-start gap-2 text-caption text-refuse wrap-anywhere"
-          role="alert"
-        >
-          <AlertTriangle size={14} className="mt-0.5 flex-none" aria-hidden />
-          <span>Some information could not be refreshed. {props.readError} Try Refresh again.</span>
-        </p>
-      ) : null}
-      {props.scopeNotice ? (
-        <p
-          className="m-0 flex items-start gap-2 text-caption text-refuse wrap-anywhere [&>svg]:mt-0.5"
-          role="status"
-        >
-          {props.scopeNotice}
-        </p>
-      ) : null}
+    <section className={workspaceToolbarClasses} aria-label="Machine readiness">
       {props.prerequisites.length ? (
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
           {ready.length ? (
@@ -159,7 +49,7 @@ export function AccountBar(props: {
                     item.status === "fail"
                       ? "text-refuse"
                       : item.status === "warn"
-                        ? "text-local"
+                        ? "text-[color-mix(in_srgb,var(--local)_75%,var(--ink))]"
                         : "text-graphite",
                   )}
                   aria-label={`${item.label}: ${item.summary}`}
@@ -212,6 +102,6 @@ export function AccountBar(props: {
           </ul>
         </div>
       ) : null}
-    </header>
+    </section>
   );
 }

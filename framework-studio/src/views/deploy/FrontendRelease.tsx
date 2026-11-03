@@ -443,7 +443,7 @@ export function DeploymentIdentities({
 }: {
   account?: string;
   region?: string;
-  onCreated: (name: string) => void;
+  onCreated: (name: string, mode: "dev" | "prod") => void;
 }) {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -609,7 +609,7 @@ export function DeploymentIdentities({
                 setReview(undefined);
                 await query.refetch();
                 await queryClient.invalidateQueries({ queryKey: ["deploy", "overview"] });
-                onCreated(result.name);
+                onCreated(result.name, input.mode);
               })
             }
           >

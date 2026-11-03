@@ -38,6 +38,8 @@ export const ICONS = {
   value: ["generic/braces", "Stack value"],
   construct: ["generic/box", "CDK construct"],
   route: ["generic/route", "Framework route"],
+  identityCenter: ["aws/endpoints/iam-identity-center", "AWS IAM Identity Center"],
+  iam: ["aws/endpoints/identity-and-access-management", "AWS Identity and Access Management"],
 } as const;
 
 export type IconKey = keyof typeof ICONS;

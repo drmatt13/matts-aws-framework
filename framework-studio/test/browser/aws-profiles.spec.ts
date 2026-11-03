@@ -29,6 +29,39 @@ test.beforeEach(async ({ studio, context }) => {
 });
 
 for (const width of [1440, 320])
+  test(`profile menu keeps trigger focus through discovery and allows keyboard navigation at ${width}px`, async ({ page, studio }) => {
+    let resolve!: () => void;
+    const discovered = new Promise<void>(done => { resolve = done; });
+    studio.reply("GET", "/api/aws-connections", async route => {
+      await discovered;
+      await route.fulfill({ json: catalog });
+    });
+    await page.setViewportSize({ width, height: 800 });
+    await studio.goto("/graphql");
+    const trigger = page.getByRole("button", { name: /Development AWS profile:/ });
+    await trigger.click();
+    const panel = page.getByRole("dialog");
+    const select = panel.getByRole("combobox", { name: "AWS profile", exact: true });
+    await expect(trigger).toBeFocused();
+    await expect(select).not.toBeFocused();
+    resolve();
+    await expect(select).toBeEnabled();
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(panel.getByRole("button", { name: "Close AWS profile", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(panel.getByRole("button", { name: "Configure AWS profiles", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(select).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+    await trigger.press("Enter");
+    await expect(panel).toBeVisible();
+    await expect(trigger).toBeFocused();
+    await expect(select).not.toBeFocused();
+  });
+
+for (const width of [1440, 320])
   test(`mode buttons preserve the open profile panel at ${width}px`, async ({ page, studio }) => {
     await page.setViewportSize({ width, height: 800 });
     await studio.goto("/graphql");
@@ -112,18 +145,206 @@ test("profile details test explicitly and show cached identity plus safe editabl
   await studio.goto("/graphql");
   const modal = await openConfiguration(page);
   await modal.getByRole("button", { name: /dev IAM Identity Center/ }).click();
-  await expect(modal).toContainText("Not checked");
+  await expect(modal).toContainText("Unverified");
   expect(profileChecks(studio.requests)).toHaveLength(0);
   await modal.getByRole("button", { name: "Test connection", exact: true }).click();
   await expect(modal).toContainText("Developer / tester");
   await expect(modal).toContainText("arn:aws:sts::123456789012:assumed-role/Developer/tester");
-  await modal.getByRole("button", { name: "Use for Production", exact: true }).click();
+  await modal.getByRole("combobox", { name: "Use for", exact: true }).selectOption("prod");
   await expect(modal).toContainText("dev is selected for Production");
   await modal.getByRole("button", { name: "Close AWS profile configuration" }).click();
   await page.getByRole("button", { name: "Production", exact: true }).click();
   await expect(page.getByRole("button", { name: /Production AWS profile:/ })).toHaveAccessibleName(
     "Production AWS profile: dev",
   );
+});
+
+test("Use for selects a profile for each declaration mode while header pills only report it", async ({
+  page,
+  studio,
+}) => {
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  const row = modal.getByRole("button", { name: /^dev IAM Identity Center/ });
+  await row.click();
+  const use = modal.getByRole("combobox", { name: "Use for", exact: true });
+  const feedback = modal.locator('[data-slot="aws-profile-feedback"]');
+  const modes = modal.locator('[data-slot="aws-profile-modes"]');
+  await expect(modal.locator('[data-slot="inspector-kind"] button')).toHaveCount(0);
+  await expect(use).toHaveValue("none");
+  await use.selectOption("prod");
+  await expect(feedback).toContainText("dev is selected for Production");
+  await expect(modes.locator('[data-mode="prod"]')).toContainText("Uses this profile");
+  await expect(row).toHaveAccessibleName("dev IAM Identity Center · us-east-1 · selected for Production");
+  await modal.getByRole("button", { name: /^production IAM Identity Center/ }).click();
+  await expect(modes.locator('[data-mode="prod"]')).toContainText("Uses dev");
+  await row.click();
+  await use.selectOption("none");
+  await expect(feedback).toContainText("dev is not selected for Development or Production");
+  await expect(row).toHaveAccessibleName("dev IAM Identity Center · us-east-1");
+  await use.selectOption("prod");
+  await modal.getByRole("button", { name: "Close AWS profile configuration" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Production", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Production AWS profile:/ })).toHaveAccessibleName(
+    "Production AWS profile: dev",
+  );
+  expect(profileChecks(studio.requests)).toHaveLength(0);
+  await assertAccessible(page);
+});
+
+test("profile rows label only checked or failing identities", async ({ page, studio }) => {
+  studio.reply("POST", "/api/aws-connections/check", (route) => {
+    const profile = route.request().postDataJSON().profile;
+    return route.fulfill({
+      json:
+        profile === "production"
+          ? connectionObservationFixture(profile, {
+              state: "needs-auth",
+              identity: undefined,
+              problem: { code: "expired", message: "Sign in again.", action: "connect", retryable: false },
+            })
+          : connectionObservationFixture(profile),
+    });
+  });
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  const dev = modal.getByRole("button", { name: /^dev IAM Identity Center/ });
+  const production = modal.getByRole("button", { name: /^production IAM Identity Center/ });
+  await expect(dev).toHaveAccessibleName("dev IAM Identity Center · us-east-1");
+  await dev.click();
+  await modal.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(dev).toHaveAccessibleName("dev IAM Identity Center · us-east-1 · Identity verified");
+  await production.click();
+  await modal.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(production).toHaveAccessibleName(
+    "production IAM Identity Center · eu-west-1 · Sign-in required",
+  );
+  await expect(modal.getByRole("button", { name: "Reconnect", exact: true })).toBeVisible();
+  await assertAccessible(page);
+});
+
+test("a configuration review replaces the profile view and Discard restores saved values", async ({
+  page,
+  studio,
+}) => {
+  studio.reply("POST", "/api/aws-connections/review", (route) =>
+    route.fulfill({
+      json: {
+        id: "edit-review",
+        name: "dev",
+        create: false,
+        changes: [{ field: "region", before: "us-east-1", after: "eu-central-1" }],
+        affectedProfiles: [],
+        expiresAt: "2026-12-01T00:00:00Z",
+      },
+    }),
+  );
+  studio.reply("POST", "/api/aws-connections/discard", (route) =>
+    route.fulfill({ json: { discarded: true } }),
+  );
+  await page.setViewportSize({ width: 390, height: 700 });
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
+  const region = modal.getByRole("textbox", { name: /^Default AWS region/ });
+  const review = modal.getByRole("button", { name: "Review configuration changes", exact: true });
+  await expect(review).toBeDisabled();
+  await region.fill("eu-central-1");
+  await modal.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(region).toHaveValue("us-east-1");
+  await expect(review).toBeDisabled();
+  await region.fill("eu-central-1");
+  await review.click();
+  const changes = modal.getByRole("region", { name: "AWS profile change review" });
+  await expect(changes).toContainText("us-east-1 → eu-central-1");
+  await expect(modal.locator('[data-slot="ref"]')).toBeHidden();
+  await expect(modal.getByRole("button", { name: "Test connection", exact: true })).toBeHidden();
+  await expect(changes.getByRole("button", { name: "Save profile", exact: true })).toBeInViewport({ ratio: 1 });
+  await changes.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(region).toHaveValue("eu-central-1");
+  await expect(modal.locator('[data-slot="ref"]')).toHaveText("[profile dev]");
+  await assertAccessible(page);
+});
+
+test("identity actions offer only what the session state allows, at the section's trailing edge", async ({
+  page,
+  studio,
+}) => {
+  let expired = false;
+  studio.reply("POST", "/api/aws-connections/check", (route) => {
+    const profile = route.request().postDataJSON().profile;
+    return route.fulfill({
+      json: expired
+        ? connectionObservationFixture(profile, {
+            state: "needs-auth",
+            identity: undefined,
+            problem: { code: "expired", message: "Sign in again.", action: "connect", retryable: false },
+          })
+        : connectionObservationFixture(profile),
+    });
+  });
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
+  const actions = modal.locator('[data-slot="aws-profile-identity-actions"] button');
+  await expect(actions).toHaveText(["Test connection"]);
+  await actions.first().click();
+  await expect(actions).toHaveText(["Review sign-out", "Test connection"]);
+  const section = await modal.locator('[data-slot="aws-profile-identity-actions"]').boundingBox();
+  const test = await modal.getByRole("button", { name: "Test connection", exact: true }).boundingBox();
+  expect(Math.round(test!.x + test!.width)).toBe(Math.round(section!.x + section!.width));
+  expired = true;
+  await modal.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(actions).toHaveText(["Reconnect"]);
+  await expect(modal.getByRole("button", { name: "Reconnect", exact: true })).toHaveAttribute("data-variant", "primary");
+  await assertAccessible(page);
+});
+
+test("a profile with access keys beside a Console session is described by the identity it resolves to", async ({
+  page,
+  studio,
+}) => {
+  const mixed = connectionCatalogFixture([{ name: "dev", kind: "login", region: "us-east-1" }]);
+  studio.reply("GET", "/api/aws-connections", (route) =>
+    route.fulfill({
+      json: {
+        ...mixed,
+        profiles: [
+          {
+            ...mixed.profiles[0]!,
+            mechanisms: ["login", "static"],
+            loginSession: "arn:aws:iam::270473543328:root",
+            configuration: { region: "us-east-1", login_session: "arn:aws:iam::270473543328:root" },
+            // An older backend still reports this; the header's method label states it instead.
+            diagnostics: [
+              {
+                code: "multiple-mechanisms",
+                message: "Multiple credential mechanisms are configured. Native AWS CLI precedence determines which is used.",
+                severity: "warning",
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  const row = modal.locator('[data-profile="dev"] > button').first();
+  await expect(row).toHaveAccessibleName(/^dev AWS Console · us-east-1/);
+  await row.click();
+  const kind = modal.locator('[data-slot="inspector-kind"]');
+  await expect(kind).toContainText("AWS Console");
+  await expect(modal).toContainText("Console session");
+  await expect(modal).not.toContainText("Multiple credential mechanisms");
+  await modal.getByRole("button", { name: "Test connection", exact: true }).click();
+  await expect(kind).toContainText("Access keys");
+  await expect(modal).not.toContainText("Console session");
+  await expect(row).toHaveAccessibleName(/^dev Access keys · us-east-1/);
+  await expect(modal.locator('[data-slot="aws-profile-identity-actions"] button')).toHaveText([
+    "Test connection",
+  ]);
 });
 
 test("empty, loading and failed discovery have a repair path", async ({ page, studio }) => {
@@ -432,7 +653,8 @@ test("Identity Center sign-out discloses shared impact and cancellation sends no
   await studio.goto("/graphql");
   const modal = await openConfiguration(page);
   await modal.getByRole("button", { name: /dev IAM Identity Center/ }).click();
-  await modal.getByRole("button", { name: "Sign out…", exact: true }).click();
+  await modal.getByRole("button", { name: "Test connection", exact: true }).click();
+  await modal.getByRole("button", { name: "Review sign-out", exact: true }).click();
   const review = modal.getByRole("region", { name: "AWS sign-out review" });
   await expect(review).toContainText("Sign out of all Identity Center sessions");
   await expect(review).toContainText("dev, production");
@@ -549,9 +771,9 @@ test("explicit connection tests show provider expiration without rendering nativ
   await studio.goto("/graphql");
   const modal = await openConfiguration(page);
   await modal.getByRole("button", { name: /dev IAM Identity Center/ }).click();
-  await expect(modal).not.toContainText("Native provider reports credential expiration");
+  await expect(modal).not.toContainText("Reported by the native provider");
   await modal.getByRole("button", { name: "Test connection", exact: true }).click();
-  await expect(modal).toContainText("Native provider reports credential expiration:");
+  await expect(modal).toContainText("Reported by the native provider.");
   await expect(modal).toContainText("1:00:00 PM");
   await expect(modal).toContainText("The upstream session may refresh them.");
   await expect(modal).not.toContainText("NATIVE_ACCESS_KEY_SENTINEL");
@@ -590,7 +812,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 700 
     expect(await modal.boundingBox()).toEqual(initial);
     const detail = modal.locator('[data-slot="aws-profile-detail-scroll"]');
     const detailBefore = await detail.boundingBox();
-    await modal.getByRole("button", { name: "Use for Production", exact: true }).click();
+    await modal.getByRole("combobox", { name: "Use for", exact: true }).selectOption("prod");
     await expect(modal.locator('[data-slot="aws-profile-feedback"]')).toContainText("dev is selected for Production");
     expect(await modal.boundingBox()).toEqual(initial);
     expect(await detail.boundingBox()).toEqual(detailBefore);
@@ -701,7 +923,7 @@ for (const width of [1440, 320])
     await studio.goto("/graphql");
     const modal = await openConfiguration(page);
     await modal.getByRole("button", { name: /^default AWS Console/ }).click();
-    await modal.getByRole("button", { name: "Use for Production", exact: true }).click();
+    await modal.getByRole("combobox", { name: "Use for", exact: true }).selectOption("prod");
     if (width <= 760) await modal.getByRole("button", { name: "All profiles", exact: true }).click();
     await modal.getByRole("button", { name: "Delete AWS profile default", exact: true }).click();
     const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
@@ -767,8 +989,7 @@ for (const storageBlocked of [false, true])
     await studio.goto("/graphql");
     const modal = await openConfiguration(page);
     await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
-    await modal.getByRole("button", { name: "Use for Development", exact: true }).click();
-    await modal.getByRole("button", { name: "Use for Production", exact: true }).click();
+    await modal.getByRole("combobox", { name: "Use for", exact: true }).selectOption("both");
     const trash = modal.getByRole("button", { name: "Delete AWS profile dev", exact: true });
     await trash.click();
     const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
@@ -800,7 +1021,7 @@ test("dependent profiles block deletion and stale deletion failures preserve the
   const modal = await openConfiguration(page);
   const initial = await modal.boundingBox();
   await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
-  await modal.getByRole("button", { name: "Use for Development", exact: true }).click();
+  await modal.getByRole("combobox", { name: "Use for", exact: true }).selectOption("dev");
   const trash = modal.getByRole("button", { name: "Delete AWS profile dev", exact: true });
   await trash.click();
   const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
