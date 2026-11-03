@@ -1,8 +1,9 @@
 import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
+import { IconButton } from "../../ui/IconButton";
 import { workspaceToolbarClasses } from "../../ui/Surface";
 import { AlertTriangle, Check, ChevronDown, CircleDashed, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { OperationRequest, PrerequisiteView } from "../../../shared/deploy";
 
 /** Machine checks stay local; the global Source menu owns AWS connection details. */
@@ -12,18 +13,49 @@ export function AccountBar(props: {
 }) {
   const [showReady, setShowReady] = useState(false);
   const readyId = useId();
+  const titleId = useId();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ top: 0, left: 12 });
   const ready = props.prerequisites.filter((item) => item.status === "ok");
   const attention = props.prerequisites.filter((item) => item.status !== "ok");
+  const positionPanel = useCallback(() => {
+    const anchor = trigger.current?.getBoundingClientRect();
+    if (!anchor) return;
+    const width = Math.min(340, window.innerWidth - 24);
+    setPosition({
+      top: anchor.bottom + 8,
+      left: Math.max(12, Math.min(anchor.left, window.innerWidth - width - 12)),
+    });
+  }, []);
+  useEffect(() => {
+    if (!showReady) return;
+    if (!ready.length) {
+      panel.current?.hidePopover?.();
+      return;
+    }
+    positionPanel();
+    window.addEventListener("resize", positionPanel);
+    window.addEventListener("scroll", positionPanel, true);
+    return () => {
+      window.removeEventListener("resize", positionPanel);
+      window.removeEventListener("scroll", positionPanel, true);
+    };
+  }, [showReady, ready.length, positionPanel]);
   return (
     <section className={workspaceToolbarClasses} aria-label="Machine readiness">
       {props.prerequisites.length ? (
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
           {ready.length ? (
             <button
+              ref={trigger}
+              type="button"
               className="group/machine inline-flex min-h-7 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent p-0 text-caption text-graphite hover:text-ink"
+              popoverTarget={readyId}
+              aria-haspopup="dialog"
               aria-expanded={showReady}
               aria-controls={readyId}
-              onClick={() => setShowReady(!showReady)}
+              onClick={positionPanel}
             >
               <Check size={13} className="text-accept" aria-hidden />
               <span>
@@ -82,24 +114,42 @@ export function AccountBar(props: {
               ))}
             </ul>
           ) : null}
-          <ul
+          <div
+            ref={panel}
             id={readyId}
-            className="m-0 grid flex-[1_1_100%] list-none grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-x-4 gap-y-2 border-t border-rule px-0 pt-2 pb-1 text-caption"
-            aria-label="Passed machine checks"
-            hidden={!showReady || !ready.length}
+            popover="auto"
+            role="dialog"
+            aria-labelledby={titleId}
+            onToggle={(event) => setShowReady(event.newState === "open")}
+            style={{ ...position, maxHeight: `calc(100dvh - ${position.top + 12}px)` }}
+            className="fixed right-auto bottom-auto z-30 m-0 w-[340px] max-w-[calc(100vw-24px)] overflow-y-auto overscroll-contain rounded-lg border border-rule-strong bg-sheet p-0 text-ink shadow-popover"
           >
-            {ready.map((item) => (
-              <li
-                key={item.id}
-                title={item.detail}
-                className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-1 wrap-anywhere"
+            <header className="flex items-center justify-between gap-4 border-b border-rule px-4 py-3">
+              <h2 id={titleId} className="m-0 text-body font-semibold">
+                This machine
+              </h2>
+              <IconButton
+                variant="quiet"
+                aria-label="Close machine checks"
+                onClick={() => panel.current?.hidePopover?.()}
               >
-                <Check size={13} className="self-center text-accept" aria-hidden />
-                <strong className="font-medium">{item.label}</strong>
-                <span className="col-start-2 text-graphite">{item.summary}</span>
-              </li>
-            ))}
-          </ul>
+                <X size={15} aria-hidden />
+              </IconButton>
+            </header>
+            <ul className="m-0 grid list-none gap-4 p-4 text-caption" aria-label="Passed machine checks">
+              {ready.map((item) => (
+                <li
+                  key={item.id}
+                  title={item.detail}
+                  className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 wrap-anywhere"
+                >
+                  <Check size={14} className="self-center text-accept" aria-hidden />
+                  <strong className="text-label font-medium">{item.label}</strong>
+                  <span className="col-start-2 text-graphite">{item.summary}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       ) : null}
     </section>

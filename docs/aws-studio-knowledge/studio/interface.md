@@ -67,8 +67,10 @@ explicit deployment/region controls and approvals. In Deploy, selecting a target
 its declared Development/Production mode through the unsaved-source guard; changing Source
 mode selects a matching target. Entry honors the current mode and only reuses a saved target
 from that mode. Profile names and legacy per-target profile preferences never choose a mode
-or override its association. The Deploy subnav shows only machine checks and their remedies;
-AWS connection details live in the global chevron. Domains still edits Production intent while the global source selector
+or override its association. The Deploy subnav shows only machine checks and their remedies.
+**This machine · N checks passed** opens a compact, viewport-bounded popover without
+expanding the toolbar; it follows the profile menu's native Escape, outside-click dismissal
+and focus-return behavior. AWS connection details live in the global chevron. Domains still edits Production intent while the global source selector
 may display Development: its operational connection is explicitly the active association.
 Changing that association or its authentication/configuration invalidates evidence and
 pending reviews; it never retargets running jobs. Deploy refreshes read-only evidence in the

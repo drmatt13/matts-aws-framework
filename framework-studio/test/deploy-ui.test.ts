@@ -137,7 +137,7 @@ test("unapplied frontend settings block env generation and builds with a source-
   assert.equal(posted.length, 0, "changing a field neither saves source nor starts a release");
 });
 
-test("passed machine checks are available on demand while issues and their remedies stay visible", async () => {
+test("machine issues keep their explicit remedies beside the checks summary", async () => {
   render({
     "/deploy/overview": overview({ prerequisites: [
       { id: "node", label: "Node.js", status: "ok", summary: "Node 24.1.0" },
@@ -151,13 +151,8 @@ test("passed machine checks are available on demand while issues and their remed
   assert.equal(ui.screen.queryByRole("list", { name: "Passed machine checks" }), null);
   const issues = ui.screen.getByRole("list", { name: "Machine issues" });
   assert.ok(ui.within(issues).getByText("Docker Desktop is not running."));
+  // Native popover disclosure, dismissal and focus are covered in browser/deploy.spec.ts.
   ui.fireEvent.click(checks);
-  assert.equal(checks.getAttribute("aria-expanded"), "true");
-  const ready = ui.screen.getByRole("list", { name: "Passed machine checks" });
-  assert.ok(ui.within(ready).getByText("Node 24.1.0"));
-  assert.ok(ui.within(ready).getByText("npm 11.4.0"));
-  ui.fireEvent.click(checks);
-  assert.equal(ui.screen.queryByRole("list", { name: "Passed machine checks" }), null);
   assert.equal(operations().length, 0, "reading tool checks starts no operation");
   ui.fireEvent.click(ui.within(issues).getByRole("button", { name: "Start" }));
   await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "docker-start", params: {} }));
@@ -450,7 +445,7 @@ test("switching targets follows declaration mode and its association without res
 test("a missing global association prevents AWS reads and never adopts a legacy preference", async () => {
   render({ "/deploy/overview": overview() }, undefined, {});
   await ui.screen.findByRole("button", { name: "Choose connection" });
-  assert.ok(ui.within(ui.screen.getByRole("region", { name: "AWS", exact: true })).getByText("Not checked."));
+  assert.ok(ui.within(ui.screen.getByRole("region", { name: "AWS" })).getByText("Not checked."));
   assert.equal(activeStudio.awsProfile, undefined);
   assert.equal(requested.some(url => /^\/deploy\/(?:discover|status)/.test(url)), false);
   assert.equal(operations().length, 0);
