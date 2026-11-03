@@ -13,6 +13,8 @@ source:
   - framework-studio/src/snapshot.ts
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
+  - framework-studio/src/views/AgentLab.tsx
+  - framework-studio/server/agent-lab.ts
   - framework-studio/src/views/CreationWizard.tsx
   - framework-studio/shared/creation.ts
 related:
@@ -31,7 +33,8 @@ completed. Start Studio with `npm run studio`, then open `http://127.0.0.1:4590/
 ## Navigation and state
 
 [main.tsx](../../../framework-studio/src/main.tsx) owns the routes. The navbar has the app's
-name, seven workspaces and a shared **Source** Development/Production selector. The name is
+name, eight navigation destinations (seven core workspaces and the auxiliary **Agent test**
+experiment) and a shared **Source** Development/Production selector. The name is
 `framework:app` from `cdk-app/cdk.json`; its pencil opens a popover that previews each stage's
 `<app>-<stage>` deployment and reviews a rename (AppName.tsx), looking in AWS read-only with
 each mode's profile, by app id and stage, so a deployed production stage keeps the name it is
@@ -91,6 +94,7 @@ inspection actions. See [AWS connections](../../framework-studio/aws-connections
 | Authentication | `/cognito` | User pools, identity pools, providers and permissions, each with separate source and deployed evidence |
 | DNS / Domains | `/domains` | Production domain input settings, selected-deployment observations and separately approved domain operations |
 | WebSockets | `/websockets` | Local and API Gateway connection panels derived from the existing tester; connecting or sending is an explicit runtime action |
+| Agent test (experiment) | `/test` | Installed coding CLI planning, exact diff review and separately applied edits to one fixed Studio demo message; see the [local experiment guide](../../framework-studio/local-agent-lab.md) |
 
 Authentication deep links are `/cognito/user-pools`, `/cognito/identity-pools`,
 `/cognito/providers` and `/cognito/permissions`. `/identity` and `/identity-pools` redirect
@@ -113,6 +117,7 @@ own exact-text session and navigation protection.
 | Inspector return trail | In-memory accepted visits, with presentation retained separately per source mode; see [rendering](rendering.md) |
 | Prisma text, validation and diagram | Independent `DatabaseSession`, preserving editor identity/undo |
 | Deployment target and observations | Owning operational workspace; separate from source mode and source-save approval |
+| Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
 | Camera, hover, filters and disclosures | Local view state; never persisted as framework configuration |
 
 `http.ts` owns token/protocol HTTP mechanics; endpoint adapters own typed calls.

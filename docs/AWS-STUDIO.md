@@ -140,8 +140,10 @@ separate steps before the feature works end to end.
 
 ### Navigating Studio
 
-The seven primary routes are **Map**, **Database**, **Deploy**, **GraphQL**, **Cognito**,
-**Domains** and **WebSockets**. GraphQL currently shows a placeholder page.
+The seven core workspaces are **Map**, **Database**, **Deploy**, **GraphQL**, **Cognito**,
+**Domains** and **WebSockets**. An eighth navigation destination, **Agent test** (`/test`),
+is a [local coding-agent experiment](framework-studio/local-agent-lab.md) that plans and
+separately applies an edit to one fixed Studio demo message. GraphQL currently shows a placeholder page.
 The shared **Source: Development / Production** control selects
 declaration context; Deploy has its own target context. Map is the isometric home view;
 the old Board remains in source but has no navigation route.
@@ -216,8 +218,8 @@ workspaces. It remains an engineering environment: unsupported code shapes, nati
 construction, advanced workflow authoring and application data propagation still need
 source work. External integration success must be demonstrated separately.
 
-The original [product exploration](../UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md)
-described a unified visual interface over the existing framework. The subsequent
+The [original investigation](framework-studio/report.md#where-it-started) records the
+proposal for a unified visual interface over the existing framework. The subsequent
 [implementation guidance](framework-studio/moving-forward.md) preserves TypeScript
 rendering, a host process, source authority and preview-before-apply. Those are evidence
 for a direction, not promises that every proposed feature will ship.

@@ -6,6 +6,39 @@ import { DESCRIPTION_FILE, connectionDescriptionId } from "../shared/description
 import { DISPLAY_NAMES_FILE, displayNameError } from "../shared/naming";
 import { withCommentReview, reviewedComments } from "../server/edits/comments";
 
+for (const [name, parse] of [["descriptions", parseDescriptions], ["displayNames", parseDisplayNames]] as const) {
+  test(`${name} retains original source nodes and literal keys for surgical edits`, () => {
+    const text = `// Keep header\nexport const ${name} = ({
+  ["resource:one"]: ("One" as string), // Keep context
+  12: \`Numeric\`,
+  "__proto__": "Authored metadata",
+} satisfies Record<string, string>);\n`;
+    const parsed = parse(text);
+    assert.equal(parsed.source.text, text);
+    assert.equal(Object.getPrototypeOf(parsed.values), null);
+    assert.deepEqual([...parsed.properties.keys()], ["resource:one", "12", "__proto__"]);
+    assert.equal(parsed.values["__proto__"], "Authored metadata");
+    for (const property of parsed.properties.values()) {
+      assert.equal(property.getSourceFile(), parsed.source);
+      assert.equal(parsed.object.properties.includes(property), true);
+      assert.equal(text.slice(property.getStart(parsed.source), property.end), property.getText(parsed.source));
+    }
+    assert.throws(() => parse(`export const ${name} = { x: "One", ["x"]: "Two" };`), {
+      message: `framework-config/${name === "descriptions" ? "descriptions" : "display-names"}.ts requires unique literal keys without spreads.`,
+    });
+  });
+}
+
+test("description prose and display labels retain their separate validation policies", () => {
+  assert.equal(parseDescriptions('export const descriptions = { x: "  prose  " };').values.x, "  prose  ");
+  assert.equal(parseDescriptions('export const descriptions = { x: "" };').values.x, "");
+  assert.throws(() => parseDisplayNames('export const displayNames = { x: "  label  " };'), {
+    message: "Display name x: Use a nonblank, trimmed name, or remove its override.",
+  });
+  assert.throws(() => parseDescriptions('export const descriptions = { x: run() };'), { message: "Description x must be a string literal." });
+  assert.throws(() => parseDisplayNames('export const displayNames = { x: run() };'), { message: "Display name x must be a string literal." });
+});
+
 test("display names are literal, trimmed, single-line labels with duplicate values allowed", () => {
   const text = 'export const displayNames = { "resource:one": "Same", "resource:two": "Same" } as const;';
   assert.equal(parseDisplayNames(text).values["resource:one"], "Same");

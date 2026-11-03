@@ -53,6 +53,7 @@ wrappers and unrelated same-named functions stay source-owned.
 | Stack instantiation | [stack-usage.ts](../../../framework-studio/server/source/stack-usage.ts): source evidence of application constructor usage; not CloudFormation observation |
 | Native relationship inference | `scanCdkLinks` in [cdk-links.ts](../../../framework-studio/server/source/cdk-links.ts): supported direct constructors/aliases and native S3/SQS/SNS/DynamoDB/Cognito/EventBridge patterns |
 | Safe evidence snippets | `sourceEvidence` in [evidence.ts](../../../framework-studio/server/source/evidence.ts): strips comments/redacts literal/template/regex contents while retaining structural names |
+| Description and display-name metadata | [string-map.ts](../../../framework-studio/server/source/string-map.ts) shares literal-map reading for `descriptions.ts` and `naming-metadata.ts`; those writers retain their own validation and exact original AST spans |
 
 CDK inference deliberately skips unsupported loops, conditions, helper indirection and dynamic expressions. A missing edge is not proof of absence. A source-supported edge is not proof that its stack is constructed or deployed. Edges retain provenance and supported-removal metadata; arbitrary native statements must remain source-owned. [Graph model](graph-model.md) owns how those distinctions reach the UI.
 

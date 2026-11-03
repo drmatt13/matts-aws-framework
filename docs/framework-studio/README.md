@@ -34,6 +34,7 @@ npm run studio -- --print # the whole model as JSON, then exit
 | Authentication | `/cognito` | User pools, identity pools, providers and permissions; source and deployed evidence remain distinct |
 | DNS / Domains | `/domains` | Production domain intent, explicit deployment inspection and separately approved operations |
 | WebSockets | `/websockets` | ws-tester's two connection panels, local-ws-dev-server and the deployed API Gateway stage, with its launch-link handoff |
+| Agent test (experiment) | `/test` | Installed coding CLI planning, exact diff review and a separately applied edit to one fixed Studio demo message; [experiment guide](local-agent-lab.md) |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
 The Board (`views/Board.tsx`, three columns of routes, workloads and catalog entries) is set
@@ -64,7 +65,8 @@ separate deployment states.
 
 | Document | Read it when |
 | --- | --- |
-| [Maintainability campaign (2026-10-30)](maintainability-campaign-2026-10-30.md) | You need the architecture audit, protected baseline, refactoring checklist, current verification receipts and deferred debt |
+| [Repository maintainability audit (2026-11-03)](maintainability-2026-11-03.md) | You need this cleanup's changes, retention decisions, verification limits and deferred functional issues |
+| [Maintainability campaign (2026-10-30)](maintainability-campaign-2026-10-30.md) | You need that campaign's architecture audit, protected baseline, refactoring checklist, verification receipts and deferred debt |
 | [Product and architecture overview](../AWS-STUDIO.md) | You need the system's identity, lifecycle and grounded long-term direction |
 | [October 29 reconstruction](discovery-2026-10-29.md) | You need source/browser evidence, corrected discrepancies and verification limits from this documentation pass |
 | [Resource baseline (2026-10-20)](resource-baseline-2026-10-20.md) | You are experimenting with resources and need the original application inventory, source revision and scoped restoration procedure |
@@ -75,6 +77,7 @@ separate deployment states.
 | [Declarations and tags](declarations-and-tags.md) | You are authoring declaration modules or changing metadata ownership and tag filtering |
 | [Network and database declarations](network-database-declarations.md) | You are changing explicit VPC/database ownership, placement or identity-sensitive infrastructure |
 | [Database workbench](database-workbench.md) | You are authoring Prisma, comparing migration contracts, planning artifacts or reviewing explicit local/private-task database operations |
+| [Local coding-agent experiment](local-agent-lab.md) | You are using or extending Agent test's fixed demo-message plan/review/apply workflow |
 | [Report](report.md) | You need the original October 16 investigation and its design rationale |
 | [Architecture](architecture.md) | You need detailed implementation context; confirm current contracts through the knowledge router |
 | [Isometric view](isometric-view.md) | You are changing the landscape: layout, terrain, buildings, camera, picking or rendering |
@@ -89,12 +92,11 @@ the detailed user-facing guide. These documents hold the design and the history.
 
 ## Background
 
-- [UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md](../../UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md)
-  is the original product brief. It is a hypothesis, and the [report](report.md#where-the-brief-was-wrong)
-  records where the repository disagreed with it.
-- [FRAMEWORK_STUDIO_ISOMETRIC_PHASE_PROMPT.md](../../FRAMEWORK_STUDIO_ISOMETRIC_PHASE_PROMPT.md)
-  is the historical brief for the isometric phase; consult current rendering documentation
-  before treating a proposal there as implemented behavior.
+- The original visual-editor and isometric prompt files have been removed. The
+  [report](report.md#where-it-started) preserves their motivation and
+  [rejected assumptions](report.md#where-the-brief-was-wrong), together with the
+  [isometric phase decisions](report.md#phase-2-the-isometric-view). Consult current
+  rendering documentation before treating a historical proposal as implemented behavior.
 - The framework itself: [Framework](../FRAMEWORK.md). The studio's semantics (lanes,
   placement, resources, workflows) are the framework's, so that document is the reference
   for what the studio shows.

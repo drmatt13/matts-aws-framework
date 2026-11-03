@@ -79,8 +79,9 @@ only transient Windows sharing errors; a permanent failure remains visible.
 
 [watchRepository](../../../framework-studio/server/watch.ts) watches configuration, framework config implementation, CDK sources, Prisma contract, Compose and mode input/template files using directory watches and a debounce. Workload implementation roots (Lambda handlers, container contexts and agents) are also watched, excluding dependencies/build output. Source changes expire reviews and publish revision/status events. Native watch errors expose a persistent source-health notice and activate the same five-second content comparison used to detect missed events and newly created directories. Failed watches retry; recovery clears the notice. The notice includes paths/error codes and a read-only **Reload source** action. Environment contents never enter health events. A reconnect re-fetches the snapshot while preserving dirty drafts.
 
-[main.tsx](../../../framework-studio/src/main.tsx) declares the seven workspaces and
-compatible redirects listed in the [interface guide](interface.md). Board is retained
+[main.tsx](../../../framework-studio/src/main.tsx) declares seven core workspaces, the
+auxiliary Agent test experiment and compatible redirects listed in the
+[interface guide](interface.md). Board is retained
 but unrouted. [StudioProvider](../../../framework-studio/src/studio.tsx) owns shared
 selection/mode/draft context; [snapshot.ts](../../../framework-studio/src/snapshot.ts)
 owns the snapshot query and server-event invalidation. The typed endpoint catalog is

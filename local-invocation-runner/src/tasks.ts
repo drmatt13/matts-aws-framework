@@ -58,8 +58,8 @@ export interface TaskRun {
   /**
    * A short session-unique label for log correlation.
    *
-   * The full run id stays the identifier — in the API, in container labels and
-   * in `npm run dev:runs`. This exists because a full id repeated on every
+   * The full run id stays the identifier in the runner's /tasks API, log lookups
+   * and container labels. This exists because a full id repeated on every
    * application line is noise, and two concurrent runs of the same target still
    * have to be told apart. It is unique to this runner process, not to history.
    */
@@ -167,8 +167,8 @@ const DIAGNOSTIC_LIMIT = 4_000;
  * What one accepted submission owns privately.
  *
  * The payload, the resolved environment and the abort controller live here
- * rather than on {@link TaskRun}: the public record is served over HTTP and
- * printed by `dev:runs`, and a task's resolved environment can hold secrets.
+ * rather than on {@link TaskRun}: the public record is served by the runner's
+ * /tasks API, and a task's resolved environment can hold secrets.
  */
 interface TaskRunRecord {
   readonly run: TaskRun;

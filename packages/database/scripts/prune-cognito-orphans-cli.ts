@@ -6,7 +6,8 @@ import { createClient } from "../src/client.js";
 import { localDatabaseUrl, userPoolRegion } from "./local-users.js";
 import { pruneCognitoOrphans } from "./prune-cognito-orphans.js";
 
-// Compose runs this after migrations and before any database consumer starts.
+// Compose exposes this through the separately invoked identity-cleanup profile,
+// after read-only prisma-verify. Compute startup does not invoke it.
 // It reads USER_POOL_ID from the root .env that `npm run export:cdk-outputs`
 // writes, and the AWS profile `npm run dev:containers -- --profile=` selected.
 

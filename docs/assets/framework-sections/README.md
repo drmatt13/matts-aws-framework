@@ -1,8 +1,17 @@
 # Framework section diagrams
 
-Seven technical whitepaper figures generated with the built-in image tool, checked against current repository source. Each PNG is independent. The original reference SVGs are unchanged.
+Seven technical whitepaper figures generated with the built-in image tool and checked
+against the source configuration at the time they were drawn. Each PNG is independent.
+The original reference SVGs are unchanged.
 
-The figures distinguish development-time generation, runtime calls, and identity/resource context. They describe source architecture and capabilities, not proof of deployment. Use the connection specifications below when redrawing.
+The figures and redraw specifications below are historical artwork. Example workloads,
+VPC/database placement and deployment flags have since changed; descriptions such as
+"local-only examples" and "current Lambdas" refer to that earlier configuration.
+Use the [source ownership map](../../aws-studio-knowledge/REPOSITORY-MAP.md),
+[current declarations](../../../framework-config/README.md) and
+[framework guide](../../FRAMEWORK.md) for maintained architecture and capabilities.
+These assets distinguish development-time generation, runtime calls and identity/resource
+context; they are not deployment evidence or a current resource inventory.
 
 ## 1. Authoring and contract generation
 
@@ -102,8 +111,9 @@ Each numbered .mmd file is an independent editable Mermaid diagram. Use these so
 - Figure 5: the illustrated reply trace passes alongside/behind the disconnect handler. Only customAction and $default produce the shown route replies; $disconnect has no reply edge. The Mermaid source separates these relationships.
 - Figure 6: response traces originate at the agent Runtime/session and return through the browser-facing adapters. The local trace's source-end arrowhead should not be read as a response entering the session. The Mermaid source gives the correct request and response directions separately.
 
-These figures describe current source architecture, not a claim that all capabilities have been deployed or live-tested. No application source or original SVG reference was changed for this set.
+These figures describe source architecture at creation, not a claim that all capabilities
+have been deployed or live-tested. No application source or original SVG reference was changed for this set.
 
 ## Validation
 
-All seven selected PNGs were opened/visually inspected through the image tool output and their dimensions checked: 1536 × 1024. Source relationships were reviewed against the guides and declarations. npm run verify passed during this task. The Mermaid sources are supplied as editable topology specifications; a Mermaid renderer was not run.
+All seven selected PNGs were opened/visually inspected through the image tool output and their dimensions checked: 1536 × 1024. Source relationships were reviewed against the guides and declarations. npm run verify passed during figure creation; that is historical evidence, not a verification of the current checkout. The Mermaid sources are supplied as editable topology specifications; a Mermaid renderer was not run.

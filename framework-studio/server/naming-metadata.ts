@@ -1,6 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 import type { ModeModel } from "../shared/model";
 import { descriptionEntityIds, DESCRIPTION_FILE } from "../shared/descriptions";
 import { DISPLAY_NAMES_FILE, displayNameError, remapEntity, type NamingCapability } from "../shared/naming";
@@ -8,32 +7,14 @@ import { parseDescriptions } from "./descriptions";
 import { assertWritable } from "./files";
 import { insertExpression } from "./resources-source";
 import { removeProperty } from "./edits/splice";
-import { literalKey, parse, unwrap } from "./source/syntax";
+import { parseStringMap } from "./source/string-map";
 
 /** Names are documentation: parse their literal map without loading a module. */
 export function parseDisplayNames(text: string) {
-  const source = parse(DISPLAY_NAMES_FILE, text);
-  const errors = (source as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics;
-  if (errors.length) throw new Error(`${DISPLAY_NAMES_FILE}: ${ts.flattenDiagnosticMessageText(errors[0]!.messageText, " ")}`);
-  const declarations = source.statements.filter(ts.isVariableStatement)
-    .filter(statement => statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword))
-    .flatMap(statement => statement.declarationList.declarations)
-    .filter(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === "displayNames");
-  const value = declarations.length === 1 && declarations[0]!.initializer;
-  const object = value && unwrap(value);
-  if (!object || !ts.isObjectLiteralExpression(object)) throw new Error(`${DISPLAY_NAMES_FILE} must export const displayNames as an object of string literals.`);
-  const values: Record<string, string> = Object.create(null);
-  const properties = new Map<string, ts.PropertyAssignment>();
-  for (const property of object.properties) {
-    const key = literalKey(property);
-    if (!ts.isPropertyAssignment(property) || key === undefined || properties.has(key)) throw new Error(`${DISPLAY_NAMES_FILE} requires unique literal keys without spreads.`);
-    const value = unwrap(property.initializer);
-    if (!ts.isStringLiteralLike(value)) throw new Error(`Display name ${key} must be a string literal.`);
-    const error = displayNameError(value.text);
-    if (error || value.text.trim() !== value.text || !value.text) throw new Error(`Display name ${key}: ${error ?? "Use a nonblank, trimmed name, or remove its override."}`);
-    properties.set(key, property); values[key] = value.text;
-  }
-  return { source, object, properties, values };
+  return parseStringMap(text, {
+    file: DISPLAY_NAMES_FILE, exportName: "displayNames", label: "Display name",
+    validate: value => displayNameError(value) ?? (value.trim() !== value || !value ? "Use a nonblank, trimmed name, or remove its override." : undefined),
+  });
 }
 
 export function readDisplayNames(root: string) {

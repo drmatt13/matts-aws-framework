@@ -1,6 +1,6 @@
 ---
 id: reference.status
-summary: Product maturity, evidence boundaries and grounded future direction as of October 2026.
+summary: Product maturity, evidence boundaries and grounded future direction.
 read_when:
   - Separating current support from proposals and historical validation
 source:
@@ -16,10 +16,10 @@ related:
 ---
 # Implementation status and direction
 
-Reviewed **2026-10-29**, against the current checkout including pre-existing source
-changes. This page explains maturity; the [capability matrix](capabilities.md) owns the
-detailed supported-surface inventory. The [product overview](../../AWS-STUDIO.md)
-explains how the parts fit together.
+Initially reviewed **2026-10-29**; source-input status and historical references refreshed
+**2026-11-03** against source. This page explains maturity; the
+[capability matrix](capabilities.md) owns the detailed supported-surface inventory.
+The [product overview](../../AWS-STUDIO.md) explains how the parts fit together.
 
 ## Interpreting evidence
 
@@ -33,7 +33,7 @@ isolated tests, local execution and live AWS outcomes are different evidence lev
 | --- | --- | --- |
 | Implemented core | Literal TypeScript model, normalization, native resource references/grants, local/cloud projections, generated contracts; revisioned Studio snapshots, map, inspectors and source review | Extend the existing producer/consumer contracts and preserve identities |
 | Implemented with explicit limits | Supported creators, workload bindings/removal, source recovery, input/client recipes, Prisma workbench, deployment planning, stateful reuse, Cognito/identity/DNS operations, frontend release | Consult each subsystem's supported shapes, authorization and outcome model; UI availability is not universal coverage |
-| Active development in this checkout | Standalone `resource.value` inputs, source-versus-env input conversion and client mapping availability propagation are present in existing uncommitted changes | Docs describe current source; do not assume those changes exist in an earlier commit or release |
+| Implemented source-input support | Standalone `resource.value` inputs, source-versus-env input conversion and client mapping availability propagation | Follow the [environment contract](../runtime/environment.md); source values, private inputs and browser mappings have distinct delivery rules |
 | Incomplete Studio journeys | General native-resource authoring, advanced graphical workflow authoring, Studio-driven repository/GraphQL/client data propagation, production saved-SQL execution, comprehensive application observability | Continue in source or the documented operational handoff; data-feature agent procedures already exist outside Studio |
 | Proposed direction | Workflow execution overlays, structured workflow views, broader typed templates, optional manual layout and touch/performance refinements | Proposals from existing design guidance; no schedule or commitment |
 | Outside current contract | Third independent environment mode, full offline AWS emulation, universal IAM proof, remote multi-user Studio, automatic deployment promotion or universal retained-resource import/restore | Requires a new design decision and explicit implementation, not a documentation claim |
@@ -66,8 +66,9 @@ list into a current roadmap. October 23 Job 3/4 documents record specific tests 
 environments; their success does not establish that the current checkout has repeated
 those checks.
 
-The root visual-editor handoff and isometric phase prompt are design history. Their
-unverified source names and early alternatives are not current API documentation.
+The original visual-editor and isometric prompt files have been removed. Their rationale
+and rejected alternatives survive in the [original report](../../framework-studio/report.md);
+historical source names and early alternatives are not current API documentation.
 The [documentation index](../../README.md) separates current guides, design rationale,
 historical campaigns and artwork. The
 [October 29 discovery record](../../framework-studio/discovery-2026-10-29.md) names
@@ -76,9 +77,9 @@ this pass's actual browser and documentation checks and remaining runtime gaps.
 ## Evidence-based future direction
 
 [Moving forward](../../framework-studio/moving-forward.md) proposes execution overlays,
-structured workflow inspection and measured interaction improvements. The original
-[handoff](../../../UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md) motivates one visual
-development environment over the existing framework. Interpreting these together as
-an integrated application control plane is architectural synthesis, not a new approved
+structured workflow inspection and measured interaction improvements. The
+[original investigation](../../framework-studio/report.md#where-it-started) records the
+motivation for one visual development environment over the existing framework.
+Interpreting these together as an integrated application control plane is architectural synthesis, not a new approved
 roadmap. New work should preserve the [decisions](../architecture/decisions.md), extend
 the [capability matrix](capabilities.md), and record validation separately from intent.

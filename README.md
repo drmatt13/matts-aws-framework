@@ -59,6 +59,7 @@ explicit source. Generators and agents handle the surrounding mechanics.
 
 | Location | Responsibility |
 | --- | --- |
+| `framework-studio/` | Studio's React interface, local host API, source inspection/editing and operational workspaces; [source ownership map](docs/aws-studio-knowledge/REPOSITORY-MAP.md) |
 | `client-app/` | React application and typed API operations |
 | `framework-config/` | Workloads, resources, application resource types, defaults, and invocation graphs |
 | `cdk-app/lib/app/` | Application infrastructure such as Cognito and RDS |
@@ -71,7 +72,15 @@ explicit source. Generators and agents handle the surrounding mechanics.
 | `packages/api-contract/` | Browser-safe public routes and payload contracts |
 | `packages/models/` | Model providers every agent shares; their environment and IAM are declared once in `framework-config/shared/models.ts` |
 | `local-api-dev-server/`, `local-ws-dev-server/`, `local-invocation-runner/` | Local execution |
-| `docs/playbooks/`, `.claude/skills/` | Coding-agent procedures that reference the human guides |
+| `ws-tester/` | Standalone WebSocket client; Studio has its own adapted panels and launch-link handling |
+| `scripts/` | Repository commands and their deployment/export/local-development helpers; root `package.json` owns the command names |
+| `docs/playbooks/`, `.agents/skills/`, `.claude/skills/` | Coding-agent procedures that reference the human guides |
+
+The [source ownership map](docs/aws-studio-knowledge/REPOSITORY-MAP.md) locates feature,
+shared UI, generated-file and test owners. Use it with the
+[architecture map](docs/aws-studio-knowledge/ARCHITECTURE-MAP.md) to trace a declaration
+through infrastructure, local execution and Studio without treating those projections
+as separate configuration authorities.
 
 ## Local checks
 

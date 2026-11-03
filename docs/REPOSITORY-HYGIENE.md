@@ -61,6 +61,9 @@ The [browser guide](../framework-studio/test/browser/README.md) owns screenshot 
 and test behavior. Existing [development guidance](DEV-DEPLOYMENT.md) owns local state
 and Docker/image lifecycle; filesystem hygiene does not authorize infrastructure actions.
 
+The [November 3 maintainability audit](framework-studio/maintainability-2026-11-03.md)
+records the subsequent source/documentation cleanup and exact disposable MCP capture removal.
+
 ## October 30, 2026 audit and cleanup
 
 Starting revision: `e4c81f153cb6559a94463cf179d16d130347f6c3`. The working tree was clean:

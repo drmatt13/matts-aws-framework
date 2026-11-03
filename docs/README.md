@@ -98,11 +98,12 @@ as a current test result.
 - [Framework Studio resource baseline — 2026-10-20](framework-studio/resource-baseline-2026-10-20.md)
 - [Job 2: stateful retention and reference reuse — 2026-10-23](framework-studio/stateful-resources-job2-2026-10-23.md)
 - [Tooltip information and interaction audit](framework-studio/tooltip-audit.md)
+- [Maintainability campaign — October 30, 2026](framework-studio/maintainability-campaign-2026-10-30.md)
+- [Repository maintainability audit — November 3, 2026](framework-studio/maintainability-2026-11-03.md)
 
 Additional historical design inputs:
 
-- [Visual editor discovery handoff](../UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md): original product hypotheses, without initial repository verification.
-- [Isometric phase prompt](../FRAMEWORK_STUDIO_ISOMETRIC_PHASE_PROMPT.md): an earlier implementation brief, including superseded UI/history assumptions.
+- [Original investigation and design decisions](framework-studio/report.md): preserves the visual-editor and isometric briefs' rationale and rejected alternatives. The original root prompt files have been removed; use the retained report for historical context and the wiki for current behavior.
 - [Environment-model prompt](../codex-prompt-studio-env-model.md): earlier task context; current value sources and browser tooling differ.
 - [Deploy/Run M0–M1 plan](superpowers/plans/2026-10-17-deploy-run-m0-m1.md): milestone implementation plan.
 - [AWS AgentCore developer reference](AWS-AgentCore-Developer-Reference.md): dated external-service background, not the framework's supported capability contract; use [AgentCore](AGENTCORE.md) for repository guidance.

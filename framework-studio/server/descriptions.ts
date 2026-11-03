@@ -1,34 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 import { DESCRIPTION_FILE, descriptionError } from "../shared/descriptions";
 import { insertProperty } from "./edits/splice";
-import { literalKey, parse, unwrap } from "./source/syntax";
+import { parseStringMap } from "./source/string-map";
 
 /** Parse literals only: documentation never executes as part of Studio or a deployment. */
 export function parseDescriptions(text: string) {
-  const source = parse(DESCRIPTION_FILE, text);
-  const diagnostics = (source as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics;
-  if (diagnostics.length) throw new Error(`${DESCRIPTION_FILE}: ${ts.flattenDiagnosticMessageText(diagnostics[0]!.messageText, " ")}`);
-  const declarations = source.statements.filter(ts.isVariableStatement)
-    .filter((statement) => statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword))
-    .flatMap((statement) => statement.declarationList.declarations)
-    .filter((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === "descriptions");
-  const initializer = declarations.length === 1 && declarations[0]!.initializer;
-  const object = initializer && unwrap(initializer);
-  if (!object || !ts.isObjectLiteralExpression(object)) throw new Error(`${DESCRIPTION_FILE} must export const descriptions as an object of string literals.`);
-  const values: Record<string, string> = Object.create(null);
-  const properties = new Map<string, ts.PropertyAssignment>();
-  for (const property of object.properties) {
-    const key = literalKey(property);
-    if (!ts.isPropertyAssignment(property) || key === undefined || properties.has(key)) throw new Error(`${DESCRIPTION_FILE} requires unique literal keys without spreads.`);
-    const value = unwrap(property.initializer);
-    if (!ts.isStringLiteralLike(value)) throw new Error(`Description ${key} must be a string literal.`);
-    const error = descriptionError(value.text);
-    if (error) throw new Error(`Description ${key}: ${error}`);
-    properties.set(key, property);
-    values[key] = value.text;
-  }
+  const { source, object, values, properties } = parseStringMap(text, {
+    file: DESCRIPTION_FILE, exportName: "descriptions", label: "Description", validate: descriptionError,
+  });
   return { source, object, values, properties };
 }
 

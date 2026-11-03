@@ -135,12 +135,14 @@ attributes, never presentation classes or assertions about utility strings.
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
 | Actions | `Button`, `IconButton` and their recipes; destructive actions use `tone="danger"` |
 | Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors; entity problems through `IssueNotice`, `IssueChips` and `HoverIssues` |
+| Motion | State changes are instant. The one exception is the map's Docker Compose switch (`views/map/ComposePreview.tsx`): interruptible transitions on the `--spring` and `--spring-bounce` curves plus its `compose-*` keyframes in `styles/theme.css`, all off under reduced motion and the map's Motion toggle |
 | Density | 4px within a group (label, control, support; identifier and source), 8px action-to-note, 12px heading-to-content, 16px sections; use container gaps rather than stacked paragraph margins |
 
 ## Navigation and workspace rhythm
 
-The application bar owns the app's name (renamed in place from its pencil), seven view links and the **Source**
-Development/Production selector, which sits at the right on every route. The navbar
+The application bar owns the app's name (renamed in place from its pencil), eight
+navigation links (seven core workspaces and the auxiliary Agent test experiment) and
+the **Source** Development/Production selector, which sits at the right on every route. The navbar
 uses a 52px row on desktop, 89px with two rows at 760px and below, and 129px with
 three rows at 560px and below. Route changes never add or remove source controls.
 When the configuration does not load, the canvas banner's **Show why** opens

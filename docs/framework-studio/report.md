@@ -28,10 +28,10 @@ the repository's suites.
 The owner's brief was a unified visual development environment for this framework: one
 that understands its workloads, resources, workflows, networking and deployment lanes;
 edits the real TypeScript configuration; and might be rendered as an isometric world,
-possibly with a Rust/Bevy/WebAssembly engine. The brief arrived with a
-[handoff document](../../UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md). It asked that
-document, and the owner's own ideas, to be treated as hypotheses to test against the
-repository rather than as instructions.
+possibly with a Rust/Bevy/WebAssembly engine. The brief arrived with the original
+`UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md` (since removed from the repository).
+It asked that document, and the owner's own ideas, to be treated as hypotheses to test
+against the repository rather than as instructions.
 
 ### What the repository already provided
 

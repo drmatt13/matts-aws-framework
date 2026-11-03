@@ -15,7 +15,8 @@ export function AgentLab() {
     refetchOnWindowFocus: false,
   });
   const [provider, setProvider] = useState<AgentLabProvider>("codex");
-  const [prompt, setPrompt] = useState(`Change the demo message to "${agentLabMessage === "Hello from my local coding agent" ? "Ready for another reviewed edit." : "Hello from my local coding agent"}".`);
+  // The reviewed demo edit changes this literal without changing the prompt logic.
+  const [prompt, setPrompt] = useState(`Change the demo message to "${(agentLabMessage as string) === "Hello from my local coding agent" ? "Ready for another reviewed edit." : "Hello from my local coding agent"}".`);
   const [plan, setPlan] = useState<AgentLabPlan>();
   const [busy, setBusy] = useState<"planning" | "applying">();
   const [error, setError] = useState<string>();

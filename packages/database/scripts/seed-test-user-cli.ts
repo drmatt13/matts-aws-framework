@@ -21,9 +21,10 @@ import {
   type TestUserDirectory,
 } from "./seed-test-user.js";
 
-// Compose runs this after prune-cognito-orphans and before any database
-// consumer starts. cdk-app/.env.dev is bind-mounted read-only, as it is for every
-// service that reads authored inputs; the password is never printed.
+// The separately invoked identity-setup Compose profile waits for PostgreSQL and
+// read-only prisma-verify. Orphan cleanup has its own profile and is independent.
+// cdk-app/.env.dev is bind-mounted read-only, as it is for every service that
+// reads authored inputs; the password is never printed.
 
 function readAuthoredInputs(): Record<string, string | undefined> {
   const file = resolve(

@@ -5,6 +5,7 @@ read_when:
   - Changing Cognito navigation, federation, identity pools or permissions diagnostics
 source:
   - framework-studio/src/views/AuthenticationWorkspace.tsx
+  - framework-studio/src/views/AuthenticationEvidence.tsx
   - framework-studio/src/views/SourceContext.tsx
   - framework-studio/src/identity-api.ts
   - framework-studio/src/identity-queries.ts
@@ -48,6 +49,10 @@ checks. `RetryNotice` renders equivalent source/context failures without owning
 either query or observation state. Production Domains keep their own selection,
 input-edit gate and operation approvals.
 
+[AuthenticationEvidence.tsx](../../../framework-studio/src/views/AuthenticationEvidence.tsx)
+contains provider evidence, groups and pool relationships. `AuthenticationWorkspace`
+owns requests, context, cancellation, approvals and panel lifetime.
+
 The workspace inherits Studio's selected development/production mode. Inspection
 uses one profile, declared deployment and region across the subsections. Deploy's
 remembered preferences seed the selection; they do not prove the account or make
@@ -83,8 +88,8 @@ Handler-side `authenticated` verifies ID tokens with the configured pool/client 
 fetches remote Cognito signing keys over HTTPS. `userPool: true` delivers the
 identifiers; it does not create a network path to that JWKS endpoint. API Gateway
 JWT admission is a separate layer. An isolated handler can therefore receive a
-valid admitted token but return503 when signing keys cannot be read; an invalid
-token returns401. Keep the authentication entry point where that fetch is reachable
+valid admitted token but return 503 when signing keys cannot be read; an invalid
+token returns 401. Keep the authentication entry point where that fetch is reachable
 and delegate private work through declared bindings, or explicitly provide the
 required network reachability. An S3 gateway endpoint alone does not provide it.
 The [Job 3 evidence](../../framework-studio/job3-execution-2026-10-23.md) distinguishes

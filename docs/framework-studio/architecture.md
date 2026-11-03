@@ -13,7 +13,8 @@ configuration writer. Source-verified on 2026-10-29; cloud execution is a separa
 
 ```text
 Browser (React 19, TanStack Router + Query)
-  Isometric · Database · Deploy · Cognito · Domains · WebSockets · Inspector · Edit preview
+  Isometric · Database · Deploy · GraphQL · Cognito · Domains · WebSockets · Agent test
+  Inspector · Edit preview
         │  JSON over /api, server-sent events on /api/events
         │  per-process token, same origin, Host = 127.0.0.1|localhost:<port>
         ▼
@@ -589,8 +590,9 @@ their own inspection, review and approval paths.
 
 [src/](../../framework-studio/src)
 
-- **Routing.** [main.tsx](../../framework-studio/src/main.tsx) declares the seven
-  workspaces, including the GraphQL placeholder, and compatible redirects listed in
+- **Routing.** [main.tsx](../../framework-studio/src/main.tsx) declares seven core
+  workspaces, including the GraphQL placeholder, the auxiliary Agent test experiment
+  and compatible redirects listed in
   the [interface guide](../aws-studio-knowledge/studio/interface.md). Selection is the
   `?select=<id>` search parameter shared by every view.
 - **State.** [studio.tsx](../../framework-studio/src/studio.tsx) is the context every view
@@ -609,6 +611,7 @@ their own inspection, review and approval paths.
   - [Isometric](../../framework-studio/src/views/Isometric.tsx).
   - [Database](../../framework-studio/src/views/Database.tsx).
   - [Deploy](../../framework-studio/src/views/Deploy.tsx): deployment discovery, reviewed plans, authorized operations and local lifecycle controls; see [current operations](../aws-studio-knowledge/deployment/operations.md).
+  - [Agent test](../../framework-studio/src/views/AgentLab.tsx): the bounded [local coding-agent experiment](local-agent-lab.md), with planning, exact diff review and a separately applied edit to one fixed Studio demo message.
   - [Inspector](../../framework-studio/src/views/Inspector.tsx) and the
     [edit dialog](../../framework-studio/src/views/EditDialog.tsx), in React DOM, never on
     a canvas. Inspector dispatch/lifetime stays at that entry; entity rendering lives

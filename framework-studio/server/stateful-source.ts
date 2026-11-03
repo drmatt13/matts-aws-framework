@@ -3,14 +3,10 @@ import type { Mode } from "../shared/model";
 import type { StatefulKind, StatefulResourceSource } from "../shared/stateful-resources";
 import { EditError } from "./edits/io";
 import { insertProperty, removeProperty, replaceValue } from "./edits/splice";
-import { hasComments, literalKey } from "./source/syntax";
+import { hasComments, literalKey, unwrap } from "./source/syntax";
 
 export const STATEFUL_SOURCE_FILE = "framework-config/stateful-resources.ts";
 const unsupported = () => new EditError(422, `Edit ${STATEFUL_SOURCE_FILE} in your editor: Studio requires an exported statefulResources object with literal dev/prod entries and no spreads, calls or computed values.`);
-function unwrap(node: ts.Expression): ts.Expression {
-  while (ts.isSatisfiesExpression(node) || ts.isAsExpression(node) || ts.isParenthesizedExpression(node)) node = node.expression;
-  return node;
-}
 function literal(node: ts.Expression): unknown {
   node = unwrap(node);
   if (ts.isStringLiteralLike(node)) return node.text;

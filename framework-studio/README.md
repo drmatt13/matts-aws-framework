@@ -1,10 +1,12 @@
 # AWS Studio
 
 AWS Studio is the visual editing and operations interface for Matt's AWS Framework.
-It lives in the `framework-studio` workspace. For a shorter introduction to the seven
+It lives in the `framework-studio` workspace. For a shorter introduction to its
 workspaces and their action boundaries, read the
 [interface guide](../docs/aws-studio-knowledge/studio/interface.md); for service ownership,
 read [backend boundaries](../docs/aws-studio-knowledge/studio/backend.md).
+Contributors can start at the [source ownership map](../docs/aws-studio-knowledge/REPOSITORY-MAP.md)
+for feature entry points, shared UI conventions, scripts and test discovery.
 
 A local view of `framework.config.ts` with reviewed resource creation and targeted
 source editing. It shows:
@@ -18,7 +20,8 @@ Declarations use the same [code-first layout and tags](../docs/framework-studio/
 when authored by hand or created in Studio. Tag edits use source review. Isometric always keeps topology; its tag filter fades
 nonmatches without changing placement, identity or source.
 
-The shared navigation stays stable across all seven views. **GraphQL** (`/graphql`),
+The shared navigation has eight destinations: seven core workspaces and the auxiliary
+**Agent test** experiment (`/test`). **GraphQL** (`/graphql`),
 immediately after Deploy, currently shows a placeholder page. The shared top-right navbar
 exposes the **Source** Development/Production selector on every route. Switching source
 mode retains the unsaved-draft guard. When the configuration does not load, the canvas
