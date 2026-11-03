@@ -14,6 +14,7 @@ import { Inspector } from "./Inspector";
 import { UnsavedChangesDialog } from "./DraftControls";
 import { SourceRecoveryPanel } from "./SourceRecovery";
 import { navigationItemClasses, NavigationStrip } from "./NavigationStrip";
+import { AppNameMenu } from "./AppName";
 import { SourceEnvironment } from "./SourceContext";
 
 function Drawer(props: {
@@ -215,7 +216,6 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
     !!selected && !isometricPage && !(databasePage && selected.startsWith("schema:"));
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
-  const repository = snapshot.repositoryRoot.replaceAll("\\", "/").split("/").pop();
 
   const run = async (name: string, confirmed: boolean) => {
     setResult(undefined);
@@ -242,14 +242,9 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         data-ui="bar"
         className="grid min-h-(--bar) min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-rule bg-sheet px-4 vp-1200:gap-3 vp-760:grid-cols-[minmax(0,1fr)_auto] vp-760:gap-2 vp-760:py-2"
       >
-        <span className="font-condensed text-step1 font-semibold tracking-[0.01em] whitespace-nowrap vp-760:col-start-1 vp-760:row-start-1">
+        <span className="inline-flex min-w-0 items-center font-condensed text-step1 font-semibold tracking-[0.01em] whitespace-nowrap vp-760:col-start-1 vp-760:row-start-1">
           AWS Studio
-          <small
-            className="ml-2 inline-block max-w-[180px] overflow-hidden align-middle font-sans text-step-minus1 font-normal text-graphite text-ellipsis vp-1200:hidden"
-            title={repository}
-          >
-            {repository}
-          </small>
+          <AppNameMenu />
         </span>
         <NavigationStrip
           className="vp-760:col-span-full vp-760:row-start-2 vp-560:row-start-3"
@@ -311,6 +306,14 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
             activeOptions={{ includeSearch: false }}
           >
             WebSockets
+          </Link>
+          <Link
+            to="/test"
+            search={{}}
+            className={navigationItemClasses}
+            activeOptions={{ includeSearch: false }}
+          >
+            Agent test
           </Link>
         </NavigationStrip>
         <div className="flex items-center gap-3 vp-760:col-start-2 vp-760:row-start-1 vp-560:contents">

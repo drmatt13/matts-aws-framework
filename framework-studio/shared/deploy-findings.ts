@@ -15,12 +15,14 @@ import type {
 export type ActionId =
   | "sign-in" | "refresh" | "deploy" | "plan" | "review-plan" | "discard-plan"
   | "export" | "start" | "start-exported" | "stop" | "apply-changes" | "resume-watch"
-  | "start-docker" | "delete";
+  | "start-docker" | "delete" | "deploy-as";
 
 export interface Action {
   readonly id: ActionId;
   readonly label: string;
   readonly plan?: string;
+  /** deploy-as: the name AWS shows this stage deployed as, which the target's deployAs would keep. */
+  readonly deployAs?: string;
   readonly tone?: "primary" | "quiet" | "danger";
   /** Why it cannot be taken now. */
   readonly disabled?: string;
@@ -46,6 +48,8 @@ export interface FindingsInput {
   readonly context?: AccountContext;
   /** The profile chosen, named in a sign-in prompt before any account is known. */
   readonly profile?: string;
+  /** framework:appId: a discovered deployment carrying it is one of this app's own. */
+  readonly appId?: string;
   readonly problem?: AwsProblem;
   readonly profileKind?: AwsProfileInfo["kind"];
   readonly local: LocalRunView;
@@ -91,10 +95,14 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
   }
 
   if (!target) {
+    // This app's own stage, under a name cdk.json no longer derives: renamed, or deployAs removed.
+    const earlier = deployment?.appId && deployment.appId === input.appId && deployment.stage ? deployment.stage : undefined;
     findings.push({
       code: "NOT_DECLARED", severity: "info", scope: "identity",
-      title: "Discovered in this account, not declared here",
-      detail: `Source and deployment controls are unavailable because this repository does not declare ${name}. Identity-based deletion remains available through a separate review.`,
+      title: earlier ? `An earlier deployment of this app's ${earlier} stage` : "Discovered in this account, not declared here",
+      detail: earlier
+        ? `cdk-app/cdk.json no longer deploys the ${earlier} stage as ${name}. It keeps running, and billing, until you delete it.`
+        : `Source and deployment controls are unavailable because this repository does not declare ${name}. Identity-based deletion remains available through a separate review.`,
       actions: deployment ? [cloud({ id: "delete", label: "Delete…", tone: "danger" })] : [],
     });
   }
@@ -113,6 +121,27 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
     // What this region holds says nothing about the account or region the target is pinned to.
     findings.push({ code: "ELSEWHERE", severity: "info", scope: "aws", title: "Pinned to another account or region", detail: input.match.detail, actions: [] });
     return findings;
+  }
+
+  // This app's same stage is deployed here under another name: the app was renamed, or deployAs removed.
+  const deployedAs = input.match?.status === "absent" ? input.match.deployedAs : undefined;
+  if (target?.stage && deployedAs) {
+    const keep: Action = { id: "deploy-as", label: `Keep deploying to ${deployedAs}`, deployAs: deployedAs, tone: mode === "prod" ? "primary" : "quiet" };
+    if (mode === "prod") {
+      findings.push({
+        code: "STAGE_DEPLOYED_AS", severity: "blocking", scope: "identity",
+        title: `Deployed as ${deployedAs}`,
+        detail: `This app's ${target.stage} stage is already deployed here under that name, with its users, database and secrets. Deploying ${name} would start a second production beside it, so Deploy refuses it. For a second production, declare another stage.`,
+        actions: [keep],
+      });
+      return findings;
+    }
+    findings.push({
+      code: "STAGE_DEPLOYED_AS", severity: "info", scope: "identity",
+      title: `Earlier deployment: ${deployedAs}`,
+      detail: `This app's ${target.stage} stage is deployed here as ${deployedAs}, which keeps running, and billing, until you delete it. Deploying ${name} starts fresh beside it.`,
+      actions: [keep],
+    });
   }
 
   const deployLabel = (_exists: boolean) => "Compare AWS templates";

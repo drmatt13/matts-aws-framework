@@ -136,12 +136,12 @@ test("a secret name outside the Secrets Manager character set is refused", () =>
   assert.throws(() => frameworkSecretName("a".repeat(600), "Y"), /Secrets Manager name/);
 });
 
-test("the example template leaves CDK_APP_NAME standing", () => {
+test("the example template leaves the deployment standing", () => {
   // Generation must not depend on which deployment the generating machine is
   // configured for, so this is a shape rather than a name.
-  assert.equal(frameworkSecretNameTemplate(), "${CDK_APP_NAME}/secret/<NAME>");
+  assert.equal(frameworkSecretNameTemplate(), "<deployment>/secret/<NAME>");
   assert.equal(
     frameworkSecretNameTemplate("OPENAI_API_KEY"),
-    "${CDK_APP_NAME}/secret/OPENAI_API_KEY",
+    "<deployment>/secret/OPENAI_API_KEY",
   );
 });

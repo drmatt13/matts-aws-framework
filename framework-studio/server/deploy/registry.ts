@@ -23,7 +23,7 @@ export class OperationError extends Error {
   }
 }
 
-export type RepositoryTarget = Omit<TargetView, "status" | "detail">;
+export type RepositoryTarget = Omit<TargetView, "status" | "detail" | "deployedAs">;
 
 /** Replacements for the persistent programs of local development, by kind. */
 export type ManagedCommands = Partial<Record<"local-watch" | "local-client", (env: NodeJS.ProcessEnv) => CommandSpec>>;

@@ -14,7 +14,8 @@ function fixture() {
   mkdirSync(path.join(directory, "cdk-app"));
   symlinkSync(path.join(root, "node_modules"), path.join(directory, "node_modules"), "junction");
   writeFileSync(path.join(directory, "package.json"), '{"private":true}');
-  writeFileSync(path.join(directory, "cdk-app/cdk.json"), '{"context":{}}');
+  // The dev stage is pinned to the deployment the fixtures below already name.
+  writeFileSync(path.join(directory, "cdk-app/cdk.json"), '{"context":{"framework:app":"fixture","framework:appId":"0f9c2d1e-7b3a-4c5d-9e8f-1a2b3c4d5e6f","framework:targets":{"dev":{"deployAs":"my-aws-app"}}}}');
   writeFileSync(path.join(directory, "framework.config.ts"), "import { defaults } from " + JSON.stringify(path.join(root, "framework-config/defaults.ts")) + "; export default { defaults, http:{}, webSocket:{}, events:{}, services:{} };");
   return { directory, dispose: () => rmSync(directory, { recursive: true, force: true }) };
 }

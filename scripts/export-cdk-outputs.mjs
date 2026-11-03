@@ -14,8 +14,8 @@ const { CLIENT_ENVIRONMENT_FILE } = require("./client-environment-mapping.ts");
 const { collectDeploymentStacks, collectDevelopmentResources, readDeploymentStackPages, writeDevelopmentFiles } = require("./resource-export.ts");
 const { collectProductionOutputs } = require("./production-export.ts");
 const { RESOURCE_MANIFEST_FILE, listResourceDeclarations } = require("@repo/framework/config");
-const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget, readCdkContext } = require("@repo/framework/deploy/node");
-const { parseTargets, TARGETS_CONTEXT_KEY } = require("@repo/framework/deploy");
+const { contextFromArgs, deploymentInputsFile, readCdkContext, repositoryTargets, resolveRepositoryTarget } = require("@repo/framework/deploy/node");
+const { APP_CONTEXT_KEY, TARGETS_CONTEXT_KEY } = require("@repo/framework/deploy");
 const { runAwsSync } = require("./aws-cli.ts");
 
 const { ROOT_ENV_STACK_OUTPUTS: BASE_STACK_OUTPUT_MAPPINGS } = require("./root-env-outputs.ts");
@@ -33,7 +33,6 @@ const GENERATED_ENV_SECTIONS = [
   {
     heading: "Deployment / stack names",
     envNames: [
-      "CDK_APP_NAME",
       "COGNITO_STACK_NAME",
       "DEV_LAMBDA_REPLAY_STACK_NAME",
       "FRONTEND_WEBSITE_S3_STACK_NAME",
@@ -147,13 +146,14 @@ if (envPath.toLowerCase() === resolve(process.cwd(), RESOURCE_MANIFEST_FILE).toL
 }
 const profile = getOption("profile") ?? process.env.AWS_PROFILE ?? authoredEnv.AWS_PROFILE;
 const region = getOption("region") ?? process.env.AWS_REGION ?? authoredEnv.AWS_REGION;
-// Which deployment: named (--deployment, or the older --cdk-app-name), or the
-// target the same CDK context would select (your development deployment by
-// default). The mode is read from the deployment itself, below.
+// Which deployment: named (--deployment, or the deprecated --cdk-app-name), or
+// the target the same CDK context would select (the dev stage by default). The
+// mode is read from the deployment itself, below. The shell never names it.
+const legacyDeployment = getOption("cdkAppName", "cdk-app-name");
+if (legacyDeployment) console.warn(`--cdk-app-name is deprecated. Use --deployment ${legacyDeployment} instead.`);
 const deploymentName =
   getOption("deployment") ??
-  getOption("cdkAppName", "cdk-app-name") ??
-  process.env.CDK_APP_NAME ??
+  legacyDeployment ??
   resolveRepositoryTarget({
     root: process.cwd(),
     get: (key) => contextFromArgs(process.argv.slice(2))[key],
@@ -162,7 +162,7 @@ const deploymentName =
 
 if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(deploymentName)) {
   throw new Error(
-    `--deployment/--cdk-app-name/CDK_APP_NAME must be 1-63 lowercase letters, numbers, or hyphens, start with a letter, and not end with a hyphen. Received: ${deploymentName}`,
+    `--deployment must be 1-63 lowercase letters, numbers, or hyphens, start with a letter, and not end with a hyphen. Received: ${deploymentName}`,
   );
 }
 
@@ -180,7 +180,11 @@ if (region && identity.region !== region) throw new Error("The requested region 
 if (getOption("expected-mode") && getOption("expected-mode") !== identity.mode) throw new Error("The requested mode differs from the deployed resources. Existing local files were preserved.");
 // The deployed mode is authoritative. A direct production export must never read
 // its custom client inputs from the development file just because no CDK flag was passed.
-const declaredTarget = parseTargets(readCdkContext(process.cwd())[TARGETS_CONTEXT_KEY]).find(target => target.name === deploymentName);
+// A directory with no deployment configuration at all (an export into a scratch
+// directory) declares nothing; one that names deployments must name them validly.
+const exportContext = readCdkContext(process.cwd());
+const configured = exportContext[APP_CONTEXT_KEY] !== undefined || exportContext[TARGETS_CONTEXT_KEY] !== undefined;
+const declaredTarget = (configured ? repositoryTargets(process.cwd()) : []).find(target => target.name === deploymentName);
 const clientSelection = declaredTarget ? resolveRepositoryTarget({
   root: process.cwd(),
   get: (key) => key === "deployment" ? deploymentName : key === "prodDeployment" ? identity.mode === "prod" : undefined,
@@ -270,7 +274,6 @@ if (collectedEnv.size === 0) {
 for (const name of ["USER_POOL_ID", "USER_POOL_CLIENT_ID", "COGNITO_DOMAIN_URL", "DEV_LAMBDA_REPLAY_BUCKET_NAME", "DEV_LAMBDA_REPLAY_QUEUE_URL", "DEV_LAMBDA_REPLAY_QUEUE_ARN"]) {
   if (!collectedEnv.get(name)) throw new Error(`Required development control output ${name} is missing. Existing local files were preserved.`);
 }
-collectedEnv.set("CDK_APP_NAME", deploymentName);
 const localValues = localExportValues(authoredEnv, { profile, region: manifest.region, repositoryRoot: process.cwd() });
 localValues.set("LOCAL_FRAMEWORK_DEPLOYMENT", manifest.deployment);
 localValues.set("LOCAL_FRAMEWORK_ACCOUNT", manifest.account);

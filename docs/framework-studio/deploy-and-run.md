@@ -98,7 +98,7 @@ New findings for this revision:
 | --- | --- | --- |
 | **Account context** | The selected AWS profile resolved to `{callerArn, account, region}`. The profile name is only a credential source and never implies a mode. | `sts get-caller-identity` |
 | **Deployment** | A framework-owned set of stacks sharing **identity** `{owner, deployment, account, region}`. Its **mode** is fixed when it is created. | Observed in CloudFormation (§3) |
-| **Target** | A deployment the repository *intends* to exist: `{name, mode, account?, region?, inputs}`. There can be any number. | Committed in `cdk-app/cdk.json` `framework:targets`, plus an implicit personal dev target from `CDK_APP_NAME` in `cdk-app/.env` |
+| **Target** | A deployment the repository *intends* to exist: `{name, mode, account?, region?, inputs}`. There can be any number. | Committed in `cdk-app/cdk.json`: `framework:app` names the app, `framework:appId` identifies it, and each `framework:targets` key is a stage deploying as `<app>-<stage>` (or its `deployAs`), plus the implicit `dev` stage. (Superseded 2026-11-03: the personal `CDK_APP_NAME` target below is historical.) |
 | **Plan** | An immutable artifact describing how to move one target from what is observed to what is desired: steps, evidence, risks, uncertainties, required authorization, fingerprints | `.cache/framework-studio/plans/<id>/` (CLI: `--plan <dir>`) |
 | **Operation** | Execution of a plan, or a local lifecycle action, through the typed registry | Studio jobs and intent records |
 

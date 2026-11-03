@@ -115,7 +115,7 @@ test("both files list the same names, and the catalog decides each graph's defau
 test("framework inputs project as managed groups with no defaults, and a required line left unset is a missing value", () => {
   const root = fixture();
   try {
-    writeFileSync(path.join(root, "cdk-app/.env.dev"), "CDK_APP_NAME=private-name-value\nPOSTGRES_HOST_PORT=15432\nPGADMIN_HOST_PORT=\nLOCAL_AWS_PROFILE=\nSETTING=\n");
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "CDK_APP_NAME=private-name-value\nLOCAL_DEV_URL=http://private-dev-url.example\nPOSTGRES_HOST_PORT=15432\nPGADMIN_HOST_PORT=\nLOCAL_AWS_PROFILE=\nSETTING=\n");
     writeFileSync(path.join(root, "cdk-app/.env.prod"), "DATABASE_MULTI_AZ=true\nPOSTGRES_HOST_PORT=15432\n");
     const dev: ModeModel = { ...model, mode: "dev" }, prod: ModeModel = { ...model, mode: "prod" };
     const project = (graph: ModeModel, models = { dev, prod }) => withDeploymentInputs(root, graph, models);
@@ -126,21 +126,23 @@ test("framework inputs project as managed groups with no defaults, and a require
     assert.equal(byId.get("framework:local")!.absent, false);
     assert.equal(byId.has("framework:database"), false, "no managed database, so no database group");
     const entry = (id: string) => byId.get(id)!;
-    const cdk = entry("framework:deployment.cdkAppName");
-    assert.deepEqual([cdk.kind, cdk.parent, cdk.fromEnv, cdk.default, cdk.required, cdk.inputRequirement!.status], ["input", "framework:deployment", "CDK_APP_NAME", undefined, true, "configured"]);
-    assert.deepEqual(cdk.modes, { dev: { present: true, required: true }, prod: { present: true, required: false } }, "required where its template writes it");
+    // cdk-app/cdk.json names deployments; no inputs file setting does any more.
+    assert.equal(byId.has("framework:deployment.cdkAppName"), false);
+    const url = entry("framework:deployment.localDevUrl");
+    assert.deepEqual([url.kind, url.parent, url.fromEnv, url.default, url.required, url.inputRequirement!.status], ["input", "framework:deployment", "LOCAL_DEV_URL", undefined, true, "configured"]);
+    assert.deepEqual(url.modes?.dev, { present: true, required: true }, "required where its template writes it");
     assert.equal(entry("framework:local.pgadminHostPort").inputRequirement!.status, "missing", "a blank required line has no default to stand in");
     assert.equal(entry("framework:deployment.skipEmailVerification").inputRequirement!.status, "missing", "an unwritten required line is missing");
     assert.equal(entry("framework:local.localAwsProfile").inputRequirement!.status, "optional", "the template writes LOCAL_AWS_PROFILE, but blank is allowed");
     assert.equal(entry("framework:deployment.retainStatefulResources").inputRequirement!.status, "optional", "a commented template line is optional");
     assert.ok(!projected.resources.some((resource) => resource.frameworkInput && resource.default !== undefined), "framework inputs take no default");
-    assert.ok(!JSON.stringify(projected.resources).includes("private-name-value") && !JSON.stringify(projected.resources).includes("15432"), "values never enter the graph");
+    assert.ok(!["private-name-value", "private-dev-url", "15432"].some((value) => JSON.stringify(projected.resources).includes(value)), "values never enter the graph");
     const shadowed = project({ ...dev, resources: [...model.resources, { id: "resource:devUrl", path: ["devUrl"], kind: "input", fromEnv: "LOCAL_DEV_URL", absent: false }] });
     assert.ok(!shadowed.resources.some((resource) => resource.id === "framework:deployment.localDevUrl"), "a name the catalog declares stays the catalog's");
     // Supply connections reach each framework input like any input's, carrying its requirement.
     const wires = (graph: ModeModel, models = { dev, prod }) => project(graph, models).edges.filter((edge) => edge.to.startsWith("framework:")).map((edge) => `${edge.from} ${edge.label} ${edge.inputRequirement?.status}`);
     const devWires = wires(dev);
-    for (const wire of ["envfile:dev CDK_APP_NAME configured", "envfile:dev PGADMIN_HOST_PORT missing", "envfile:dev SKIP_EMAIL_VERIFICATION missing", "envfile:dev LOCAL_AWS_PROFILE optional", "envfile:prod USE_FRONTEND_CUSTOM_DOMAIN missing"]) assert.ok(devWires.includes(wire), wire);
+    for (const wire of ["envfile:dev LOCAL_DEV_URL configured", "envfile:dev PGADMIN_HOST_PORT missing", "envfile:dev SKIP_EMAIL_VERIFICATION missing", "envfile:dev LOCAL_AWS_PROFILE optional", "envfile:prod USE_FRONTEND_CUSTOM_DOMAIN missing"]) assert.ok(devWires.includes(wire), wire);
     assert.ok(!devWires.some((wire) => wire.startsWith("envfile:prod POSTGRES_HOST_PORT")), "production never reads a local setting");
     assert.ok(!devWires.some((wire) => wire.includes("RETAIN_STATEFUL_RESOURCES")), "an optional line nobody wrote has no connection");
     const devFile = projected.resources.find((item) => item.id === "envfile:dev")!.deploymentFile!;

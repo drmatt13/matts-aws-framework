@@ -147,11 +147,14 @@ test("production warns without an SES sender, and backups default to a week", ()
   );
 });
 
-test("a production target ignores CDK_APP_NAME in its inputs file, and says so", () => {
-  const target = { name: "my-aws-app-prod", mode: "prod" as const, account: "111122223333" };
+test("a CDK_APP_NAME left in an inputs file names nothing, and says so", () => {
+  const target = { name: "my-aws-app-prod", mode: "prod" as const, account: "111122223333", origin: "declared" as const };
   const resolved = resolveDeploymentInputs({ getContext: () => undefined, env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", CDK_APP_NAME: "my-aws-app" }, target });
   assert.equal(resolved.deploymentName, "my-aws-app-prod");
-  assert.ok(resolved.warnings.some((warning) => /CDK_APP_NAME=my-aws-app in the inputs file is ignored/.test(warning)));
+  assert.ok(resolved.warnings.some((warning) => /CDK_APP_NAME=my-aws-app in the inputs file is no longer read; deployments are named <app>-<stage> from framework:app in cdk-app\/cdk.json \(this one is my-aws-app-prod\)\. Remove the line\./.test(warning)));
+  const dev = resolveDeploymentInputs({ getContext: () => undefined, env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", CDK_APP_NAME: "my-aws-app" }, target: { name: "acme-dev", mode: "dev" } });
+  assert.equal(dev.deploymentName, "acme-dev");
+  assert.ok(dev.warnings.some((warning) => /CDK_APP_NAME=my-aws-app in the inputs file is no longer read/.test(warning)));
   assert.throws(() => resolveDeploymentInputs({ getContext: () => undefined, env: { CDK_DEFAULT_ACCOUNT: "999999999999", CDK_DEFAULT_REGION: "us-east-1" }, target }), /pinned to account 111122223333/);
   assert.throws(() => resolveDeploymentInputs({ getContext: () => undefined, env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", PROD_DEPLOYMENT: "false" }, target }), /PROD_DEPLOYMENT=false in the inputs file disagrees with this prod synth/);
 });

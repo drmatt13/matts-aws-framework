@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { DEV_DEPLOYMENT, PROD_DEPLOYMENT } from "./support/fake-aws-state";
 
 /**
  * A development and a production deployment in one account and region must not
@@ -81,23 +82,23 @@ test("development and production deployments in one account and region are disjo
   try {
     const devInputs = path.join(directory, "dev.env");
     const prodInputs = path.join(directory, "prod.env");
-    writeFileSync(devInputs, "CDK_APP_NAME=my-aws-app\nLOCAL_DEV_URL=http://localhost:3000\n");
+    writeFileSync(devInputs, "LOCAL_DEV_URL=http://localhost:3000\n");
     writeFileSync(prodInputs, "USE_FRONTEND_CUSTOM_DOMAIN=false\nUSE_COGNITO_CUSTOM_DOMAIN=false\n");
     const dev = synthesize(directory, "dev", devInputs);
     assert.equal(dev.status, 0, dev.output);
     const prod = synthesize(directory, "prod", prodInputs);
     assert.equal(prod.status, 0, prod.output);
 
-    assert.deepEqual([...identities(dev.templates)], [`my-aws-app/dev/${account}/${region}`]);
-    assert.deepEqual([...identities(prod.templates)], [`my-aws-app-prod/prod/${account}/${region}`]);
-    assert.ok(Object.keys(prod.templates).includes("my-aws-app-prod-RdsStack"), "production builds its database");
+    assert.deepEqual([...identities(dev.templates)], [`${DEV_DEPLOYMENT}/dev/${account}/${region}`]);
+    assert.deepEqual([...identities(prod.templates)], [`${PROD_DEPLOYMENT}/prod/${account}/${region}`]);
+    assert.ok(Object.keys(prod.templates).includes(`${PROD_DEPLOYMENT}-RdsStack`), "production builds its database");
     assert.ok(!Object.keys(dev.templates).some((stack) => stack.endsWith("-RdsStack")), "development builds none");
 
     const shared = [...physicalNames(dev.templates)].filter((name) => physicalNames(prod.templates).has(name));
     assert.deepEqual(shared, [], "no stack, physical name or export is shared");
 
     // Contract 2: every stack also records its identity as template metadata.
-    for (const [templates, deployment, mode] of [[dev.templates, "my-aws-app", "dev"], [prod.templates, "my-aws-app-prod", "prod"]] as const) {
+    for (const [templates, deployment, mode] of [[dev.templates, DEV_DEPLOYMENT, "dev"], [prod.templates, PROD_DEPLOYMENT, "prod"]] as const) {
       for (const [stack, template] of Object.entries(templates)) {
         const metadata = template.Metadata?.["framework:deployment"];
         assert.deepEqual([metadata?.contract, metadata?.owner, metadata?.deployment, metadata?.mode, metadata?.stack], [2, "matts-aws-framework", deployment, mode, stack.slice(deployment.length + 1)], stack);

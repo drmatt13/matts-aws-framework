@@ -72,6 +72,7 @@ const stackId = (name: string) => `${deployment.deploymentName}-${name}`;
 
 initializeFrameworkResources(app, {
   config: framework, mode, deployment: deployment.deploymentName, env: stackEnv,
+  lineage: { appId: selection.target.appId, stage: selection.target.stage },
   readers,
 });
 

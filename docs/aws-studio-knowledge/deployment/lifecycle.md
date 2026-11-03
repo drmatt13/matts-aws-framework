@@ -85,7 +85,7 @@ useful for seeing conditional declarations, input availability and local/cloud
 placement. It does not select credentials or authorize an AWS action.
 
 **Deployment destination** is a named identity with a mode, account and region.
-`framework:targets` in `cdk-app/cdk.json` can declare several destinations using the
+`framework:targets` in `cdk-app/cdk.json` can declare several stages (each `<app>-<stage>`) using the
 same mode, including a staging-named prod target. The deployment service selects a
 profile, resolves AWS identity and applies target pins. Studio's source graph and
 fixed input-file editors are not per-target projections of arbitrary custom input

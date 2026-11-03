@@ -122,6 +122,7 @@
   --color-map-muted: #9ba8b8;
   --color-map-focus: #a7d7ff;
   --color-map-rule: #3c485a;
+  --color-map-compose: #f26b78;
   --color-map-row: #26364b;
   /* Issues on the map: rules and glyphs match scene/look.ts ISSUE_COLOR; text is a lighter, readable tint. */
   --color-map-error: #ff5f6d;
@@ -146,6 +147,24 @@
   --shadow-popover: 0 12px 36px #0005;
   --animate-deploy-pulse: deploy-pulse 1.4s ease-in-out infinite;
   --animate-ws-pulse: ws-pulse 1.6s ease-in-out infinite;
+  --animate-compose-surface: compose-surface 800ms cubic-bezier(.2,.7,.3,1) both;
+  --animate-compose-settle: compose-settle 650ms ease-in-out both;
+  --animate-compose-float: compose-float 3.6s ease-in-out 800ms infinite;
+  @keyframes compose-surface {
+    0% { transform: translateY(3px) rotate(-6deg); }
+    45% { transform: translateY(-5px) rotate(7deg); }
+    72% { transform: translateY(1px) rotate(-3deg); }
+    100% { transform: translateY(0) rotate(0); }
+  }
+  @keyframes compose-settle {
+    0% { transform: translateY(0) rotate(0); }
+    35% { transform: translateY(-2px) rotate(3deg); }
+    100% { transform: translateY(3px) rotate(-6deg); }
+  }
+  @keyframes compose-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+  }
   @keyframes deploy-pulse { 50% { opacity: 0.35; } }
   @keyframes ws-pulse { 50% { opacity: 0.5; } }
 }

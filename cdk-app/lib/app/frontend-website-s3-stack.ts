@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as cdk from "aws-cdk-lib";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -30,7 +31,7 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
       this,
       "StripApiPrefixFunction",
       {
-        name: `${this.stackName}-strip-api-prefix`,
+        name: cloudFrontFunctionName(this.stackName, "strip-api-prefix"),
         autoPublish: true,
         functionConfig: {
           comment: "Strip /api before forwarding requests to HTTP API Gateway",
@@ -135,7 +136,7 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
       agent.path, this.routingStore ? true : agent.runtimeArn,
     ]));
     const routeFunction = new cloudfront.CfnFunction(this, "AgentRouteFunction", {
-      name: `${this.stackName}-agent-route`,
+      name: cloudFrontFunctionName(this.stackName, "agent-route"),
       autoPublish: true,
       functionConfig: {
         comment: "Route declared agent paths to their AgentCore Runtime",
@@ -264,7 +265,7 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
         this,
         "SpaRewriteFunction",
         {
-          name: `${this.stackName}-spa-rewrite`,
+          name: cloudFrontFunctionName(this.stackName, "spa-rewrite"),
           autoPublish: true,
           functionConfig: {
             comment: "Rewrite extensionless SPA routes to index.html",
@@ -440,4 +441,17 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
       exportName: `${this.stackName}:FrontendWebsiteBucketArn`,
     });
   }
+}
+
+/**
+ * A CloudFront function's name, which AWS limits to 64 characters. Names within
+ * the limit are `<stack>-<suffix>` exactly, as every deployed one is; a longer
+ * one keeps its suffix and trades the stack name's tail for a stable hash, so a
+ * long deployment name is not silently refused at deploy time.
+ */
+export function cloudFrontFunctionName(stackName: string, suffix: string): string {
+  const name = `${stackName}-${suffix}`;
+  if (name.length <= 64) return name;
+  const hash = createHash("sha256").update(name).digest("hex").slice(0, 8);
+  return `${stackName.slice(0, 64 - suffix.length - hash.length - 2).replace(/-+$/, "")}-${hash}-${suffix}`;
 }

@@ -1,11 +1,18 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { repositoryTargets } from "@repo/framework/deploy/node";
 
 /** Builds the JSON account fake-aws.mjs serves, and reads back the calls it saw. */
 
 export const FAKE_AWS = path.join(__dirname, "fake-aws.mjs");
 export const ACCOUNT = "734849394764";
 export const REGION = "us-east-1";
+/** The development and production stages' deployments, as this repository's cdk.json names them. */
+const STAGES = repositoryTargets(path.resolve(__dirname, "../../.."));
+export const DEV_DEPLOYMENT = STAGES.find((target) => target.stage === "dev")!.name;
+export const PROD_DEPLOYMENT = STAGES.find((target) => target.stage === "prod")!.name;
+/** framework:appId, which every stack is tagged with beside its stage. */
+export const APP_ID = STAGES[0]!.appId!;
 
 export interface FakeStack {
   StackName: string;
@@ -62,7 +69,7 @@ export function fakeAccount(state: Record<string, unknown>): FakeAccount {
   const statePath = path.join(directory, "state.json");
   writeFileSync(statePath, JSON.stringify({ identity: { Account: ACCOUNT, Arn: `arn:aws:sts::${ACCOUNT}:assumed-role/Dev/tester`, UserId: "AIDTEST" }, ...state }, null, 2));
   const inputs = path.join(directory, "dev.env");
-  writeFileSync(inputs, "CDK_APP_NAME=my-aws-app\n");
+  writeFileSync(inputs, "LOCAL_DEV_URL=http://localhost:3000\n");
   const config = path.join(directory, "config");
   writeFileSync(config, `[profile dev]\nregion = ${REGION}\nsso_session = corp\nsso_account_id = ${ACCOUNT}\nsso_role_name = Dev\n[sso-session corp]\nsso_start_url = https://example.awsapps.com/start\nsso_region = ${REGION}\n`);
   const credentials = path.join(directory, "credentials");

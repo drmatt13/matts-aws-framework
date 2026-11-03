@@ -18,7 +18,7 @@ function fixture(run: Runner = async () => { throw new Error("AWS must not run")
   writeFileSync(path.join(root, "cdk-app/.env.prod"), "RETAIN_STATEFUL_RESOURCES=false\n");
   let revision = "r1";
   const builder = { get current() { return { snapshot: { revision } }; }, refresh: async () => ({ snapshot: { revision: revision = "r2" } }) };
-  const deploy = { targets: () => [{ name: "job2-dev", mode: "dev" as const, origin: "personal" as const, account: "111122223333", region: "us-east-1" }] };
+  const deploy = { targets: () => [{ name: "job2-dev", mode: "dev" as const, origin: "implicit" as const, account: "111122223333", region: "us-east-1" }] };
   const service = new StatefulResourceService(root, builder, deploy, run);
   return { root, service, remove() { assert.ok(root.startsWith(cache + path.sep)); rmSync(root, { recursive: true }); } };
 }

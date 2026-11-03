@@ -475,7 +475,7 @@ from a completed assembly. It synthesizes and validates first, collects managed 
 stacks and dependencies, verifies the selected account, checks every existing secret's
 ownership and validates all inputs before uploading changes. Existing managed secrets can
 be reused without a local value; unchanged values create no version. Names remain
-`${CDK_APP_NAME}/secret/<NAME>`. Removed declarations never delete old secrets.
+`<deployment>/secret/<NAME>`. Removed declarations never delete old secrets.
 
 The command supplies complete secret ARNs as generated CloudFormation parameters and
 deploys that assembly. Synth and diff perform no secret upload and need no
@@ -1132,8 +1132,8 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 
 | File/source | Owner and purpose |
 | --- | --- |
-| cdk-app/cdk.json `framework:targets` | Committed deployment targets: name, mode, pinned account and region, inputs file. Production targets must pin their account |
-| cdk-app/.env.dev | Your development inputs, and the file Compose reads; CDK_APP_NAME names your own development deployment. Resource inputs and deployment settings are read from the file itself, never the shell; `-c` overrides either |
+| cdk-app/cdk.json `framework:app`, `framework:appId`, `framework:targets` | The app's name, its permanent id, and its stages. Each stage deploys as `<app>-<stage>` unless it sets `deployAs`; it carries mode (implied for `dev` and `prod`), pinned account and region, and inputs file. Production stages must pin their account |
+| cdk-app/.env.dev | Your development inputs, and the file Compose reads. Resource inputs and deployment settings are read from the file itself, never the shell; `-c` overrides either. No inputs file names a deployment |
 | cdk-app/.env.prod | Production inputs, read by `-c prodDeployment=true` commands unless the target names another inputs file |
 | cdk-app/.env.dev.template, cdk-app/.env.prod.template | Tracked references the two ignored files are generated from. There is no mode-less `cdk-app/.env`: the mode picks the file. Studio's CDK environment files island generates a missing file from its template, and its file inspectors edit/add variables through draft review |
 | Root .env | Exported development Compose/auth/replay/port controls. A production export never writes it |
@@ -1144,20 +1144,44 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | Service .env.example | Generated input documentation; no authored per-service env files |
 | docker-compose.yml | Local containers, launchers, read-only mounts, ports, readiness, and Watch; `x-framework-service`, the container every generated service starts from |
 | docker-compose.services.yml | Generated: one container per service that runs locally, included by docker-compose.yml |
-| cdk-app/deployment-inputs.ts | The deployment settings (CDK_APP_NAME, domains, SES sender, retention, …), declared with the catalog's builders: default, choices and a note for each |
+| cdk-app/deployment-inputs.ts | The deployment settings (domains, SES sender, retention, …), declared with the catalog's builders: default, choices and a note for each |
 | cdk-app/deployment.ts | What each deployment setting means for the graph: validation, production refusals and compatibility aliases |
 | cdk-app/framework-inputs.ts | The local development tooling's settings (Compose host ports, local AWS profile and region, warm Lambda processes, seeded test user), declared the same way with no defaults, and `REQUIRED_FRAMEWORK_INPUTS`: the framework lines each inputs file must write, matching its template. AWS Studio shows every framework setting as a framework-managed input group and flags a required one a file leaves unset |
 
 Each command states the graph it builds as CDK context: development unless it says
 `-c prodDeployment=true` (the deprecated `-c useLocalDevStack` is its inverse). The deployment
 is a target: `-c deployment=<name>`, the only production target when production is stated,
-or your own development deployment (CDK_APP_NAME). A declared target's mode must agree with
+or the `dev` stage, which exists as `<app>-dev` even when undeclared. A declared target's mode must agree with
 the stated one, a production target is never implied, and a pinned account or region is never
 synthesized for another. A leftover PROD_DEPLOYMENT line that agrees is a warning; one that
 disagrees stops the synth. A deployment setting is a declaration in deployment-inputs.ts, resolved
 by the same `resolveInput` as a workload input: `-c` context, then the inputs file, then its
 default; a blank line counts as unset and the shell is never read. New deployment-wide settings
 belong there and in deployment.ts plus tests; workload inputs belong in the resource catalog instead.
+
+**Deployment names.** One tracked name, `framework:app`, names every deployment: each
+`framework:targets` key is a stage deploying as `<app>-<stage>` (`dev` and `prod` imply their
+mode; any other stage states it), and the `dev` stage exists even when undeclared. A stage may
+set `"deployAs": "<name>"` to deploy under a name the app no longer derives; unknown keys in a
+stage are refused so a misspelling cannot move a deployment. `-c deployment` takes a deployment
+name, never a stage key; `-c cdkAppName` is a deprecated alias. A `CDK_APP_NAME` left in an
+inputs file names nothing and warns.
+
+**Deployment identity.** `framework:appId` is a UUID generated once (Studio adds it when the
+app is named or renamed) and never changed; a command without it stops and says how to add
+one. Every stack's tags (`framework:app-id`, `framework:stage`) and template metadata carry
+it with the stage, so discovery knows which app and stage a deployment is under any name. The
+deploy guard uses that before creating a deployment: a production deployment is refused while
+the same app's stage is deployed in that account and region under another name, with the
+`deployAs` that keeps it; a development one proceeds and notes the earlier deployment still
+running. Renaming the app in Studio looks in AWS by the same identity and records `deployAs`
+for each production stage it finds deployed; when it cannot look, it records nothing and the
+deploy guard decides. Studio's Deploy page shows a stage found under another name ("Deployed
+as …") and keeps that name in one reviewed change. A copy of the repository carries the id, so
+its deployments are recognized too; a different app started from a copy needs a new id.
+
+A CloudFront function name over AWS's 64 characters is shortened with a stable hash; shorter
+names are exactly `<stack>-<suffix>`.
 
 What a stack belongs to is recorded in AWS, not inferred from its name. Every stack carries
 the `framework:deployment:v1` output (deployment, mode, account, region), and
@@ -1168,7 +1192,7 @@ create, or one from before the output existed) is identified from its deployed t
 or refused.
 
 The principal deployment settings are the target (`-c prodDeployment`, `-c deployment`,
-`framework:targets`, CDK_APP_NAME), RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS,
+`framework:app`, `framework:targets`), RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS,
 COGNITO_SES_FROM_EMAIL (with optional COGNITO_SES_FROM_NAME and COGNITO_SES_REGION),
 SKIP_EMAIL_VERIFICATION (development only), frontend/Cognito custom-domain toggles and
 certificate pairs, and optional Google credentials. WebSocket API Gateway is framework managed;
@@ -1284,9 +1308,11 @@ Choose one AWS account and region for the whole application deployment, includin
 its VPCs and the database. Pin a shared deployment's destination in `cdk-app/cdk.json`:
 
 ```json
+"framework:app": "application",
+"framework:appId": "<a UUID, generated once>",
 "framework:targets": {
-  "application-prod": {
-    "mode": "prod", "account": "111122223333", "region": "us-east-1",
+  "prod": {
+    "account": "111122223333", "region": "us-east-1",
     "inputs": "cdk-app/.env.prod"
   }
 }

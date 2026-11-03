@@ -15,9 +15,11 @@ import type {
   FrontendSettingsReview,
 } from "../../../shared/frontend-release";
 import type {
-  DeploymentIdentityRequest,
-  DeploymentIdentityReview,
+  DeploymentStageRequest,
+  DeploymentStageReview,
 } from "../../../shared/deployment-identities";
+import { deploymentNameFor } from "../../../../packages/framework/src/deploy/targets";
+import { useStudio } from "../../studio";
 
 // Native disclosures retain their open-content rhythm without styling nested forms.
 const releaseDisclosureClasses = "open:[&>:not(summary)]:mt-3 open:[&>:not(summary)]:mb-0";
@@ -436,6 +438,7 @@ export function FrontendRelease({
   );
 }
 
+/** Adds a framework:targets stage, which deploys as `<app>-<stage>`. Existing stages are never renamed. */
 export function DeploymentIdentities({
   account,
   region,
@@ -446,20 +449,23 @@ export function DeploymentIdentities({
   onCreated: (name: string, mode: "dev" | "prod") => void;
 }) {
   const queryClient = useQueryClient();
+  const application = useStudio().snapshot.application;
+  // A stage is tagged with the app's id as well as named after it: both must exist first.
+  const app = application?.appId ? application.name : undefined;
   const query = useQuery({
     queryKey: ["deployment-identities"],
     queryFn: () =>
-      call<{ hash: string; authority: string; targets: { name: string; mode: string }[] }>(
+      call<{ hash: string; problem?: string; targets: { name: string; mode: string; stage?: string }[] }>(
         "/frontend-release/identities",
       ),
   });
-  const [input, setInput] = useState<DeploymentIdentityRequest>({
-    mode: "dev",
-    name: "",
+  const [input, setInput] = useState<DeploymentStageRequest>({
+    stage: "",
+    mode: "prod",
     account: account ?? "",
     region: region ?? "us-east-1",
   });
-  const [review, setReview] = useState<DeploymentIdentityReview>();
+  const [review, setReview] = useState<DeploymentStageReview>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -470,7 +476,7 @@ export function DeploymentIdentities({
       region: region ?? current.region,
     }));
   }, [account, region]);
-  const change = (patch: Partial<DeploymentIdentityRequest>) => {
+  const change = (patch: Partial<DeploymentStageRequest>) => {
     setInput({ ...input, ...patch });
     setReview(undefined);
   };
@@ -485,26 +491,40 @@ export function DeploymentIdentities({
       setBusy(false);
     }
   };
+  const stage = input.stage.trim();
   return (
     <details className={cx(statePanelClasses(), releaseDisclosureClasses)}>
-      <summary className="-my-2 cursor-pointer py-2 font-semibold">
-        Development &amp; production deployment names
-      </summary>
-      <p className="m-0 [&+p]:mt-2">{query.data?.authority}</p>
+      <summary className="-my-2 cursor-pointer py-2 font-semibold">Add a deployment stage</summary>
+      <p className="m-0 [&+p]:mt-2">
+        A stage such as staging deploys as {app ? <code>{app}-&lt;stage&gt;</code> : "<app>-<stage>"}.
+        Existing stages keep their names, and applying edits source only.
+      </p>
       <p className="m-0 [&+p]:mt-2 text-caption">
-        Existing targets:{" "}
-        {query.data?.targets?.map((target) => `${target.name} (${target.mode})`).join(", ") ||
+        Stages:{" "}
+        {query.data?.targets?.map((target) => `${target.stage ?? target.name} → ${target.name}`).join(", ") ||
           "none"}
         .
       </p>
-      <p className="m-0 [&+p]:mt-2">
-        Create a separate deployment identity below. Applying source does not rename, replace,
-        deploy or adopt existing AWS resources. Prod-mode staging is another named production
-        target.
-      </p>
+      {!app ? (
+        <p className="m-0 [&+p]:mt-2">
+          {application?.name
+            ? "Add this app's id in the navbar first: every stage's stacks are tagged with it."
+            : "Name this app in the navbar first: every stage deploys as its name plus the stage."}
+        </p>
+      ) : null}
       <div className="my-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] items-start gap-3">
         <label className={releaseFieldClasses}>
-          Environment
+          Stage
+          <TextInput
+            value={input.stage}
+            disabled={busy}
+            placeholder="staging"
+            onChange={(event) => change({ stage: event.target.value })}
+            className="w-full"
+          />
+        </label>
+        <label className={releaseFieldClasses}>
+          Mode
           <Select
             value={input.mode}
             disabled={busy}
@@ -512,18 +532,8 @@ export function DeploymentIdentities({
             className="w-full"
           >
             <option value="dev">Development</option>
-            <option value="prod">Production / staging</option>
+            <option value="prod">Production</option>
           </Select>
-        </label>
-        <label className={releaseFieldClasses}>
-          New deployment name
-          <TextInput
-            value={input.name}
-            disabled={busy}
-            placeholder="my-app-dev"
-            onChange={(event) => change({ name: event.target.value })}
-            className="w-full"
-          />
         </label>
         <label className={releaseFieldClasses}>
           Account
@@ -544,21 +554,26 @@ export function DeploymentIdentities({
           />
         </label>
       </div>
+      {app && stage ? (
+        <p className="m-0 [&+p]:mt-2 text-caption">
+          Deploys as <code>{deploymentNameFor(app, stage)}</code>.
+        </p>
+      ) : null}
       <button
         className={buttonClasses({ variant: "quiet", size: "regular" })}
-        disabled={busy || !query.data}
+        disabled={busy || !query.data || !app || !stage}
         onClick={() =>
           void work(async () =>
             setReview(
-              await call<DeploymentIdentityReview>("/frontend-release/identities/review", {
-                identity: input,
+              await call<DeploymentStageReview>("/frontend-release/identities/review", {
+                stage: { ...input, stage },
                 hash: query.data!.hash,
               }),
             ),
           )
         }
       >
-        Review new deployment source
+        Review new stage
       </button>
       {query.error ? (
         <p role="alert" className="m-0 [&+p]:mt-2">
@@ -576,10 +591,7 @@ export function DeploymentIdentities({
         </p>
       ) : null}
       {review ? (
-        <section
-          aria-label="Deployment identity source review"
-          className="[&>*+*]:mt-3 [&>*+*]:mb-0"
-        >
+        <section aria-label="Deployment stage source review" className="[&>*+*]:mt-3 [&>*+*]:mb-0">
           {review.warnings.map((warning) => (
             <p key={warning}>{warning}</p>
           ))}
@@ -601,7 +613,7 @@ export function DeploymentIdentities({
             disabled={busy}
             onClick={() =>
               void work(async () => {
-                const result = await call<{ name: string; message: string }>(
+                const result = await call<{ name: string; mode: "dev" | "prod"; message: string }>(
                   "/frontend-release/identities/apply",
                   { id: review.id },
                 );
@@ -609,11 +621,11 @@ export function DeploymentIdentities({
                 setReview(undefined);
                 await query.refetch();
                 await queryClient.invalidateQueries({ queryKey: ["deploy", "overview"] });
-                onCreated(result.name, input.mode);
+                onCreated(result.name, result.mode);
               })
             }
           >
-            Apply new deployment source
+            Apply new stage
           </button>
         </section>
       ) : null}

@@ -33,7 +33,7 @@ export const WORKFLOW_BINDINGS_VERSION = 1;
 
 export interface WorkflowBindingDocument {
   readonly version: number;
-  /** `CDK_APP_NAME`: which deployment these bindings belong to. */
+  /** The deployment these bindings belong to. */
   readonly deployment: string;
   readonly account: string;
   readonly region: string;

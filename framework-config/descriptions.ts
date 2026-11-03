@@ -103,11 +103,10 @@ export const descriptions = {
   "envfile:cdk": "Values for the inputs, secrets and settings that CDK synthesis and the local tooling read. Development reads cdk-app/.env.dev and production reads cdk-app/.env.prod; both files stay private and out of git.",
   "envfile:dev": "Development inputs, read by development synthesis and by Docker Compose and the local tooling.",
   "envfile:prod": "Production inputs, read by production synthesis. Saving does not deploy infrastructure.",
-  "framework:deployment": "Framework-managed deployment settings: the name, domains, mail and retention options cdk-app/deployment-inputs.ts reads from the CDK inputs files at synthesis. Workloads never read them. Each file supplies its own values; none takes a default.",
+  "framework:deployment": "Framework-managed deployment settings: the domains, mail and retention options cdk-app/deployment-inputs.ts reads from the CDK inputs files at synthesis. Workloads never read them. Each file supplies its own values; none takes a default.",
   "framework:database": "Framework-managed production database settings: instance, storage, backup, replica and proxy options the production database declaration reads from cdk-app/.env.prod at synthesis. Development builds no RDS. None takes a default.",
   "framework:local": "Framework-managed local development settings: host ports, the local AWS profile and region, warm Lambda processes and the seeded test user that Docker Compose and the local tooling read from cdk-app/.env.dev. Nothing here is deployed. None takes a default.",
   // Framework-managed inputs: variables the framework itself reads from the CDK inputs files.
-  "framework:deployment.cdkAppName": "Names your own development deployment; stacks are named <CDK_APP_NAME>-<StackName>. Give each developer a distinct name that is not a declared target's. A production deployment takes its name from its framework:targets entry in cdk-app/cdk.json instead.",
   "framework:deployment.localDevUrl": "Local frontend origin a development deployment trusts for Cognito sign-in callbacks, CORS and the local dev servers.",
   "framework:deployment.skipEmailVerification": "Development only: confirms new users without an emailed code. A production deployment refuses true, so leave it unset in cdk-app/.env.prod.",
   "framework:deployment.cognitoSesFromEmail": "Verified SES sender address for Cognito mail. Without one, Cognito's built-in sender is capped at about 50 emails a day, so production should send through SES.",

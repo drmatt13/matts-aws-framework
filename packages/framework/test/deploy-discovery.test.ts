@@ -60,9 +60,9 @@ test("lookalikes of a declared target with nothing deployed are listed as unreco
 
 test("repository targets are matched against what is deployed in this account and region", () => {
   const targets = [
-    ...parseTargets({ "my-aws-app-prod": { mode: "prod", account: context.account, region: context.region }, "other-prod": { mode: "prod", account: "111122223333" } }),
-    { name: "my-aws-app", mode: "dev" as const, origin: "personal" as const },
-    { name: "ghost-dev", mode: "dev" as const, origin: "personal" as const },
+    ...parseTargets({ prod: { account: context.account, region: context.region, deployAs: "my-aws-app-prod" }, "other-prod": { mode: "prod", account: "111122223333", deployAs: "other-prod" } }, "acme"),
+    { name: "my-aws-app", mode: "dev" as const, origin: "named" as const },
+    { name: "ghost-dev", mode: "dev" as const, origin: "implicit" as const },
   ];
   const found = discoverDeployments([v1("my-aws-app-CognitoStack", "my-aws-app", "prod"), v2("my-aws-app-prod-CognitoStack", "my-aws-app-prod", "prod")], context);
   const matched = matchTargets(targets, found, context);
@@ -71,4 +71,55 @@ test("repository targets are matched against what is deployed in this account an
   ]);
   assert.match(matched.find((target) => target.name === "my-aws-app")!.detail ?? "", /deployed as prod/);
   assert.match(matched.find((target) => target.name === "other-prod")!.detail ?? "", /Pinned to 111122223333/);
+});
+
+const APP = "5b7e3c1a-9d2f-4e6b-8a1c-3f0d2e9b7a64";
+const lineageTags = (appId: string, stage: string) => [{ Key: "framework:app-id", Value: appId }, { Key: "framework:stage", Value: stage }];
+
+test("a deployment carries the app and stage its stacks were deployed as, read from tags or template metadata", () => {
+  const tagged = (name: string, deployment: string, stage: string, appId = APP) => {
+    const stack = v2(name, deployment, "prod");
+    return { ...stack, Tags: [...stack.Tags!, ...lineageTags(appId, stage)] };
+  };
+  const found = discoverDeployments([
+    tagged("aws-studio-prod-CognitoStack", "aws-studio-prod", "prod"),
+    tagged("aws-studio-prod-DatabaseStack", "aws-studio-prod", "prod"),
+    v2("my-aws-app-prod-CognitoStack", "my-aws-app-prod", "prod"),
+    tagged("split-CognitoStack", "split", "prod"),
+    tagged("split-DatabaseStack", "split", "staging"),
+  ], context);
+  assert.deepEqual(found.deployments.map((deployment) => [deployment.name, deployment.appId ?? null, deployment.stage ?? null]), [
+    ["aws-studio-prod", APP, "prod"],
+    ["my-aws-app-prod", null, null],
+    ["split", null, null],
+  ], "stacks from before lineage, or that disagree, claim no stage");
+
+  // A failed first create has no tags in describe-stacks; its template's metadata still says.
+  const failed: ObservedStack = { StackName: "acme-prod-CognitoStack", StackId: arn("acme-prod-CognitoStack"), StackStatus: "ROLLBACK_COMPLETE" };
+  const template = { Metadata: { "framework:deployment": { contract: 2, owner: "matts-aws-framework", deployment: "acme-prod", mode: "prod", ...context, stack: "CognitoStack", appId: APP, stage: "prod" } } };
+  const recovered = discoverDeployments([failed], context, new Map([["acme-prod-CognitoStack", template]]), ["acme-prod"]);
+  assert.deepEqual(recovered.deployments.map((deployment) => [deployment.name, deployment.appId, deployment.stage]), [["acme-prod", APP, "prod"]]);
+});
+
+test("a target absent under its own name says which deployment of its stage this account already holds", () => {
+  const tagged = (name: string, deployment: string, mode: "dev" | "prod", stage: string, updated: string, appId = APP) => {
+    const stack = v2(name, deployment, mode, { CreationTime: updated });
+    return { ...stack, Tags: [...stack.Tags!, ...lineageTags(appId, stage)] };
+  };
+  const discovery = discoverDeployments([
+    tagged("aws-studio-prod-CognitoStack", "aws-studio-prod", "prod", "prod", "2026-11-01T00:00:00.000Z"),
+    tagged("aws-studio-dev-CognitoStack", "aws-studio-dev", "dev", "dev", "2026-11-01T00:00:00.000Z"),
+    tagged("older-dev-CognitoStack", "older-dev", "dev", "dev", "2026-10-01T00:00:00.000Z"),
+    tagged("other-app-prod-CognitoStack", "other-app-prod", "prod", "prod", "2026-11-02T00:00:00.000Z", "0f0e0d0c-0b0a-4908-8706-050403020100"),
+  ], context);
+  const targets = parseTargets({ dev: {}, prod: { account: context.account }, staging: { mode: "prod", account: context.account } }, "acme", APP);
+  assert.deepEqual(matchTargets(targets, discovery, context).map((target) => [target.name, target.status, target.deployedAs ?? null]), [
+    ["acme-dev", "absent", "aws-studio-dev"],
+    ["acme-prod", "absent", "aws-studio-prod"],
+    ["acme-staging", "absent", null],
+  ], "the most recent deployment of the same stage, never another app's");
+  const current = parseTargets({ prod: { account: context.account, deployAs: "aws-studio-prod" } }, "acme", APP);
+  assert.deepEqual(matchTargets(current, discovery, context).map((target) => [target.status, target.deployedAs ?? null]), [["deployed", null]]);
+  const anonymous = parseTargets({ prod: { account: context.account } }, "acme");
+  assert.equal(matchTargets(anonymous, discovery, context)[0]!.deployedAs, undefined, "without an app id nothing is matched by stage");
 });

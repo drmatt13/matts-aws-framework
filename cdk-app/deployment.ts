@@ -73,11 +73,11 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     warnings.push("[cdk-app] PROD_DEPLOYMENT in the inputs file is no longer read; the mode comes from -c prodDeployment. Remove the line.");
   }
 
-  // A production target is named by cdk.json; a CDK_APP_NAME beside it in the
-  // inputs file is someone expecting it to name the deployment.
-  const authoredName = resolved(settings.cdkAppName);
-  if (target?.mode === "prod" && authoredName.state === "supplied" && authoredName.value !== target.name) {
-    warnings.push(`[cdk-app] CDK_APP_NAME=${authoredName.value} in the inputs file is ignored: this production deployment is the target ${target.name}. Remove the line.`);
+  // Deployments are named in cdk-app/cdk.json alone. A CDK_APP_NAME left in an
+  // inputs file is someone expecting it to name the deployment, so say it does not.
+  const retiredName = env.CDK_APP_NAME?.trim();
+  if (retiredName) {
+    warnings.push(`[cdk-app] CDK_APP_NAME=${retiredName} in the inputs file is no longer read; deployments are named <app>-<stage> from framework:app in cdk-app/cdk.json${target ? ` (this one is ${target.name})` : ""}. Remove the line.`);
   }
 
   // A target pinned to an account or region is never synthesized for another:
@@ -174,11 +174,13 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     );
   }
 
-  const deploymentName = target?.name ?? text(settings.cdkAppName)!;
+  // Commands always pass the target bin/app.ts resolved; only unit tests call
+  // this without one, and they read the placeholder.
+  const deploymentName = target?.name ?? UNTARGETED_DEPLOYMENT;
 
   if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(deploymentName)) {
     throw new Error(
-      `cdkAppName/CDK_APP_NAME must be 1-63 lowercase letters, numbers, or hyphens, start with a letter, and not end with a hyphen. Received: ${deploymentName}`,
+      `The deployment name must be 1-63 lowercase letters, numbers, or hyphens, start with a letter, and not end with a hyphen. Received: ${deploymentName}`,
     );
   }
 
@@ -433,6 +435,9 @@ const splitCsv = (value: string | undefined): readonly string[] => {
  * CDK context keys that differ from the key a declaration derives from its
  * variable name, or older spellings still honored, in the order they are read.
  */
+/** The deployment name a target-less call (a unit test) resolves; commands always pass a target. */
+export const UNTARGETED_DEPLOYMENT = "untargeted";
+
 const CONTEXT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   frontendCloudfrontCertificateArn: ["frontendCloudFrontCertificateArn", "frontendCloudfrontCertificateArn"],
   prodCloudfrontCertificateArn: ["prodCloudFrontCertificateArn", "prodCloudfrontCertificateArn"],
@@ -479,8 +484,8 @@ const normalizeFrontendUrl = (url: string) =>
 
 // Cognito rejects a hosted-UI prefix containing any of these, with only
 // "Invalid request provided: AWS::Cognito::UserPoolDomain" to explain itself.
-// The default cdkAppName ("matts-aws-framework") contains "aws", so the
-// generated prefix has to strip them rather than pass the name through.
+// A deployment such as aws-studio-dev can contain one, so the generated prefix
+// has to strip them rather than pass the name through.
 const COGNITO_RESERVED_WORDS = ["aws", "amazon", "cognito"];
 
 const stripCognitoReservedWords = (value: string) =>

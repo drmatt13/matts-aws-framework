@@ -590,6 +590,11 @@ export interface Snapshot {
   readonly revision: string;
   readonly generatedAt: string;
   readonly repositoryRoot: string;
+  /**
+   * framework:app in cdk-app/cdk.json, which names every deployment, and framework:appId,
+   * which identifies them under any name; the navbar shows and renames the app.
+   */
+  readonly application?: { readonly name?: string; readonly appId?: string; readonly problem?: string; readonly legacy?: boolean; readonly needsId?: boolean };
   readonly models: { readonly dev: ModeModel; readonly prod: ModeModel };
   readonly source: SourceIndex;
   /** sha256 of each studio-editable file, which a plan is checked against before a write. */

@@ -26,6 +26,7 @@ import { Detail, type MoreAction } from "./deploy/Detail";
 import { PlanReview } from "./deploy/PlanReview";
 import { Rail, type RailRow } from "./deploy/Rail";
 import { ServiceLogs, Teardown } from "./deploy/Teardown";
+import { KeepDeployedName } from "./deploy/KeepDeployedName";
 import { DeploymentIdentities, FrontendRelease } from "./deploy/FrontendRelease";
 import { LifecycleDisclosure } from "./DataRetention";
 import { useStudio } from "../studio";
@@ -58,6 +59,7 @@ export function Deploy() {
     region?: string;
   }>();
   const [serviceLogs, setServiceLogs] = useState<string>();
+  const [keepName, setKeepName] = useState<{ stage: string; mode: "dev" | "prod"; deployAs: string }>();
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "refuse" | "info" }[]>([]);
   const [liveEvents, setLiveEvents] = useState<Record<string, StackEventView[]>>({});
   const startedHere = useRef(new Set<string>());
@@ -303,6 +305,7 @@ export function Deploy() {
             detail: status?.detail,
             context: selectedContext,
             profile,
+            appId: overview.targets.find((target) => target.appId)?.appId,
             problem,
             profileKind: overview.profiles.find((entry) => entry.name === profile)?.kind,
             local: overview.local,
@@ -370,6 +373,9 @@ export function Deploy() {
         break;
       case "delete":
         setTeardown({ deployment: name, mode: row.mode, region: row.target?.region });
+        break;
+      case "deploy-as":
+        if (row.target?.stage && action.deployAs) setKeepName({ stage: row.target.stage, mode: row.mode, deployAs: action.deployAs });
         break;
     }
   };
@@ -467,6 +473,7 @@ export function Deploy() {
             onSelect={select}
             known={Boolean(discovery)}
             local={overview.local}
+            targetsProblem={overview.targetsProblem}
           />
           {row ? (
             <Detail
@@ -581,6 +588,14 @@ export function Deploy() {
                 );
             });
           }}
+        />
+      ) : null}
+      {keepName ? (
+        <KeepDeployedName
+          stage={keepName.stage}
+          mode={keepName.mode}
+          deployAs={keepName.deployAs}
+          onClose={() => setKeepName(undefined)}
         />
       ) : null}
       {teardown && profile ? (

@@ -568,12 +568,11 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                             <TriangleAlert size={12} strokeWidth={2.5} className="shrink-0 text-refuse" aria-hidden />
                           ) : null}
                         </span>
-                        <span
-                          aria-hidden
-                          className="flex group-hover/profile:[&_[data-enabled=false]]:text-ink group-aria-[current=true]/profile:[&_[data-enabled=false]]:text-ink"
-                        >
+                        <span aria-hidden className="flex">
                           <EnvironmentPills
                             availability={{ dev: modes.includes("dev"), prod: modes.includes("prod") }}
+                            enabledOnly
+                            className="min-h-[calc(1.5em+4px)]"
                           />
                         </span>
                         <span

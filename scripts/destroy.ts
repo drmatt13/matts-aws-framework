@@ -41,8 +41,10 @@ function options(args: readonly string[]): Options {
     const arg = args[index]!;
     return arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : args[index + 1];
   };
+  const legacyDeployment = value("cdk-app-name");
+  if (legacyDeployment) console.warn(`--cdk-app-name is deprecated. Use --deployment ${legacyDeployment} instead.`);
   return {
-    deployment: value("deployment") ?? value("cdk-app-name"), profile: value("profile") ?? process.env.AWS_PROFILE, region: value("region"),
+    deployment: value("deployment") ?? legacyDeployment, profile: value("profile") ?? process.env.AWS_PROFILE, region: value("region"),
     confirm: value("confirm"), plan: args.includes("--plan"), json: args.includes("--json"), retainFailed: args.includes("--retain-failed"),
     allowDisableProtection: args.includes("--allow-disable-protection"), context: contextFromArgs(args), apply: value("apply"), savePlan: value("save-plan"),
   };

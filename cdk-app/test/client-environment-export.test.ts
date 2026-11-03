@@ -120,6 +120,7 @@ test("export CLI reads saved custom mappings and the deployed mode's file, and p
     const custom = mappings({ kind: "input", name: "ENABLE_WEBSOCKET_API" });
     writeFileSync(path.join(fixture, "framework.config.ts"), 'import { defineResources, resource } from "@repo/framework/config"; import { PROD_DEPLOYMENT } from "@repo/framework/config/source"; export default { resources: defineResources({ enableWebSocketApi: resource.fromEnv("ENABLE_WEBSOCKET_API").enum("true", "false").default("true"), localPort: PROD_DEPLOYMENT ? undefined : resource.fromEnv("LOCAL_WS_DEV_SERVER_HOST_PORT") }) };');
     writeFileSync(path.join(fixture, "framework-config/client-environment.ts"), `export const clientEnvironment = ${JSON.stringify(custom)} as const;`);
+    writeFileSync(path.join(fixture, "cdk-app/cdk.json"), JSON.stringify({ context: { "framework:app": "fixture", "framework:appId": "0f9c2d1e-7b3a-4c5d-9e8f-1a2b3c4d5e6f" } }));
     writeFileSync(path.join(fixture, "cdk-app/.env.dev"), "PROD_DEPLOYMENT=false\nENABLE_WEBSOCKET_API=true\n");
     writeFileSync(path.join(fixture, "cdk-app/.env.prod"), "PROD_DEPLOYMENT=true\nENABLE_WEBSOCKET_API=false\n");
     const fake = path.join(fixture, "fake-aws.cjs");

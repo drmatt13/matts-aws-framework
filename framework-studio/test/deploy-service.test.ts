@@ -9,7 +9,7 @@ import type { AccountContext, AwsProfileInfo, DeployOverview, DiscoveryView, Job
 import { composeProjectName } from "../server/deploy/local";
 import { deployRouter } from "../server/deploy/routes";
 import { DeployService } from "../server/deploy/service";
-import { fakeAccount, frameworkStack, READ_VERB, REGION, type FakeAccount } from "../../cdk-app/test/support/fake-aws-state";
+import { DEV_DEPLOYMENT, PROD_DEPLOYMENT, fakeAccount, frameworkStack, READ_VERB, REGION, type FakeAccount } from "../../cdk-app/test/support/fake-aws-state";
 
 /**
  * Deploy & Run's routes end to end on a simulated machine: the real repository
@@ -48,7 +48,7 @@ before(async () => {
   mkdirSync(path.join(exportDirectory, "client-app"), { recursive: true });
   const inputs = path.join(account.directory, "inputs.env");
   writeFileSync(inputs, [
-    "CDK_APP_NAME=my-aws-app", `LOCAL_DEV_URL=http://127.0.0.1:${applicationPort}`, "LOCAL_AWS_REGION=us-east-1",
+    `LOCAL_DEV_URL=http://127.0.0.1:${applicationPort}`, "LOCAL_AWS_REGION=us-east-1",
     "LOCAL_API_DEV_SERVER_HOST_PORT=8080", "LOCAL_WS_DEV_SERVER_HOST_PORT=8081", "LOCAL_INVOCATION_RUNNER_HOST_PORT=8090",
     "WS_TESTER_HOST_PORT=3001", "POSTGRES_HOST_PORT=5432", "PGADMIN_HOST_PORT=5050",
     "USE_FRONTEND_CUSTOM_DOMAIN=false", "USE_COGNITO_CUSTOM_DOMAIN=false", `OPENAI_API_KEY=${SECRET_VALUE}`, "",
@@ -108,7 +108,7 @@ function logOf(job: JobView): string {
 test("the overview names this repository's targets, this machine's tools and the profiles, never a credential", async () => {
   const { status, body } = await get<DeployOverview>("/overview");
   assert.equal(status, 200);
-  assert.deepEqual(body.targets.map((entry) => [entry.name, entry.mode, entry.origin]), [["my-aws-app", "dev", "personal"], ["my-aws-app-prod", "prod", "declared"]]);
+  assert.deepEqual(body.targets.map((entry) => [entry.name, entry.mode, entry.origin]), [[DEV_DEPLOYMENT, "dev", "implicit"], [PROD_DEPLOYMENT, "prod", "declared"]]);
   assert.deepEqual(body.profiles.map((profile) => profile.name).sort(), ["default", "dev"]);
   assert.equal(body.prerequisites.find((item) => item.id === "docker")?.status, "warn");
   assert.equal(body.local.docker.engine, "stopped");
@@ -121,7 +121,7 @@ test("discovery resolves the profile's account and finds every deployment by its
   assert.equal(body.ok, true);
   assert.deepEqual([body.value.context.account, body.value.context.region], ["734849394764", REGION]);
   assert.deepEqual(body.value.deployments.map((entry) => [entry.name, entry.mode]), [["alex-dev", "dev"]]);
-  assert.deepEqual(body.value.targets.map((entry) => [entry.name, entry.status]), [["my-aws-app", "absent"], ["my-aws-app-prod", "absent"]]);
+  assert.deepEqual(body.value.targets.map((entry) => [entry.name, entry.status]), [[DEV_DEPLOYMENT, "absent"], [PROD_DEPLOYMENT, "absent"]]);
   assert.deepEqual(account.calls().map((call) => call.key).filter((key) => !READ_VERB.test(key)), []);
 });
 
@@ -159,17 +159,17 @@ test("an expired session is a classified problem the page can act on", async () 
 });
 
 test("operations are validated before anything runs", async () => {
-  assert.equal((await post("/operations", { kind: "deploy-plan", params: { deployment: "my-aws-app", profile: "nobody" } })).status, 400);
+  assert.equal((await post("/operations", { kind: "deploy-plan", params: { deployment: DEV_DEPLOYMENT, profile: "nobody" } })).status, 400);
   assert.match((await post<{ error: string }>("/operations", { kind: "deploy-plan", params: { deployment: "alex-dev", profile: "dev" } })).body.error, /not a deployment this repository declares/);
-  assert.match((await post<{ error: string }>("/operations", { kind: "deploy-plan", params: { deployment: "my-aws-app-prod", profile: "dev", autoApply: true } })).body.error, /applied only after its review/);
+  assert.match((await post<{ error: string }>("/operations", { kind: "deploy-plan", params: { deployment: PROD_DEPLOYMENT, profile: "dev", autoApply: true } })).body.error, /applied only after its review/);
   assert.equal((await post("/operations", { kind: "destroy", params: { deployment: "alex-dev", mode: "dev", profile: "dev", confirm: "alex" } })).status, 428);
   assert.equal((await post("/operations", { kind: "rm -rf", params: {} })).status, 404);
   for (const kind of ["constructor", "toString", "__proto__"]) assert.equal((await post("/operations", { kind, params: {} })).status, 404, kind);
-  assert.equal((await post("/operations", { kind: "local-start", params: { deployment: "my-aws-app-prod", profile: "dev" } })).status, 400);
+  assert.equal((await post("/operations", { kind: "local-start", params: { deployment: PROD_DEPLOYMENT, profile: "dev" } })).status, 400);
 });
 
 test("Development waits for explicit review, then applies, verifies and exports", async () => {
-  const planned = await operate("deploy-plan", { deployment: "my-aws-app", profile: "dev" });
+  const planned = await operate("deploy-plan", { deployment: DEV_DEPLOYMENT, profile: "dev" });
   assert.equal(planned.status, "succeeded", logOf(planned));
   const reviewed = (await get<PlanView>(`/plans/${planned.planId}`)).body;
   assert.equal(reviewed.confirmation.level, "click");
@@ -183,40 +183,40 @@ test("Development waits for explicit review, then applies, verifies and exports"
   assert.ok(plan.body.secrets.some((secret) => secret.name.endsWith("OPENAI_API_KEY")), "secrets are named");
   assert.doesNotMatch(JSON.stringify(plan.body), new RegExp(SECRET_VALUE), "and never valued");
   assert.doesNotMatch(logOf(job), new RegExp(SECRET_VALUE));
-  assert.match(readFileSync(path.join(exportDirectory, ".env"), "utf8"), /LOCAL_FRAMEWORK_DEPLOYMENT=my-aws-app/);
-  assert.ok(events.some((entry) => entry.event === "deploy-changed" && entry.data.deployment === "my-aws-app"));
+  assert.match(readFileSync(path.join(exportDirectory, ".env"), "utf8"), new RegExp(String.raw`LOCAL_FRAMEWORK_DEPLOYMENT=${DEV_DEPLOYMENT}`));
+  assert.ok(events.some((entry) => entry.event === "deploy-changed" && entry.data.deployment === DEV_DEPLOYMENT));
 
-  const status = await get<{ ok: boolean; value: StatusView }>("/status?profile=dev&deployment=my-aws-app&force=1");
+  const status = await get<{ ok: boolean; value: StatusView }>(`/status?profile=dev&deployment=${DEV_DEPLOYMENT}&force=1`);
   assert.equal(status.body.value.detail?.state.kind, "ready");
   assert.equal(status.body.value.detail?.local?.exported.fresh, true);
 });
 
 test("a production plan waits for review, and applying it needs the typed name", async () => {
   // A change set can reference only a secret that exists: creating it is asked for, not assumed.
-  const first = await operate("deploy-plan", { deployment: "my-aws-app-prod", profile: "dev" });
+  const first = await operate("deploy-plan", { deployment: PROD_DEPLOYMENT, profile: "dev" });
   assert.equal(first.status, "succeeded", logOf(first));
   const waiting = (await get<PlanView>(`/plans/${first.planId}`)).body;
   assert.equal(waiting.status, "needs-secrets");
   assert.equal((await post("/operations", { kind: "deploy-apply", params: { plan: waiting.key, profile: "dev" } })).status, 409);
   assert.equal((await operate("deploy-discard", { plan: waiting.key, profile: "dev" })).status, "succeeded");
 
-  const job = await operate("deploy-plan", { deployment: "my-aws-app-prod", profile: "dev", createSecrets: true });
+  const job = await operate("deploy-plan", { deployment: PROD_DEPLOYMENT, profile: "dev", createSecrets: true });
   assert.equal(job.status, "succeeded", logOf(job));
   const plan = (await get<PlanView>(`/plans/${job.planId}`)).body;
   assert.deepEqual([plan.status, plan.review, plan.identity.mode, plan.confirmation.level], ["ready", "change-set", "prod", "name"]);
   assert.ok(plan.uncertainties.some((line) => /Created before review/.test(line)), "the secret it created is disclosed");
   const refused = await post<{ error: string }>("/operations", { kind: "deploy-apply", params: { plan: plan.key, profile: "dev" } });
   assert.equal(refused.status, 428);
-  assert.match(refused.body.error, /Type my-aws-app-prod/);
+  assert.match(refused.body.error, new RegExp(String.raw`Type ${PROD_DEPLOYMENT}`));
   const discarded = await operate("deploy-discard", { plan: plan.key, profile: "dev" });
   assert.equal(discarded.status, "succeeded", logOf(discarded));
   assert.equal((await get(`/plans/${plan.key}`)).status, 404);
 });
 
 test("a production plan that fails part-way stays listed, unfinished, until it is discarded", async () => {
-  account.write({ ...account.read(), fakeCdk: { failPrepare: ["my-aws-app-prod-NetworkStack"] } });
+  account.write({ ...account.read(), fakeCdk: { failPrepare: [`${PROD_DEPLOYMENT}-NetworkStack`] } });
   try {
-    const job = await operate("deploy-plan", { deployment: "my-aws-app-prod", profile: "dev" });
+    const job = await operate("deploy-plan", { deployment: PROD_DEPLOYMENT, profile: "dev" });
     assert.equal(job.status, "failed");
     const plans = (await get<{ key: string; status: string }[]>("/plans")).body;
     const unfinished = plans.find((plan) => plan.key === job.planId);
@@ -232,20 +232,20 @@ test("a production plan that fails part-way stays listed, unfinished, until it i
 });
 
 test("starting development needs Docker, starts the stack detached, then watches it; stopping stops all of it", async () => {
-  const refused = await operate("local-start", { deployment: "my-aws-app", profile: "dev" });
+  const refused = await operate("local-start", { deployment: DEV_DEPLOYMENT, profile: "dev" });
   assert.equal(refused.status, "failed");
   assert.match(refused.summary ?? "", /Docker is not running/);
 
   const started = await operate("docker-start", {});
   assert.equal(started.status, "succeeded", logOf(started));
 
-  const job = await operate("local-start", { deployment: "my-aws-app", profile: "dev" });
+  const job = await operate("local-start", { deployment: DEV_DEPLOYMENT, profile: "dev" });
   assert.equal(job.status, "succeeded", logOf(job));
   const overview = (await get<DeployOverview>("/overview?force=1")).body;
   assert.equal(overview.local.startedBy, "studio");
   assert.equal(overview.local.watch.running, true);
   assert.equal(overview.local.client.running, true);
-  assert.equal(overview.local.exported.deployment, "my-aws-app");
+  assert.equal(overview.local.exported.deployment, DEV_DEPLOYMENT);
   assert.deepEqual(overview.local.services.map((entry) => [entry.name, entry.state, entry.oneShot]), [["api-dev-server", "running", false], ["postgres", "running", false], ["prisma-verify", "exited", true]]);
   assert.equal(overview.local.readiness?.state, "ready");
   assert.match(logOf(job), /no startup data writes/);
@@ -264,15 +264,15 @@ test("starting development needs Docker, starts the stack detached, then watches
 
 test("deleting needs the typed name; the teardown plan reads only, and the deletion follows it", async () => {
   const writesBefore = account.calls().filter((call) => !READ_VERB.test(call.key)).length;
-  const teardown = await get<{ ok: boolean; value: TeardownPlanView }>("/teardown?profile=dev&deployment=my-aws-app&mode=dev");
+  const teardown = await get<{ ok: boolean; value: TeardownPlanView }>(`/teardown?profile=dev&deployment=${DEV_DEPLOYMENT}&mode=dev`);
   assert.equal(teardown.body.ok, true);
   assert.ok(teardown.body.value.stacks.length >= 3);
   assert.equal(account.calls().filter((call) => !READ_VERB.test(call.key)).length, writesBefore, "the teardown plan wrote nothing");
 
-  const job = await operate("destroy", { deployment: "my-aws-app", mode: "dev", profile: "dev", confirm: "my-aws-app", review: teardown.body.value.key });
+  const job = await operate("destroy", { deployment: DEV_DEPLOYMENT, mode: "dev", profile: "dev", confirm: DEV_DEPLOYMENT, review: teardown.body.value.key });
   assert.equal(job.status, "succeeded", logOf(job));
   const remaining = account.read().regions[REGION].stacks.filter((stack: any) => stack.StackStatus !== "DELETE_COMPLETE").map((stack: any) => stack.StackName);
-  assert.deepEqual(remaining.filter((name: string) => name.startsWith("my-aws-app-")), [], "no development stack remains");
+  assert.deepEqual(remaining.filter((name: string) => name.startsWith(`${DEV_DEPLOYMENT}-`)), [], "no development stack remains");
   assert.ok(remaining.includes("alex-dev-CognitoStack"), "another deployment is untouched");
 });
 
@@ -281,7 +281,7 @@ test("a job's log is replayable from any line, and preferences remember the prof
   const all = (await get<{ lines: { seq: number }[] }>(`/jobs/${job.id}/log`)).body.lines;
   const rest = (await get<{ lines: { seq: number }[] }>(`/jobs/${job.id}/log?after=${all[2]!.seq}`)).body.lines;
   assert.deepEqual(rest.map((line) => line.seq), all.slice(3).map((line) => line.seq));
-  const saved = await post<{ profiles: Record<string, string> }>("/preferences", { deployment: "my-aws-app-prod", profile: "dev" });
-  assert.equal(saved.body.profiles["my-aws-app-prod"], "dev");
+  const saved = await post<{ profiles: Record<string, string> }>("/preferences", { deployment: PROD_DEPLOYMENT, profile: "dev" });
+  assert.equal(saved.body.profiles[PROD_DEPLOYMENT], "dev");
   assert.equal((await post("/preferences", { profile: "../../etc" })).status, 400);
 });

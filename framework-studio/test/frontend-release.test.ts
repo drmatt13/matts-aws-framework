@@ -16,10 +16,10 @@ function fixture(mode: "dev" | "prod" = "prod") {
   for (const directory of ["cdk-app", "framework-config", "scripts", "web"]) mkdirSync(path.join(root, directory));
   writeFileSync(path.join(root, "package.json"), '{"private":true}');
   writeFileSync(path.join(root, "scripts/export-cdk-outputs.mjs"), `import ${JSON.stringify(pathToFileURL(path.join(repository, "scripts/export-cdk-outputs.mjs")).href)};`);
-  writeFileSync(path.join(root, "cdk-app/cdk.json"), JSON.stringify({ context: { "framework:targets": { [`fixture-${mode}`]: { mode, account, region, inputs: "cdk-app/.env.staging" } } } }));
+  writeFileSync(path.join(root, "cdk-app/cdk.json"), JSON.stringify({ context: { "framework:app": "fixture", "framework:appId": "0f9c2d1e-7b3a-4c5d-9e8f-1a2b3c4d5e6f", "framework:targets": { [mode]: { mode, account, region, inputs: "cdk-app/.env.staging", deployAs: `fixture-${mode}` } } } }));
   writeFileSync(path.join(root, "cdk-app/.env.staging"), `PUBLIC_SETTING=public-from-target\nPRIVATE_SECRET=never-leak-secret\n`);
   writeFileSync(path.join(root, "cdk-app/.env.prod"), "PUBLIC_SETTING=wrong-conventional-file\n");
-  writeFileSync(path.join(root, "cdk-app/.env.dev"), "CDK_APP_NAME=old-dev\nPUBLIC_SETTING=wrong-development-file\nSECRET=preserve-me\n# human comment\n");
+  writeFileSync(path.join(root, "cdk-app/.env.dev"), "PUBLIC_SETTING=wrong-development-file\nSECRET=preserve-me\n# human comment\n");
   writeFileSync(path.join(root, "cdk-app/.env.dev.template"), "PUBLIC_SETTING=template-dev\n");
   writeFileSync(path.join(root, "cdk-app/.env.prod.template"), "PUBLIC_SETTING=template-prod\n");
   const binding = { kind: "input", name: "PUBLIC_SETTING" };
@@ -171,27 +171,30 @@ test("website output ownership and actual distribution origin are verified befor
   } finally { f.cleanup(); }
 });
 
-test("fresh dev/prod identity reviews preserve old target identities, comments and secrets and reject stale edits", () => {
+test("a new stage is added under framework:targets as <app>-<stage>, leaving every other stage and inputs file alone", () => {
   const f = fixture();
   try {
     const service = new DeploymentIdentityService(f.root);
-    const beforeEnv = readFileSync(path.join(f.root, "cdk-app/.env.dev"), "utf8");
+    const beforeDev = readFileSync(path.join(f.root, "cdk-app/.env.dev"), "utf8");
+    const beforeProd = readFileSync(path.join(f.root, "cdk-app/.env.prod"), "utf8");
     const original = JSON.parse(readFileSync(path.join(f.root, "cdk-app/cdk.json"), "utf8"));
-    const review = service.review({ mode: "dev", name: "campaign-dev", account, region }, service.load().hash);
-    assert.equal(readFileSync(path.join(f.root, "cdk-app/.env.dev"), "utf8"), beforeEnv);
-    assert.doesNotMatch(JSON.stringify(review), /preserve-me/);
+    const review = service.review({ stage: "staging", mode: "prod", account, region }, service.load().hash);
+    assert.equal(review.name, "fixture-staging");
+    assert.doesNotMatch(JSON.stringify(review), /preserve-me|never-leak-secret/);
+    assert.throws(() => service.review({ stage: "qa", mode: "prod", region }, service.load().hash), /needs its account/);
+    assert.throws(() => service.review({ stage: "Bad Stage", mode: "dev" }, service.load().hash), /lowercase letters/);
     service.apply(review.id);
-    const after = readFileSync(path.join(f.root, "cdk-app/.env.dev"), "utf8");
-    assert.match(after, /CDK_APP_NAME=.?campaign-dev/); assert.match(after, /SECRET=preserve-me\n# human comment/);
     const targets = JSON.parse(readFileSync(path.join(f.root, "cdk-app/cdk.json"), "utf8")).context["framework:targets"];
-    assert.deepEqual(targets["fixture-prod"], original.context["framework:targets"]["fixture-prod"]);
-    assert.deepEqual(targets["old-dev"], { mode: "dev", inputs: "cdk-app/.env.dev" }, "previous personal identity remains selectable");
-    assert.throws(() => service.review({ mode: "dev", name: "campaign-dev", account, region }, service.load().hash), /already exists/);
-    const prodBefore = readFileSync(path.join(f.root, "cdk-app/.env.prod"), "utf8");
-    const prod = service.review({ mode: "prod", name: "campaign-prod", account, region }, service.load().hash);
-    service.apply(prod.id); assert.equal(readFileSync(path.join(f.root, "cdk-app/.env.prod"), "utf8"), prodBefore, "prod target key is authoritative; no competing env value");
-    const stale = service.review({ mode: "dev", name: "campaign-next", account, region }, service.load().hash);
-    writeFileSync(path.join(f.root, "cdk-app/.env.dev"), after + "HUMAN_CHANGE=keep\n");
-    assert.throws(() => service.apply(stale.id), /Nothing was written/);
+    assert.deepEqual(targets.prod, original.context["framework:targets"].prod, "the existing stage keeps its pinned name");
+    assert.deepEqual(targets.staging, { mode: "prod", account, region, inputs: "cdk-app/.env.prod" });
+    assert.equal(readFileSync(path.join(f.root, "cdk-app/.env.dev"), "utf8"), beforeDev);
+    assert.equal(readFileSync(path.join(f.root, "cdk-app/.env.prod"), "utf8"), beforeProd);
+    assert.throws(() => service.review({ stage: "staging", mode: "prod", account, region }, service.load().hash), /already exists/);
+    const development = service.review({ stage: "qa", mode: "dev" }, service.load().hash);
+    assert.equal(development.name, "fixture-qa");
+    writeFileSync(path.join(f.root, "cdk-app/cdk.json"), readFileSync(path.join(f.root, "cdk-app/cdk.json"), "utf8") + " ");
+    assert.throws(() => service.apply(development.id), /Nothing was written/);
+    writeFileSync(path.join(f.root, "cdk-app/cdk.json"), JSON.stringify({ context: { "framework:targets": original.context["framework:targets"] } }));
+    assert.throws(() => service.review({ stage: "qa", mode: "dev" }, service.load().hash), /Name this app in the navbar/);
   } finally { f.cleanup(); }
 });

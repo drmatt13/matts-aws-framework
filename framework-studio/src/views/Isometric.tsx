@@ -60,6 +60,7 @@ import { CanvasTooltip, ResourceTooltip } from "./ResourceTooltip";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { MapEntityNavigator } from "./map/MapEntityNavigator";
 import { MapToolbar } from "./map/MapToolbar";
+import { ComposePreview } from "./map/ComposePreview";
 import { tagGroups, tagKeys, UNTAGGED_FILTER } from "../tag-groups";
 
 const TAG_VIEW_STORAGE = "framework-studio:isometric-tag-filter";
@@ -1156,7 +1157,11 @@ export function Isometric() {
       >
         <div
           data-ui="landscape"
-          className="relative min-h-0 flex-1 overflow-hidden bg-map-ground text-map-ink vp-800:min-h-45"
+          className={cx(
+            "relative flex-1 overflow-hidden bg-map-ground text-map-ink",
+            // Keep the dock clear of wrapped connection filters when a phone panel opens.
+            model.mode === "dev" ? "min-h-50 vp-800:min-h-70" : "min-h-0 vp-800:min-h-45",
+          )}
           ref={containerRef}
         >
           <canvas
@@ -1179,11 +1184,11 @@ export function Isometric() {
           />
           <div
             data-ui="landscape-bar landscape-connection-bar"
-            className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 top-3 z-3 items-start"
+            className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex flex-wrap gap-3 top-3 z-3 items-start"
           >
             <div
               data-ui="landscape-chips"
-              className="pointer-events-none flex max-w-full flex-wrap gap-2"
+              className="pointer-events-none flex min-w-0 max-w-full flex-1 flex-wrap gap-2 vp-700:basis-full"
               role="group"
               aria-label="Background connections"
               aria-describedby="connection-filter-help"
@@ -1236,26 +1241,32 @@ export function Isometric() {
                 </button>
               ) : null}
             </div>
+            {/* The side panel takes the stats' corner, so they hide rather than shift beside it. */}
+            {view === "closed" ? (
+              <span
+                data-ui="landscape-stats"
+                className="pointer-events-auto ml-auto max-w-full py-1 text-right text-step-minus1 text-map-muted vp-700:order-first vp-700:w-full vp-700:text-caption"
+              >
+                {scene.nodes.length} resources · {scene.edges.length} connections
+                {activeTagKey && filterValue !== undefined ? (
+                  <>
+                    {" "}
+                    ·{" "}
+                    <strong className="font-medium text-map-text">
+                      {tagMatchCount} {tagMatchCount === 1 ? "matches" : "match"} the tag filter
+                    </strong>
+                  </>
+                ) : null}
+              </span>
+            ) : null}
           </div>
           <div
             data-ui="landscape-bar landscape-bottom"
             className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 bottom-3 items-end"
           >
-            <span
-              data-ui="landscape-stats"
-              className="pointer-events-auto max-w-[calc(100%-72px)] px-1 pb-[6px] text-step-minus1 text-[#7f8a98] vp-700:max-w-[calc(100%-64px)] vp-700:text-caption vp-700:whitespace-normal"
-            >
-              {scene.nodes.length} resources · {scene.edges.length} connections
-              {activeTagKey && filterValue !== undefined ? (
-                <>
-                  {" "}
-                  ·{" "}
-                  <strong className="font-medium text-[#c9d3df]">
-                    {tagMatchCount} {tagMatchCount === 1 ? "matches" : "match"} the tag filter
-                  </strong>
-                </>
-              ) : null}
-            </span>
+            <div className="flex min-w-0 max-w-[calc(100%-52px)] flex-col items-start gap-2">
+              {model.mode === "dev" ? <ComposePreview motion={motion} /> : null}
+            </div>
             <span className="pointer-events-none flex-1" />
             <AddMenu />
           </div>

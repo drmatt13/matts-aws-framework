@@ -1,8 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { parseTargets, TARGETS_CONTEXT_KEY } from "@repo/framework/deploy";
-import { deploymentInputsFile, readCdkContext, resolveRepositoryTarget } from "@repo/framework/deploy/node";
+import { deploymentInputsFile, repositoryTargets, resolveRepositoryTarget } from "@repo/framework/deploy/node";
 import { collectDeploymentStacks, type DeploymentStack } from "../../scripts/resource-export";
 import { DEFAULT_FRONTEND_RELEASE, FRONTEND_RELEASE_FILE, type FrontendDestination, type FrontendManifestEntry, type FrontendReleaseResult, type FrontendReleaseReview, type FrontendReleaseSettings, type FrontendSettingsReview } from "../shared/frontend-release";
 import { OperationError } from "./deploy/registry";
@@ -98,7 +97,7 @@ export class FrontendReleaseService {
     } while (token);
     const { identity, stacks: owned } = collectDeploymentStacks(stacks, input.deployment);
     if (identity.account !== caller.Account || identity.region !== input.region) fail("The profile/account/region does not match deployed identity.");
-    const declared = parseTargets(readCdkContext(this.root)[TARGETS_CONTEXT_KEY]).find(target => target.name === input.deployment);
+    const declared = repositoryTargets(this.root).find(target => target.name === input.deployment);
     if (declared && (declared.mode !== identity.mode || (declared.account && declared.account !== identity.account) || (declared.region && declared.region !== identity.region))) fail("The declared target pins disagree with deployed identity.");
     const selection = declared ? resolveRepositoryTarget({ root: this.root, get: key => key === "deployment" ? input.deployment : key === "prodDeployment" ? identity.mode === "prod" : undefined, env: this.env }) : { inputsFile: this.env.FRAMEWORK_INPUTS_FILE ? path.resolve(this.env.FRAMEWORK_INPUTS_FILE) : deploymentInputsFile(this.root, identity.mode) };
     const website = owned.find(stack => stack.StackName === `${identity.deployment}-FrontendWebsiteS3Stack`);

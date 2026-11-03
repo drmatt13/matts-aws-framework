@@ -31,7 +31,7 @@ const source: IdentitySource = {
 };
 const overview = {
   targets: [
-    { name: "qa-dev", mode: "dev", origin: "personal", account: "111122223333", region: "us-east-1" },
+    { name: "qa-dev", mode: "dev", origin: "implicit", account: "111122223333", region: "us-east-1" },
     { name: "qa-prod", mode: "prod", origin: "declared", account: "444455556666", region: "us-west-2" },
   ],
   preferences: { profile: "dev", deployment: "qa-dev", profiles: {} },

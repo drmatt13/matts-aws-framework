@@ -18,8 +18,10 @@
     ]
   },
   "context": {
+    "framework:app": "studio-test",
+    "framework:appId": "e8ad43bc-f6a6-4947-b7a7-ca2147118920",
     "framework:targets": {
-      "my-aws-app-prod": {
+      "prod": {
         "mode": "prod",
         "account": "734849394764",
         "region": "us-east-1",

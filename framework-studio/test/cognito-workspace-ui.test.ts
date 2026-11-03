@@ -114,7 +114,7 @@ async function workspaceApi(policy = false, simulate?: () => Promise<Response>) 
     if (url.endsWith("/identity-policy/simulate") && simulate) return simulate();
     throw new Error(`Unexpected request in offline workspace test: ${url}`);
   });
-  const overview = { targets: [{ name: "qa-dev", mode: "dev", origin: "personal", account: "111122223333", region: "us-east-1" }, { name: "qa-prod", mode: "prod", origin: "declared", account: "444455556666", region: "us-west-2" }], preferences: { profile: "dev", deployment: "qa-dev", profiles: { "qa-prod": "production-readonly" } }, profiles: [{ name: "dev", kind: "login", region: "us-east-1" }] } as unknown as DeployOverview;
+  const overview = { targets: [{ name: "qa-dev", mode: "dev", origin: "implicit", account: "111122223333", region: "us-east-1" }, { name: "qa-prod", mode: "prod", origin: "declared", account: "444455556666", region: "us-west-2" }], preferences: { profile: "dev", deployment: "qa-dev", profiles: { "qa-prod": "production-readonly" } }, profiles: [{ name: "dev", kind: "login", region: "us-east-1" }] } as unknown as DeployOverview;
   return { workspace, identity, deploy, overview, policies };
 }
 

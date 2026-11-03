@@ -1,7 +1,6 @@
 import path from "node:path";
 import { listAwsProfiles } from "../../../scripts/aws-profiles";
 import { isAwsProfileName } from "../../shared/aws-connections";
-import { DEFAULT_DEPLOYMENT_NAME } from "@repo/framework/deploy";
 import { repositoryTargets } from "@repo/framework/deploy/node";
 import type { DeployOverview, DockerView, DriftView, JobView, ManagedProcessView, OperationRequest, PrerequisiteView } from "../../shared/deploy";
 import { JobManager } from "./jobs";
@@ -81,20 +80,24 @@ export class DeployService {
     };
   }
 
-  /** The deployments this repository intends: declared targets and your development deployment. */
+  /** The deployments this repository intends, as cdk-app/cdk.json names them: the dev stage first. */
   targets(): RepositoryTarget[] {
-    let targets: RepositoryTarget[];
+    return this.listTargets().targets;
+  }
+
+  private listTargets(): { targets: RepositoryTarget[]; problem?: string } {
     try {
-      targets = repositoryTargets(this.root, this.env).map((entry) => ({
-        name: entry.name, mode: entry.mode, origin: entry.origin,
-        ...(entry.account ? { account: entry.account } : {}), ...(entry.region ? { region: entry.region } : {}), ...(entry.inputs ? { inputs: entry.inputs } : {}),
-      }));
-    } catch {
-      targets = [];
+      return {
+        targets: repositoryTargets(this.root).map((entry) => ({
+          name: entry.name, mode: entry.mode, origin: entry.origin,
+          ...(entry.stage ? { stage: entry.stage } : {}), ...(entry.appId ? { appId: entry.appId } : {}), ...(entry.deployAs ? { deployAs: entry.deployAs } : {}),
+          ...(entry.account ? { account: entry.account } : {}), ...(entry.region ? { region: entry.region } : {}), ...(entry.inputs ? { inputs: entry.inputs } : {}),
+        })),
+      };
+    } catch (error) {
+      // The CLI refuses the same configuration; say why rather than show an empty list.
+      return { targets: [], problem: error instanceof Error ? error.message : String(error) };
     }
-    // With no CDK_APP_NAME and no declared development target, the CLI deploys the default name.
-    if (!targets.some((entry) => entry.mode === "dev")) targets.unshift({ name: DEFAULT_DEPLOYMENT_NAME, mode: "dev", origin: "personal" });
-    return targets;
   }
 
   private probeDocker(force = false): Promise<DockerView> {
@@ -122,7 +125,8 @@ export class DeployService {
   async overview(force = false): Promise<DeployOverview> {
     const [{ prerequisites, docker }, profiles] = await Promise.all([this.probe(force), this.observer.profiles(force)]);
     const local = await this.local.view(docker, { watch: this.managed("local-watch"), client: this.managed("local-client") });
-    return { targets: this.targets(), prerequisites, local, jobs: this.jobs.list(), preferences: this.preferences.read(), profiles };
+    const { targets, problem } = this.listTargets();
+    return { targets, ...(problem ? { targetsProblem: problem } : {}), prerequisites, local, jobs: this.jobs.list(), preferences: this.preferences.read(), profiles };
   }
 
   async requireProfile(name: unknown): Promise<string> {

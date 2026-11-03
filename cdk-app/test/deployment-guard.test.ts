@@ -97,3 +97,40 @@ test("a deployment that is changing, or stuck, is not deployed over", () => {
   assert.equal(assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "UPDATE_FAILED", dev)]).value).kind, "failed");
   assert.equal(assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "UPDATE_ROLLBACK_COMPLETE", dev)]).value).kind, "rolled-back");
 });
+
+const APP = "5b7e3c1a-9d2f-4e6b-8a1c-3f0d2e9b7a64";
+function tagged(name: string, deployment: string, mode: "dev" | "prod", stage: string, appId = APP): ObservedStack {
+  return {
+    StackName: name, StackStatus: "UPDATE_COMPLETE", StackId: `arn:aws:cloudformation:${dev.region}:${dev.account}:stack/${name}/id`,
+    Tags: [
+      { Key: "framework:owner", Value: "matts-aws-framework" }, { Key: "framework:deployment", Value: deployment },
+      { Key: "framework:mode", Value: mode }, { Key: "framework:contract", Value: "2" },
+      { Key: "framework:app-id", Value: appId }, { Key: "framework:stage", Value: stage },
+    ],
+  };
+}
+
+test("a new production deployment is refused while the same app's stage is deployed under another name", () => {
+  const acme: DeploymentIdentity = { ...prod, deployment: "acme-prod" };
+  const live = readers([tagged("aws-studio-prod-CognitoStack", "aws-studio-prod", "prod", "prod")]).value;
+  assert.throws(() => assertDeploymentAllowed(acme, ["--all"], live, new Set(), { lineage: { appId: APP, stage: "prod" } }), (error: Error) => {
+    assert.match(error.message, /^aws-studio-prod already deploys this app's prod stage in 111122223333\/eu-west-2, with its own users, database and secrets\. Deploying acme-prod would start a second production beside it, so nothing was changed\./);
+    assert.match(error.message, /set "deployAs": "aws-studio-prod" in framework:targets\.prod \(cdk-app\/cdk\.json\).*For a second production, declare another stage\./);
+    return true;
+  });
+  // Another app's production, another stage, or no lineage at all: nothing to protect.
+  assert.equal(assertDeploymentAllowed(acme, ["--all"], readers([tagged("other-prod-CognitoStack", "other-prod", "prod", "prod", "0f0e0d0c-0b0a-4908-8706-050403020100")]).value, new Set(), { lineage: { appId: APP, stage: "prod" } }).kind, "absent");
+  assert.equal(assertDeploymentAllowed(acme, ["--all"], live, new Set(), { lineage: { appId: APP, stage: "staging" } }).kind, "absent");
+  assert.equal(assertDeploymentAllowed(acme, ["--all"], live).kind, "absent");
+  // Updating the deployment that holds the stage is what deployAs is for.
+  const kept: DeploymentIdentity = { ...prod, deployment: "aws-studio-prod" };
+  assert.equal(assertDeploymentAllowed(kept, ["--all"], live, new Set(), { lineage: { appId: APP, stage: "prod" } }).kind, "ready");
+});
+
+test("a new development deployment proceeds, noting the earlier one of its stage still running", () => {
+  const notes: string[] = [];
+  const acme: DeploymentIdentity = { ...dev, deployment: "acme-dev" };
+  const state = assertDeploymentAllowed(acme, ["--all"], readers([tagged("aws-studio-dev-CognitoStack", "aws-studio-dev", "dev", "dev")]).value, new Set(), { lineage: { appId: APP, stage: "dev" }, note: (message) => notes.push(message) });
+  assert.equal(state.kind, "absent");
+  assert.deepEqual(notes, [`aws-studio-dev, an earlier deployment of this app's dev stage, is still in 111122223333/eu-west-2 and keeps billing until you delete it. To keep deploying to it instead of acme-dev, set "deployAs": "aws-studio-dev" in framework:targets.dev (cdk-app/cdk.json); AWS Studio's Deploy page does this in one reviewed step.`]);
+});

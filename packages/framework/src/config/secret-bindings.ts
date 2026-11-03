@@ -53,7 +53,7 @@ export interface SyncedSecret {
 
 export interface SecretBindingDocument {
   readonly version: number;
-  /** `CDK_APP_NAME`: which deployment these secrets belong to. */
+  /** The deployment these secrets belong to, `<app>-<stage>` or its stage's `deployAs`. */
   readonly deployment: string;
   readonly account: string;
   readonly region: string;
@@ -96,10 +96,10 @@ export function secretBindingKey(variable: string): string {
  * command and by the CDK app.
  *
  * Keyed on the deployment name rather than a stack name, because the upload
- * happens before any stack exists — and because `CDK_APP_NAME` is already
+ * happens before any stack exists — and because the deployment name is already
  * the one thing that tells two deployments of this repository apart. Two real
- * environments are two `CDK_APP_NAME`s, so the CDK graph a deployment happens
- * to be building is deliberately not part of the name.
+ * environments are two deployments, so the CDK graph a deployment happens to be
+ * building is deliberately not part of the name.
  *
  * Both sides derive it from the same two inputs, so a renamed declaration is a
  * secret the deploy command creates and uploads under the new name rather than
@@ -109,7 +109,7 @@ export function frameworkSecretName(deployment: string, variable: string): strin
   const name = `${deployment}/secret/${variable}`;
   if (!SECRET_NAME_PATTERN.test(name)) {
     throw new SecretBindingError(
-      `Secret name "${name}" is not a Secrets Manager name. Names are at most 512 of the characters A-Z a-z 0-9 / _ + = . @ - and are derived from CDK_APP_NAME and the declaration's environment variable.`,
+      `Secret name "${name}" is not a Secrets Manager name. Names are at most 512 of the characters A-Z a-z 0-9 / _ + = . @ - and are derived from the deployment name and the declaration's environment variable.`,
     );
   }
   return name;
@@ -120,10 +120,10 @@ export function frameworkSecretName(deployment: string, variable: string): strin
  *
  * Deployment-independent by construction: generation must not depend on which
  * deployment happens to be configured on the machine running it, so the name is
- * shown with `CDK_APP_NAME` left standing.
+ * shown with the deployment left standing.
  */
 export function frameworkSecretNameTemplate(variable?: string): string {
-  return `\${CDK_APP_NAME}/secret/${variable ?? "<NAME>"}`;
+  return `<deployment>/secret/${variable ?? "<NAME>"}`;
 }
 
 function requireString(document: Record<string, unknown>, field: string): string {

@@ -1,12 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { parseEnv } from "node:util";
 import type { DeploymentMode } from "./identity";
-import { parseTargets, selectTarget, TARGETS_CONTEXT_KEY, type DeploymentTarget } from "./targets";
+import { APP_CONTEXT_KEY, APP_ID_CONTEXT_KEY, projectTargets, selectTarget, TARGETS_CONTEXT_KEY, type DeploymentTarget } from "./targets";
 
 /**
  * The repository's half of target resolution: cdk.json, the inputs files and
- * the command line. The CDK app, the deploy, export and status scripts and
+ * the command line. Names come from cdk.json alone, never from an inputs file. The CDK app, the deploy, export and status scripts and
  * Studio all resolve a target through `resolveRepositoryTarget`, so they cannot
  * disagree about which deployment, mode and inputs file a command means.
  */
@@ -54,23 +53,22 @@ export function deploymentInputsFile(root: string, mode: DeploymentMode): string
   return path.join(root, "cdk-app", `.env.${mode}`);
 }
 
-function readInputs(file: string): Record<string, string | undefined> {
-  return existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {};
-}
-
 export function resolveRepositoryTarget(input: {
   readonly root: string;
   readonly get: (key: string) => unknown;
   readonly env: Readonly<Record<string, string | undefined>>;
-  /** False for callers that only need the target's name and pins, not its authored inputs. */
+  /** False for callers that only need the target's name, not its authored inputs. */
   readonly requireInputs?: boolean;
 }): RepositoryTarget {
   // A path the caller typed, so relative to where they ran the command, as it always was.
   const override = input.env.FRAMEWORK_INPUTS_FILE ? path.resolve(input.env.FRAMEWORK_INPUTS_FILE) : undefined;
-  const developmentInputs = override ?? deploymentInputsFile(input.root, "dev");
   const context = readCdkContext(input.root);
-  const declared = parseTargets(input.get(TARGETS_CONTEXT_KEY) ?? context[TARGETS_CONTEXT_KEY]);
-  const selection = selectTarget({ get: input.get, declared, personalName: readInputs(developmentInputs).CDK_APP_NAME });
+  const targets = projectTargets({
+    app: input.get(APP_CONTEXT_KEY) ?? context[APP_CONTEXT_KEY],
+    appId: input.get(APP_ID_CONTEXT_KEY) ?? context[APP_ID_CONTEXT_KEY],
+    targets: input.get(TARGETS_CONTEXT_KEY) ?? context[TARGETS_CONTEXT_KEY],
+  });
+  const selection = selectTarget({ get: input.get, targets });
   let inputsFile: string;
   if (override) inputsFile = override;
   else if (selection.target.inputs) {
@@ -83,15 +81,12 @@ export function resolveRepositoryTarget(input: {
 }
 
 /**
- * Every deployment this repository intends: the targets cdk.json declares, and
- * the developer's own development deployment (CDK_APP_NAME) unless it is one.
+ * Every deployment this repository intends, as cdk.json names them: the
+ * development stage first, then the declared stages.
  */
-export function repositoryTargets(root: string, env: Readonly<Record<string, string | undefined>> = process.env): DeploymentTarget[] {
-  const declared = parseTargets(readCdkContext(root)[TARGETS_CONTEXT_KEY]);
-  const developmentInputs = env.FRAMEWORK_INPUTS_FILE ? path.resolve(env.FRAMEWORK_INPUTS_FILE) : deploymentInputsFile(root, "dev");
-  const personal = readInputs(developmentInputs).CDK_APP_NAME?.trim();
-  if (!personal || declared.some((target) => target.name === personal)) return declared;
-  return [{ name: personal, mode: "dev", origin: "personal", inputs: path.relative(root, developmentInputs).replace(/\\/g, "/") }, ...declared];
+export function repositoryTargets(root: string): DeploymentTarget[] {
+  const context = readCdkContext(root);
+  return projectTargets({ app: context[APP_CONTEXT_KEY], appId: context[APP_ID_CONTEXT_KEY], targets: context[TARGETS_CONTEXT_KEY] });
 }
 
 /** The graph the catalog is evaluated for, as the CDK app's entry point resolved it. */

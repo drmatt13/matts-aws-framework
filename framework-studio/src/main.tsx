@@ -126,6 +126,11 @@ const graphqlRoute = createRoute({
   path: "/graphql",
   component: lazyRouteComponent(() => import("./views/GraphQL"), "GraphQL"),
 });
+const agentLabRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/test",
+  component: lazyRouteComponent(() => import("./views/AgentLab"), "AgentLab"),
+});
 const cognitoRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/cognito",
@@ -184,6 +189,7 @@ const routeTree = rootRoute.addChildren([
   databaseRoute,
   deployRoute,
   graphqlRoute,
+  agentLabRoute,
   cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]),
   identityRoute,
   legacyIdentityRoute,

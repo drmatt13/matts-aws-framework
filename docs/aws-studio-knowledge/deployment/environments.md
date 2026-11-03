@@ -23,12 +23,12 @@ There are exactly two `DeploymentMode`s: **dev** and **prod**. A named deploymen
 | Concept | Owner / current behavior |
 | --- | --- |
 | Mode | [identity.ts](../../../packages/framework/src/deploy/identity.ts): `DeploymentMode`; explicit CDK context selects prod, with deprecated inverse local context supported |
-| Named target | `parseTargets`, `selectTarget` in [targets.ts](../../../packages/framework/src/deploy/targets.ts): `framework:targets` in cdk.json, personal dev name or named selection; declared prod targets require account pinning |
+| Named target | `projectTargets`, `selectTarget` in [targets.ts](../../../packages/framework/src/deploy/targets.ts): `framework:app`, `framework:appId` and `framework:targets` stages in cdk.json, each `<app>-<stage>` unless it sets `deployAs`, with the implicit `dev` stage; declared prod targets require account pinning. Stacks carry the app id and stage (`framework:app-id`, `framework:stage` tags and metadata); `stageDeployments` in [discovery.ts](../../../packages/framework/src/deploy/discovery.ts) finds a stage under any name |
 | Input selection | `resolveRepositoryTarget` in [node.ts](../../../packages/framework/src/deploy/node.ts): target inputs/override or conventional `cdk-app/.env.dev` / `.env.prod`; repository-root `.env` is generated output |
 | Bootstrap | [main.ts](../../../cdk-app/bin/main.ts) / [app.ts](../../../cdk-app/bin/app.ts) establish mode/target before loading the composition |
 | Identity | `DeploymentIdentity`: deployment, mode, account, region; output contract plus newer template metadata/tags establish ownership |
 | Studio graph | [inputs.ts](../../../framework-studio/server/inputs.ts) / evaluators build fixed dev/prod projections, not one graph for every named target's custom input file |
-| Studio operations | The active Source mode supplies its saved AWS profile; operational workspaces retain their explicit target and region. The navbar does not select an AWS destination. Status, plan, drift and teardown evidence is keyed to connection and destination; changes clear transient approvals. Database operations retain independent target and approval boundaries |
+| Studio operations | The active Source mode supplies its saved AWS profile; operational workspaces retain their explicit target and region. The navbar does not select an AWS destination; its app-name editor ([AppName.tsx](../../../framework-studio/src/views/AppName.tsx), [app-name.ts](../../../framework-studio/server/app-name.ts)) names deployments without selecting one. Status, plan, drift and teardown evidence is keyed to connection and destination; changes clear transient approvals. Database operations retain independent target and approval boundaries |
 
 Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal routed workloads/tasks/workflows/agents execute locally. Prod builds the cloud-enabled application, network/database/frontend as configured. WebSocket API Gateway is framework managed in both modes. Handler deploy settings, including per-environment input conditions, determine which routes and Lambdas exist. `deploy` lanes remain distinct from these modes; see [configuration predicates](../framework/configuration.md).
 
@@ -43,11 +43,16 @@ Selection checks require command/target mode agreement and refuse accidental pro
 
 Development export supplies generated root environment/resource manifest and browser settings. Production output/export uses its production destinations rather than seeding development. Protected Studio input editing addresses only the two fixed mode files; custom target input paths are not a general file browser. [Secrets](secrets.md) owns the private-value boundaries.
 
-Deploy's **Development & production deployment names** editor adds independent target
-keys through a reviewed source change; it never renames an existing key or resource.
-Changing the personal dev default preserves its old identity as an explicit target.
-The prod/staging target key remains authoritative; no competing `.env.prod`
-CDK_APP_NAME is added. Interactive Studio startup creates missing conventional input
+Deploy's **Add a deployment stage** editor adds a stage through a reviewed source change;
+it never renames an existing stage, `deployAs` or resource, and edits no inputs file. Renaming
+the app from the navbar never changes `framework:appId`; it moves development to the new name
+and sets `deployAs` for each production stage that a read-only AWS discovery (with the
+Production profile) shows deployed, by app id and stage under any name. When AWS cannot be
+checked it sets nothing: the deploy guard ([deployment-guard.ts](../../../scripts/deployment-guard.ts))
+refuses to create a production deployment while the same app's stage is deployed under another
+name, and Deploy's "Deployed as …" finding keeps that name in one reviewed change
+(`KeepDeployedName.tsx`, `/app-name/deploy-as/review`).
+Interactive Studio startup creates missing conventional input
 files from their own mode's template, preserving existing files and excluding custom
 target paths. Studio shows them as one CDK environment that edits both side by side;
 the physical storage and deployment input selection remain separate by mode.

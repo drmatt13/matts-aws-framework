@@ -139,7 +139,7 @@ attributes, never presentation classes or assertions about utility strings.
 
 ## Navigation and workspace rhythm
 
-The application bar owns the repository identity, seven view links and the **Source**
+The application bar owns the app's name (renamed in place from its pencil), seven view links and the **Source**
 Development/Production selector, which sits at the right on every route. The navbar
 uses a 52px row on desktop, 89px with two rows at 760px and below, and 129px with
 three rows at 560px and below. Route changes never add or remove source controls.

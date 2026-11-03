@@ -41,7 +41,7 @@ Resources live in `framework-config/resources.ts`. Declare a stack there with
 `resource.stack<MyStack>()`, end the stack's constructor with `linkResources(this, resources.myStack)`,
 then reference its fields, attributes and grants in workloads.
 `npm run deploy:resources -- --all --profile <PROFILE>` handles secret synchronization,
-deployment, and development export of your development deployment (`CDK_APP_NAME`); add
+deployment, and development export of the dev stage (`<app>-dev`, from `framework:app`); add
 `-c prodDeployment=true` for the production target declared in `cdk-app/cdk.json`.
 That flag also chooses the inputs file: `cdk-app/.env.dev` or `cdk-app/.env.prod`. Root `.env`
 contains Compose controls in dev; workload identifiers use the ignored

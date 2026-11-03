@@ -1,4 +1,5 @@
 import type { Mode, ModeModel, ModelResource, Snapshot } from "../shared/model";
+import { applicationSummary } from "./app-name";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -214,6 +215,7 @@ export class SnapshotBuilder {
       revision: `${this.generation}-${content.slice(0, 12)}`,
       generatedAt: new Date().toISOString(),
       repositoryRoot: this.repositoryRoot,
+      application: applicationSummary(this.repositoryRoot),
       models,
       source: built.index,
       files,

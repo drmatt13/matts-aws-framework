@@ -46,6 +46,9 @@ export interface DiscoveredDeploymentView {
   readonly state: DeploymentStateView;
   readonly stacks: readonly StackView[];
   readonly lastUpdated?: string;
+  /** The app id and stage its stacks say it was deployed as. */
+  readonly appId?: string;
+  readonly stage?: string;
 }
 
 export interface TargetView {
@@ -54,9 +57,17 @@ export interface TargetView {
   readonly account?: string;
   readonly region?: string;
   readonly inputs?: string;
-  readonly origin: "declared" | "personal" | "named";
+  /** The framework:targets stage; absent for a deployment named only on the command line. */
+  readonly stage?: string;
+  /** framework:appId, which with the stage identifies the deployment under any name. */
+  readonly appId?: string;
+  /** The target's `deployAs`, which names it instead of `<app>-<stage>`. */
+  readonly deployAs?: string;
+  readonly origin: "declared" | "implicit" | "named";
   readonly status: "deployed" | "absent" | "conflict" | "elsewhere";
   readonly detail?: string;
+  /** Absent under its own name, while this app's same stage is deployed here as this one. */
+  readonly deployedAs?: string;
 }
 
 export interface DeploymentRecordView {
@@ -293,6 +304,8 @@ export interface DeployPreferences {
 /** What the page needs in one read: everything that is not an AWS observation. */
 export interface DeployOverview {
   readonly targets: readonly Omit<TargetView, "status" | "detail">[];
+  /** Why cdk-app/cdk.json names no deployments (for example, no framework:app). */
+  readonly targetsProblem?: string;
   readonly prerequisites: readonly PrerequisiteView[];
   readonly local: LocalRunView;
   readonly jobs: readonly JobView[];

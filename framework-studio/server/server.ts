@@ -25,6 +25,8 @@ import { deployRouter } from "./deploy/routes";
 import { FrontendReleaseService } from "./frontend-release";
 import { DeploymentIdentityService } from "./deployment-identities";
 import { frontendReleaseRouter } from "./frontend-release-routes";
+import { AppNameService, type DeploymentDiscovery } from "./app-name";
+import { appNameRouter } from "./app-name-routes";
 import { readIdentityPolicyEdit } from "./identity-policy-source";
 import { IdentityPolicyService, identityPolicyRouter } from "./identity-policy";
 import { sendJson } from "./http";
@@ -42,6 +44,7 @@ import { StatefulResourceService, statefulResourceRouter } from "./stateful-reso
 import { webSocketDefaults } from "./websockets";
 import { AwsConnectionsService } from "./aws-connections/service";
 import { awsConnectionsRouter } from "./aws-connections/routes";
+import { AgentLabService, agentLabRouter } from "./agent-lab";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -248,6 +251,8 @@ async function configureServer(
   const inputs = new DeploymentInputService(repositoryRoot, builder);
   const commands = new CommandRunner(repositoryRoot);
   defer(() => commands.dispose());
+  const agentLab = new AgentLabService(repositoryRoot);
+  defer(() => agentLab.dispose());
   const clients = new Set<Response>();
   defer(() => { for (const client of clients) client.end(); clients.clear(); });
   let sourceWatch: SourceWatchState | undefined;
@@ -332,10 +337,15 @@ async function configureServer(
     next();
   });
   const send = sendJson;
+  api.use("/agent-lab", agentLabRouter(agentLab));
   api.use("/aws-connections", awsConnectionsRouter(connections));
   api.use("/identity-policy", identityPolicyRouter(new IdentityPolicyService(repositoryRoot, () => builder.current)));
   api.use("/database/sql", databaseSqlRouter(repositoryRoot));
-  api.use("/frontend-release", frontendReleaseRouter(new FrontendReleaseService(repositoryRoot), new DeploymentIdentityService(repositoryRoot), () => { void refresh([]); }));
+  const identities = new DeploymentIdentityService(repositoryRoot);
+  api.use("/frontend-release", frontendReleaseRouter(new FrontendReleaseService(repositoryRoot), identities, () => { void refresh([]); }));
+  // A rename review looks in AWS, read-only, through Deploy's own discovery.
+  const appName = new AppNameService(repositoryRoot, (profile, region) => deploy.discover(profile, region, false) as ReturnType<DeploymentDiscovery>);
+  api.use("/app-name", appNameRouter(appName, () => { void refresh([]); }));
   const identityService = new IdentityService(repositoryRoot, deploy);
   api.use("/identity", identityRouter(identityService, new CognitoOperations(repositoryRoot, identityService)));
   api.use("/stateful-resources", statefulResourceRouter(stateful, revision => published(revision)));
@@ -551,7 +561,7 @@ async function configureServer(
     // A file this studio just wrote, still holding exactly what it wrote, is
     // its own change; anything else was changed by someone else.
     const external = files.filter((file) => {
-      const owner = stateful.ownWrites.has(file) ? stateful.ownWrites : database.ownWrites.has(file) ? database.ownWrites : inputs.ownWrites.has(file) ? inputs.ownWrites : resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
+      const owner = stateful.ownWrites.has(file) ? stateful.ownWrites : database.ownWrites.has(file) ? database.ownWrites : inputs.ownWrites.has(file) ? inputs.ownWrites : resources.ownWrites.has(file) ? resources.ownWrites : appName.ownWrites.has(file) ? appName.ownWrites : identities.ownWrites.has(file) ? identities.ownWrites : edits.ownWrites;
       const written = owner.get(file);
       if (written === undefined) return true;
       try {

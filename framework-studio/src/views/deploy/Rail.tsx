@@ -22,6 +22,9 @@ function statusOf(row: RailRow, known: boolean): { label: string; tone: string }
   if (row.match?.status === "conflict" || row.deployment?.state.kind === "conflict")
     return { label: "Conflict", tone: "bad" };
   if (row.match?.status === "elsewhere") return { label: "Elsewhere", tone: "unknown" };
+  // Production's stage lives on under its old name; a development one starts fresh beside it.
+  if (row.match?.status === "absent" && row.match.deployedAs && row.mode === "prod")
+    return { label: `Deployed as ${row.match.deployedAs}`, tone: "warn" };
   const kind = row.deployment?.state.kind ?? "absent";
   const reviewOnly =
     kind === "in-progress" &&
@@ -63,6 +66,8 @@ export function Rail(props: {
   readonly onSelect: (name: string) => void;
   readonly known: boolean;
   readonly local: LocalRunView | undefined;
+  /** Why cdk-app/cdk.json names no deployments, shown where they would be listed. */
+  readonly targetsProblem?: string;
 }) {
   const [showUnrecognized, setShowUnrecognized] = useState(false);
   const repository = props.rows.filter((row) => row.section === "repository");
@@ -127,6 +132,11 @@ export function Rail(props: {
       <h2 className="mx-2 mt-0 mb-2 font-sans text-caption font-medium leading-[1.5] text-graphite">
         In this repository
       </h2>
+      {props.targetsProblem && !repository.length ? (
+        <p role="alert" className="mx-2 mt-0 mb-2 text-caption text-refuse wrap-anywhere">
+          {props.targetsProblem}
+        </p>
+      ) : null}
       <ul data-ui="rail-list" className="m-0 grid list-none gap-0.5 p-0">
         {repository.map(item)}
       </ul>

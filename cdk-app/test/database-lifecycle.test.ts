@@ -12,7 +12,7 @@ function synth(settings: Record<string, string> = {}) {
   try {
     const inputs = path.join(directory, "inputs.env");
     const output = path.join(directory, "templates.json");
-    writeFileSync(inputs, "CDK_APP_NAME=example\n");
+    writeFileSync(inputs, "LOCAL_DEV_URL=http://localhost:3000\n");
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("DATABASE_") && !key.startsWith("FRAMEWORK_DATABASE_") && key !== "RETAIN_STATEFUL_RESOURCES"));
     const result = spawnSync(process.execPath, ["--import", "tsx", path.join(__dirname, "fixtures/database-synth.ts"), output], {
       env: { ...env, FRAMEWORK_MODE: "prod", FRAMEWORK_INPUTS_FILE: inputs, ...settings }, encoding: "utf8", timeout: 90_000,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { listResourceDeclarations } from "@repo/framework/config";
-import { resolveDeploymentInputs } from "../deployment";
+import { resolveDeploymentInputs, UNTARGETED_DEPLOYMENT } from "../deployment";
 import { deploymentInputs } from "../deployment-inputs";
 
 const platform = { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1" };
@@ -9,10 +9,10 @@ const resolve = (file: Record<string, string> = {}, context: Record<string, unkn
   resolveDeploymentInputs({ getContext: (key) => context[key], env: { ...platform, ...file } });
 
 test("deployment settings resolve like workload inputs: -c, then the inputs file, then the declared default", () => {
-  assert.equal(resolve().deploymentName, "matts-aws-framework");
-  assert.equal(resolve({ CDK_APP_NAME: "from-file" }).deploymentName, "from-file");
-  assert.equal(resolve({ CDK_APP_NAME: "from-file" }, { cdkAppName: "from-context" }).deploymentName, "from-context");
-  assert.equal(resolve({ CDK_APP_NAME: " " }).deploymentName, "matts-aws-framework", "a blank line counts as unset");
+  // The name is the target's, from cdk-app/cdk.json; no inputs file or setting supplies one.
+  assert.equal(resolve().deploymentName, UNTARGETED_DEPLOYMENT);
+  assert.equal(resolve({ CDK_APP_NAME: "from-file" }, { cdkAppName: "from-context" }).deploymentName, UNTARGETED_DEPLOYMENT);
+  assert.equal(resolveDeploymentInputs({ getContext: () => undefined, env: platform, target: { name: "acme-dev", mode: "dev" } }).deploymentName, "acme-dev");
   assert.equal(resolve({ SKIP_EMAIL_VERIFICATION: "TRUE" }).requestedSkipEmailVerification, true, "choices match without regard to case");
   assert.throws(() => resolve({ USE_FRONTEND_CUSTOM_DOMAIN: "maybe" }), /USE_FRONTEND_CUSTOM_DOMAIN \(or -c useFrontendCustomDomain\) must be "true" or "false"\. Received: maybe/);
   assert.deepEqual(resolve({ GOOGLE_CLIENT_ID: "  client  ", GOOGLE_CLIENT_SECRET: "fixture" }).signInProviders, { google: { clientId: "client" } });

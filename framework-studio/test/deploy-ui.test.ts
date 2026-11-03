@@ -39,7 +39,7 @@ function deployed(name: string, mode: "dev" | "prod"): DiscoveredDeploymentView 
 
 function overview(patch: Partial<DeployOverview> = {}): DeployOverview {
   return {
-    targets: [{ name: "my-aws-app", mode: "dev", origin: "personal", inputs: "cdk-app/.env.dev" }, { name: "my-aws-app-prod", mode: "prod", origin: "declared", account: context.account, region: context.region }],
+    targets: [{ name: "my-aws-app", mode: "dev", origin: "implicit", inputs: "cdk-app/.env.dev" }, { name: "my-aws-app-prod", mode: "prod", origin: "declared", account: context.account, region: context.region }],
     prerequisites: [{ id: "docker", label: "Docker", status: "ok", summary: "Engine running." }],
     local: { project: "matts-aws-framework-new", docker: { engine: "running", desktop: true }, services: [], watch: { running: false }, client: { running: false }, exported: { client: false }, startedBy: "none", restartNeeded: [] },
     jobs: [], preferences: { profiles: {}, profile: "dev", deployment: "my-aws-app" },
@@ -307,10 +307,10 @@ test("a plan job finishing while another plan is under review does not replace i
 test("a target pinned to another region is read, and shown, from that region", async () => {
   const west = { ...context, region: "us-west-2" };
   const westDeployment: DiscoveredDeploymentView = { ...deployed("my-aws-app", "dev"), region: "us-west-2" };
-  const westDiscovery: DiscoveryView = { ...discovery([westDeployment]), context: west, targets: [{ name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2", status: "deployed" }] };
+  const westDiscovery: DiscoveryView = { ...discovery([westDeployment]), context: west, targets: [{ name: "my-aws-app", mode: "dev", origin: "implicit", region: "us-west-2", status: "deployed" }] };
   render({
-    "/deploy/overview": overview({ targets: [{ name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2" }] }),
-    "/deploy/discover": { ok: true, value: { ...discovery(), targets: [{ name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2", status: "elsewhere", detail: "Pinned elsewhere." }] } },
+    "/deploy/overview": overview({ targets: [{ name: "my-aws-app", mode: "dev", origin: "implicit", region: "us-west-2" }] }),
+    "/deploy/discover": { ok: true, value: { ...discovery(), targets: [{ name: "my-aws-app", mode: "dev", origin: "implicit", region: "us-west-2", status: "elsewhere", detail: "Pinned elsewhere." }] } },
     "/deploy/status": { ok: true, value: { ...westDiscovery, deployment: "my-aws-app", detail: { ...westDeployment, events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } } },
   });
   assert.ok(await ui.screen.findByText("Deployed · 1 stack", {}, { timeout: 3000 }));

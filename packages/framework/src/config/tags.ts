@@ -5,8 +5,8 @@ export interface DeclarationMetadata {
   readonly tags?: DeclarationTags;
 }
 
-/** CloudFormation and the framework reserve four deployment identity tags. */
-export const MAX_DECLARATION_TAGS = 46;
+/** The framework reserves six deployment identity tags: owner, deployment, mode, contract, app id and stage. */
+export const MAX_DECLARATION_TAGS = 44;
 const TAG_CHARACTERS = /^[\p{L}\p{N}\p{Z}_.:/=+@-]*$/u;
 
 /** Validate without resolving inputs, references or secrets; preserve values exactly. */
@@ -16,7 +16,7 @@ export function validateTags(value: unknown, origin = "Declaration tags"): Decla
     throw new Error(`${origin}: tags must be a plain object of AWS string key/value pairs.`);
   }
   const entries = Object.entries(value);
-  if (entries.length > MAX_DECLARATION_TAGS) throw new Error(`${origin}: at most ${MAX_DECLARATION_TAGS} tags are supported, leaving four of AWS's 50 slots for deployment ownership.`);
+  if (entries.length > MAX_DECLARATION_TAGS) throw new Error(`${origin}: at most ${MAX_DECLARATION_TAGS} tags are supported, leaving six of AWS's 50 slots for deployment identity.`);
   for (const [key, entry] of entries) {
     if (key === "__proto__") throw new Error(`${origin}: tag key "__proto__" cannot be preserved as a TypeScript object literal. Choose another application key.`);
     if (/^(?:aws:|framework:)/i.test(key) || key.toLowerCase() === "managedby") throw new Error(`${origin}: tag key ${JSON.stringify(key)} is reserved for AWS or framework ownership. Choose an application key.`);

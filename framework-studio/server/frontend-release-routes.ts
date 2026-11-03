@@ -20,7 +20,7 @@ export function frontendReleaseRouter(service: FrontendReleaseService, identitie
   router.get("/results/:id", (request, response) => sendJson(response, () => service.result(String(request.params.id))));
   router.post("/publish", (request, response) => sendJson(response, () => service.publish(String(request.body?.id ?? ""), String(request.body?.approval ?? ""))));
   router.get("/identities", (_request, response) => sendJson(response, () => identities.load()));
-  router.post("/identities/review", (request, response) => sendJson(response, () => identities.review(request.body?.identity, String(request.body?.hash ?? ""))));
+  router.post("/identities/review", (request, response) => sendJson(response, () => identities.review(request.body?.stage, String(request.body?.hash ?? ""))));
   router.post("/identities/apply", (request, response) => sendJson(response, () => { const result = identities.apply(String(request.body?.id ?? "")); changed(); return result; }));
   return router;
 }

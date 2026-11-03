@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import test from "node:test";
-import { ACCOUNT, fakeAccount, frameworkStack, READ_VERB, REGION } from "./support/fake-aws-state";
+import { ACCOUNT, fakeAccount, frameworkStack, READ_VERB, REGION, DEV_DEPLOYMENT, PROD_DEPLOYMENT } from "./support/fake-aws-state";
 
 const root = path.resolve(__dirname, "../..");
 function status(env: NodeJS.ProcessEnv, ...args: string[]) {
@@ -13,11 +13,11 @@ function status(env: NodeJS.ProcessEnv, ...args: string[]) {
 
 test("discovery finds framework deployments by their own records, reading only", () => {
   const account = fakeAccount({ regions: { [REGION]: { stacks: [
-    frameworkStack("my-aws-app", "CognitoStack", "dev", { contract: 1 }),
-    frameworkStack("my-aws-app", "DevLambdaReplayStack", "dev", { contract: 1 }),
-    frameworkStack("my-aws-app-prod", "CognitoStack", "prod"),
+    frameworkStack(DEV_DEPLOYMENT, "CognitoStack", "dev", { contract: 1 }),
+    frameworkStack(DEV_DEPLOYMENT, "DevLambdaReplayStack", "dev", { contract: 1 }),
+    frameworkStack(PROD_DEPLOYMENT, "CognitoStack", "prod"),
     frameworkStack("alex-dev", "CognitoStack", "dev", { status: "UPDATE_IN_PROGRESS" }),
-    { StackName: "my-aws-app-prod-OrphanStack", StackId: `arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/my-aws-app-prod-OrphanStack/9`, StackStatus: "CREATE_COMPLETE", Template: { Resources: {} } },
+    { StackName: `${PROD_DEPLOYMENT}-OrphanStack`, StackId: `arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/${PROD_DEPLOYMENT}-OrphanStack/9`, StackStatus: "CREATE_COMPLETE", Template: { Resources: {} } },
     { StackName: "CDKToolkit", StackId: `arn:aws:cloudformation:${REGION}:${ACCOUNT}:stack/CDKToolkit/1`, StackStatus: "UPDATE_COMPLETE" },
   ] } } });
   try {
@@ -27,11 +27,11 @@ test("discovery finds framework deployments by their own records, reading only",
     assert.deepEqual([context.account, context.region, context.profile], [ACCOUNT, REGION, "dev"]);
     assert.deepEqual(deployments.map((deployment: any) => [deployment.name, deployment.mode, deployment.state.kind, deployment.contracts]), [
       ["alex-dev", "dev", "in-progress", [2]],
-      ["my-aws-app", "dev", "ready", [1]],
-      ["my-aws-app-prod", "prod", "conflict", [2]],
+      [DEV_DEPLOYMENT, "dev", "ready", [1]],
+      [PROD_DEPLOYMENT, "prod", "conflict", [2]],
     ]);
     assert.equal(deployments[2].state.reason, "unmarked", "the orphan lookalike is refused, not adopted");
-    assert.deepEqual(targets.map((target: any) => [target.name, target.status]), [["my-aws-app", "deployed"], ["my-aws-app-prod", "deployed"]]);
+    assert.deepEqual(targets.map((target: any) => [target.name, target.status]), [[DEV_DEPLOYMENT, "deployed"], [PROD_DEPLOYMENT, "deployed"]]);
     assert.deepEqual(unrecognized, []);
     const keys = account.calls().map((call) => call.key);
     assert.ok(keys.length > 0);
@@ -61,7 +61,7 @@ test("profiles list names, regions and credential kinds, never credentials", () 
 });
 
 test("status adds events, pending change sets and whether local development can run", () => {
-  const account = fakeAccount({ regions: { [REGION]: { stacks: [frameworkStack("my-aws-app", "CognitoStack", "dev")] } } });
+  const account = fakeAccount({ regions: { [REGION]: { stacks: [frameworkStack(DEV_DEPLOYMENT, "CognitoStack", "dev")] } } });
   try {
     const state = account.read();
     // deploy:resources --plan names its change sets by plan id (plan-<time>-<hash>).
@@ -72,8 +72,8 @@ test("status adds events, pending change sets and whether local development can 
     account.write(state);
     const result = status(account.env, "status", "--profile", "dev", "--json");
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.json.deployment, "my-aws-app");
-    assert.equal(result.json.detail.events[0].stack, "my-aws-app-CognitoStack");
+    assert.equal(result.json.deployment, DEV_DEPLOYMENT);
+    assert.equal(result.json.detail.events[0].stack, `${DEV_DEPLOYMENT}-CognitoStack`);
     assert.deepEqual(result.json.detail.changeSets.map((set: any) => [set.name, set.ours]), [["plan-mvd99k1j-b0059e", true], ["manual-console-edit", false]]);
     assert.equal(typeof result.json.detail.local.compatible, "boolean");
     assert.equal(result.json.detail.local.compatible, false, "a deployment missing required control outputs cannot back local development");
@@ -82,9 +82,9 @@ test("status adds events, pending change sets and whether local development can 
 });
 
 test("watch reports stack state and stops once nothing is changing", () => {
-  const account = fakeAccount({ regions: { [REGION]: { stacks: [frameworkStack("my-aws-app", "CognitoStack", "dev")] } } });
+  const account = fakeAccount({ regions: { [REGION]: { stacks: [frameworkStack(DEV_DEPLOYMENT, "CognitoStack", "dev")] } } });
   try {
-    const result = status(account.env, "watch", "--deployment", "my-aws-app", "--profile", "dev", "--interval", "10", "--jsonl");
+    const result = status(account.env, "watch", "--deployment", DEV_DEPLOYMENT, "--profile", "dev", "--interval", "10", "--jsonl");
     assert.equal(result.status, 0, result.stderr);
     const types = result.lines.map((line) => JSON.parse(line).type);
     assert.deepEqual([types[0], types[1], types[types.length - 1]], ["context", "stacks", "idle"]);

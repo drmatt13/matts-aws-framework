@@ -139,7 +139,7 @@ export function classifyDeployment(
   if (existing.mode !== query.mode) {
     return {
       kind: "conflict", reason: "mode", stacks: classified,
-      message: `${query.deployment} is a ${existing.mode} deployment in ${where} (${names(classified)}). Deploying ${query.mode} over it would change or remove those stacks. To keep it, deploy under another name (CDK_APP_NAME, or -c cdkAppName). To replace it, tear it down first from a ${existing.mode}-mode configuration, so the teardown selects its own stacks, and check the list of stacks before you confirm.`,
+      message: `${query.deployment} is a ${existing.mode} deployment in ${where} (${names(classified)}). Deploying ${query.mode} over it would change or remove those stacks. To keep it, deploy under another name (another stage in framework:targets, or -c deployment=<name>). To replace it, tear it down first from a ${existing.mode}-mode configuration, so the teardown selects its own stacks, and check the list of stacks before you confirm.`,
     };
   }
 

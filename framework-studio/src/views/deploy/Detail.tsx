@@ -131,8 +131,8 @@ export function Detail(props: {
   const origin =
     row.target?.origin === "declared"
       ? "Declared in cdk-app/cdk.json"
-      : row.target?.origin === "personal"
-        ? "Your development deployment"
+      : row.target?.origin === "implicit"
+        ? "Default development stage"
         : row.target
           ? "Named target"
           : "Discovered in this account";
@@ -364,9 +364,11 @@ export function Detail(props: {
             <dt className="text-graphite">Intent</dt>
             <dd className="m-0 wrap-anywhere">
               {row.target
-                ? row.target.origin === "personal"
-                  ? "CDK_APP_NAME in your development inputs"
-                  : "framework:targets in cdk.json"
+                ? row.target.origin === "implicit"
+                  ? "framework:app in cdk.json (default dev stage)"
+                  : row.target.stage
+                    ? `framework:targets.${row.target.stage} in cdk.json${row.target.deployAs ? " · deployAs" : ""}`
+                    : "Named on the command line"
                 : "Not declared here (read-only)"}
             </dd>
             <dt className="text-graphite">Mode</dt>

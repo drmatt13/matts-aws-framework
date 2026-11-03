@@ -21,11 +21,12 @@ const attentionPillClasses = cx(
   "border-refuse bg-refuse-wash text-refuse before:border before:border-current",
 );
 
-/** Keep both environment names visible in hover cards and connection inspectors. */
+/** Show both environments by default so availability stays explicit. */
 export function EnvironmentPills({
   availability,
   attention,
   descriptions,
+  enabledOnly = false,
   unavailableDescription = "not deployed",
   onToggle,
   disabled,
@@ -36,6 +37,8 @@ export function EnvironmentPills({
   /** Environments that need a value; takes precedence over availability. */
   readonly attention?: Readonly<Partial<Record<Mode, boolean>>>;
   readonly descriptions?: Readonly<Partial<Record<Mode, string>>>;
+  /** Show only assigned environments in additive summaries such as profile rows. */
+  readonly enabledOnly?: boolean;
   readonly unavailableDescription?: string | Readonly<Partial<Record<Mode, string>>>;
   readonly onToggle?: (mode: Mode) => void;
   readonly disabled?: boolean;
@@ -52,7 +55,7 @@ export function EnvironmentPills({
       role={onToggle ? "group" : undefined}
       aria-label={label}
     >
-      {(["dev", "prod"] as const).map((mode) =>
+      {(["dev", "prod"] as const).filter((mode) => !enabledOnly || availability[mode]).map((mode) =>
         onToggle ? (
           <button
             key={mode}

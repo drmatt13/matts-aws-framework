@@ -156,7 +156,7 @@ interface Prepared {
 async function prepare(args: readonly string[], assembly: { directory: string; synthesize: boolean }, overrides: { inputsFile?: string; reviewedTarget?: DeploymentPlanDocument["target"]; plannedReviews?: ReadonlySet<string> } = {}): Promise<Prepared> {
   const selection = deploymentArguments(args);
   // The target the CDK app will build for these arguments, resolved the same way
-  // (bin/app.ts): -c prodDeployment / -c deployment and framework:targets. Its
+  // (bin/app.ts): -c prodDeployment / -c deployment, framework:app and framework:targets. Its
   // inputs file is where secret values come from.
   if (overrides.inputsFile) process.env.FRAMEWORK_INPUTS_FILE = overrides.inputsFile;
   if (!process.env.FRAMEWORK_INPUTS_FILE?.trim()) delete process.env.FRAMEWORK_INPUTS_FILE;
@@ -187,7 +187,7 @@ async function prepare(args: readonly string[], assembly: { directory: string; s
   }
   const graph = inspectDeploymentAssembly(assembly.directory, selection);
   if (graph.identity.deployment !== target.target.name || graph.identity.mode !== target.mode) {
-    throw new Error(`The synthesized assembly is ${graph.identity.deployment} (${graph.identity.mode}), but these arguments select ${target.target.name} (${target.mode}). Check -c deployment, -c prodDeployment and framework:targets. Nothing was changed.`);
+    throw new Error(`The synthesized assembly is ${graph.identity.deployment} (${graph.identity.mode}), but these arguments select ${target.target.name} (${target.mode}). Check -c deployment, -c prodDeployment, framework:app and framework:targets. Nothing was changed.`);
   }
   const region = graph.identity.region;
   if (selection.region && selection.region !== region) throw new Error("--region differs from the synthesized deployment region.");
@@ -206,7 +206,7 @@ async function prepare(args: readonly string[], assembly: { directory: string; s
     const deployed = assertDeploymentAllowed(graph.identity, args, {
       readStacks: () => readDeploymentStackPages((token) => runAwsSync(["cloudformation", "describe-stacks", "--no-paginate", ...(token ? ["--next-token", token] : [])], aws)),
       readTemplate: (name) => runAwsSync(["cloudformation", "get-template", "--stack-name", name, "--template-stage", "Original"], aws).TemplateBody,
-    }, overrides.plannedReviews);
+    }, overrides.plannedReviews, { lineage: graph.lineage });
     if (deployed.kind === "rolled-back") console.log(`The last update of ${graph.identity.deployment} was rolled back; this deployment replaces it.`);
     if (deployed.kind === "failed") console.log(`${graph.identity.deployment} has failed stacks the CDK CLI recovers itself: it recreates a stack whose first create failed, and retries or first rolls back one that --no-rollback paused.`);
     // Users cannot override framework-owned parameters with a hand-authored ARN map.

@@ -99,8 +99,8 @@ retain their stack's tags. A database consumer's tags never retag RDS,
 and references/import order never retag another declaration's producer.
 
 Keys have 1–128 characters; values have 0–256. The portable vocabulary accepts Unicode
-letters/numbers, spaces and `_.:/=+@-`. Effective maps permit 46 application keys, reserving
-four of AWS's 50 slots for ownership. `aws:` and `framework:` prefixes and `ManagedBy` are
+letters/numbers, spaces and `_.:/=+@-`. Effective maps permit 44 application keys, reserving
+six of AWS's 50 slots for deployment identity (owner, deployment, mode, contract, app id, stage). `aws:` and `framework:` prefixes and `ManagedBy` are
 reserved, case-insensitively. `__proto__` is also refused because JavaScript treats it
 specially in object literals; choose an ordinary application key. Existing framework
 ownership/deployment/mode/contract tags retain their exact values and precedence.

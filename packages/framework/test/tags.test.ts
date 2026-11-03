@@ -14,7 +14,7 @@ test("tags are immutable AWS string metadata, with protected ownership and usefu
   for (const key of ["aws:x", "AWS:x", "framework:deployment", "Framework:owner", "ManagedBy"]) assert.throws(() => validateTags({ [key]: "changed" }, "events.job"), /events.job.*reserved/);
   assert.throws(() => validateTags(JSON.parse('{"__proto__":"discarded-by-object-literals"}')), /__proto__.*TypeScript object literal/);
   for (const value of [{ area: 12 }, { area: null }, { area: { secretArn: "x" } }, { area: "line\nbreak" }, { ["x".repeat(129)]: "x" }, { area: "x".repeat(257) }]) assert.throws(() => validateTags(value));
-  assert.throws(() => validateTags(Object.fromEntries(Array.from({ length: MAX_DECLARATION_TAGS + 1 }, (_, i) => [`key${i}`, "x"]))), /at most 46/);
+  assert.throws(() => validateTags(Object.fromEntries(Array.from({ length: MAX_DECLARATION_TAGS + 1 }, (_, i) => [`key${i}`, "x"]))), /at most 44 tags are supported, leaving six of AWS.s 50 slots for deployment identity/);
   assert.deepEqual(mergeTags("member", { area: "platform", owner: "infra" }, { area: "billing" }), { area: "billing", owner: "infra" });
 });
 

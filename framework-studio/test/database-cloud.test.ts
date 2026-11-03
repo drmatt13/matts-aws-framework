@@ -27,7 +27,7 @@ function fixture() {
   cpSync(path.join(repo, "packages/database/prisma"), path.join(root, "packages/database/prisma"), { recursive: true });
   writeFileSync(path.join(root, "package.json"), "{}"); writeFileSync(path.join(root, "package-lock.json"), "{}"); writeFileSync(path.join(root, "packages/database/package.json"), "{}");
   writeFileSync(path.join(root, "packages/database/prisma.config.ts"), `import { definePrismaConfig } from "@prisma/cli-engine"; import { defineConfig } from "@prisma/orm-postgres/config"; export default definePrismaConfig({ orm: defineConfig({ contract: "prisma/contract.prisma", output: "src/generated", migrations: {dir: "prisma/migrations"} }) });`);
-  writeFileSync(path.join(root, "cdk-app/cdk.json"), JSON.stringify({ context: { "framework:targets": { production: { mode: "prod", account: identity.account, region: identity.region, inputs: "cdk-app/.env.prod" } } } }));
+  writeFileSync(path.join(root, "cdk-app/cdk.json"), JSON.stringify({ context: { "framework:app": "fixture", "framework:appId": "0f9c2d1e-7b3a-4c5d-9e8f-1a2b3c4d5e6f", "framework:targets": { prod: { account: identity.account, region: identity.region, inputs: "cdk-app/.env.prod", deployAs: "production" } } } }));
   return root;
 }
 function request(root: string, mode: "review" | "apply" = "review"): DatabaseCloudRequest { return { version: 1, requestId: "12345678-1234-1234-1234-123456789012", mode, identity, inputsDigest: databaseInputsDigest(root) }; }

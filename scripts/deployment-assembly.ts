@@ -53,6 +53,8 @@ export function inspectDeploymentAssembly(directory: string, selection: ReturnTy
   if (!selection.exclusively) for (const id of selected) includeDependencies(id);
   const requirements: SecretRequirement[] = [];
   let identity: { deployment: string; account: string; region: string; mode: "dev" | "prod" } | undefined;
+  // Which app and stage these stacks are (template metadata, contract 2): what the guard looks for under other names.
+  let lineage: { appId?: string; stage?: string } | undefined;
   for (const id of selected) {
     const stack = byId.get(id)!;
     const artifact = stack.artifact;
@@ -65,6 +67,8 @@ export function inspectDeploymentAssembly(directory: string, selection: ReturnTy
     if (metadata.version !== 1 || !["dev", "prod"].includes(metadata.mode) || metadata.account !== account || metadata.region !== region) throw new Error(`${id} has invalid deployment metadata.`);
     if (identity && ["deployment", "account", "region", "mode"].some(key => metadata[key] !== identity![key as keyof typeof identity])) throw new Error("The selected stacks must belong to one deployment, mode, account and region.");
     identity = metadata;
+    const recorded = template.Metadata?.["framework:deployment"];
+    if (!lineage && typeof recorded?.appId === "string" && typeof recorded?.stage === "string") lineage = { appId: recorded.appId, stage: recorded.stage };
     const entries = stack.metadata;
     for (const records of Object.values(entries) as { type: string; data: SecretRequirement }[][]) for (const record of records) {
       if (record.type !== "framework:secret-parameter:v1") continue;
@@ -73,5 +77,5 @@ export function inspectDeploymentAssembly(directory: string, selection: ReturnTy
       requirements.push({ ...data, stack: artifact.properties?.stackName ?? id });
     }
   }
-  return { identity: identity!, requirements, stacks: [...selected] };
+  return { identity: identity!, requirements, stacks: [...selected], ...(lineage ? { lineage } : {}) };
 }

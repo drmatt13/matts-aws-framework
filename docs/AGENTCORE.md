@@ -428,16 +428,17 @@ an application splits into deployments; the framework does not shard the stack.
 ## Smoke test in AWS
 
 `npm run agents:smoke` checks the example agent in a disposable deployment, and only one whose
-`CDK_APP_NAME` contains `smoke`:
+name contains `smoke`:
 
 ```sh
 # a separate checkout or worktree, so the main cdk-app/.env.<mode> is untouched
-# cdk-app/cdk.json framework:targets: agents-smoke-<you> as a prod target pinned to your account,
+# cdk-app/cdk.json framework:targets: a stage smoke-<you> ("mode": "prod", pinned to your account),
+#   which deploys as <app>-smoke-<you>,
 #   with an inputs file holding DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
 # framework-config/workloads/agents.ts: the agent deploys "both"
 # the example agent's tools follow its deployment automatically
-npm run deploy:resources -- --all -c prodDeployment=true -c deployment=agents-smoke-<you> --profile <PROFILE>
-npm run agents:smoke -- --app agents-smoke-<you> --profile <PROFILE> [--frontend <FRONTEND_URL>] [--include-expiry]
+npm run deploy:resources -- --all -c prodDeployment=true -c deployment=<app>-smoke-<you> --profile <PROFILE>
+npm run agents:smoke -- --deployment <app>-smoke-<you> --profile <PROFILE> [--frontend <FRONTEND_URL>] [--include-expiry]
 ```
 
 It creates two users in that deployment's pool and deletes them on exit. It checks:

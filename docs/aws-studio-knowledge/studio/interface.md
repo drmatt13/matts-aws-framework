@@ -30,8 +30,13 @@ completed. Start Studio with `npm run studio`, then open `http://127.0.0.1:4590/
 
 ## Navigation and state
 
-[main.tsx](../../../framework-studio/src/main.tsx) owns the routes. The navbar has seven
-workspaces and a shared **Source** Development/Production selector. Source mode selects a
+[main.tsx](../../../framework-studio/src/main.tsx) owns the routes. The navbar has the app's
+name, seven workspaces and a shared **Source** Development/Production selector. The name is
+`framework:app` from `cdk-app/cdk.json`; its pencil opens a popover that previews each stage's
+`<app>-<stage>` deployment and reviews a rename (AppName.tsx), looking in AWS read-only with
+each mode's profile, by app id and stage, so a deployed production stage keeps the name it is
+deployed as. An app without `framework:appId` shows the name in the refuse color, and its
+unchanged name can be reviewed to add one. Between 761 and 1200px only the pencil shows. Source mode selects a
 declaration graph. Its trailing chevron opens an AWS profile popover for the accepted mode.
 Opening it leaves focus on the chevron; Tab moves through its controls without automatically
 highlighting the profile selector, including when discovery finishes.
@@ -117,6 +122,13 @@ approval flows. Use the [source ownership map](../REPOSITORY-MAP.md#where-to-cha
 to locate the rendering, state, transport and tests for a change.
 
 ## Reading the map
+
+Resource and connection counts sit at the map's top right. In Development, the
+lower-left **Docker Compose** switch is a visual
+prototype. Its on/off state is local to the mounted map and resets when leaving
+Development; it neither observes nor starts/stops containers. Whale motion follows
+the map's motion control and the system's reduced-motion preference. Production
+does not show the switch.
 
 The scene combines both modes to stabilize placement while showing the selected mode's
 availability. Islands group entry points, compute, networks, orchestration, resources,

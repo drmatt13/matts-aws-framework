@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fakeAccount, frameworkStack, READ_VERB, REGION } from "./support/fake-aws-state";
+import { APP_ID, fakeAccount, frameworkStack, READ_VERB, REGION, DEV_DEPLOYMENT, PROD_DEPLOYMENT } from "./support/fake-aws-state";
 
 /**
  * deploy:resources --plan / --apply / --discard, end to end on a simulated
@@ -25,7 +25,7 @@ function setup(state: Record<string, unknown> = {}) {
   mkdirSync(path.join(exportDirectory, "client-app"), { recursive: true });
   const inputs = path.join(account.directory, "dev.env");
   writeFileSync(inputs, [
-    "CDK_APP_NAME=my-aws-app", "LOCAL_DEV_URL=http://localhost:3000", "LOCAL_AWS_REGION=us-east-1",
+    "LOCAL_DEV_URL=http://localhost:3000", "LOCAL_AWS_REGION=us-east-1",
     "LOCAL_API_DEV_SERVER_HOST_PORT=8080", "LOCAL_WS_DEV_SERVER_HOST_PORT=8081", "LOCAL_INVOCATION_RUNNER_HOST_PORT=8090",
     "WS_TESTER_HOST_PORT=3001", "POSTGRES_HOST_PORT=5432", "PGADMIN_HOST_PORT=5050", "",
   ].join("\n"));
@@ -46,7 +46,7 @@ test("a development plan deploys only when applied, then verifies, records and e
     const planned = deploy({}, "--all", "--profile", "dev", "--plan", planDirectory);
     assert.equal(planned.status, 0, planned.output);
     const plan = JSON.parse(readFileSync(path.join(planDirectory, "plan.json"), "utf8"));
-    assert.deepEqual([plan.status, plan.review, plan.identity.deployment, plan.identity.mode, plan.guard], ["ready", "template", "my-aws-app", "dev", "absent"]);
+    assert.deepEqual([plan.status, plan.review, plan.identity.deployment, plan.identity.mode, plan.guard], ["ready", "template", DEV_DEPLOYMENT, "dev", "absent"]);
     assert.equal(plan.confirmation.level, "click", "a first development deployment waits for review");
     assert.ok(plan.stacks.length >= 3 && plan.stacks.every((stack: any) => stack.changes.every((change: any) => change.action === "add")));
     assert.equal(account.read().regions?.[REGION]?.stacks?.length ?? 0, 0, "planning deploys nothing");
@@ -82,24 +82,26 @@ test("a development plan deploys only when applied, then verifies, records and e
 
     const applied = deploy({}, "--apply", planDirectory, "--profile", "dev");
     assert.equal(applied.status, 0, applied.output);
-    assert.match(applied.output, /✔ my-aws-app-CognitoStack verified/);
+    assert.match(applied.output, new RegExp(String.raw`✔ ${DEV_DEPLOYMENT}-CognitoStack verified`));
     const result = JSON.parse(readFileSync(path.join(planDirectory, "result.json"), "utf8"));
     assert.equal(result.status, "succeeded");
     const state = account.read();
     assert.ok(state.regions[REGION].stacks.every((stack: any) => stack.Tags.some((tag: any) => tag.Key === "framework:contract" && tag.Value === "2")), "deployed stacks carry the contract-2 tags");
-    const record = state.regions[REGION].parameters?.find((parameter: any) => parameter.Name === "/framework/deployments/my-aws-app");
+    const tag = (stack: any, key: string) => stack.Tags.find((entry: any) => entry.Key === key)?.Value;
+    assert.ok(state.regions[REGION].stacks.every((stack: any) => tag(stack, "framework:app-id") === APP_ID && tag(stack, "framework:stage") === "dev"), "deployed stacks say which app and stage they are, whatever the deployment is named");
+    const record = state.regions[REGION].parameters?.find((parameter: any) => parameter.Name === `/framework/deployments/${DEV_DEPLOYMENT}`);
     assert.ok(record, "The fake deployment must persist its advisory SSM record. Apply output:\n" + applied.output);
     assert.equal(JSON.parse(record.Value).planId, plan.planId);
     assert.ok(existsSync(path.join(exportDirectory, "client-app", ".env.development.local")), "export wrote the client settings");
-    assert.match(readFileSync(path.join(exportDirectory, ".env"), "utf8"), /LOCAL_FRAMEWORK_DEPLOYMENT=my-aws-app/);
+    assert.match(readFileSync(path.join(exportDirectory, ".env"), "utf8"), new RegExp(String.raw`LOCAL_FRAMEWORK_DEPLOYMENT=${DEV_DEPLOYMENT}`));
 
     // Status reads the exported files where export wrote them, and finds them current.
-    const status = spawnSync(process.execPath, ["--import", "tsx", "scripts/deployment-status.ts", "status", "--deployment", "my-aws-app", "--profile", "dev", "--json"], {
+    const status = spawnSync(process.execPath, ["--import", "tsx", "scripts/deployment-status.ts", "status", "--deployment", DEV_DEPLOYMENT, "--profile", "dev", "--json"], {
       cwd: root, encoding: "utf8", timeout: 120_000,
       env: { ...account.env, FRAMEWORK_EXPORT_DIRECTORY: exportDirectory },
     });
     assert.equal(status.status, 0, `${status.stdout}${status.stderr}`);
-    assert.deepEqual(JSON.parse(status.stdout).detail.local.exported, { deployment: "my-aws-app", manifest: "my-aws-app", client: true, fresh: true });
+    assert.deepEqual(JSON.parse(status.stdout).detail.local.exported, { deployment: DEV_DEPLOYMENT, manifest: DEV_DEPLOYMENT, client: true, fresh: true });
   } finally { account.dispose(); }
 });
 
@@ -110,7 +112,7 @@ test("a production change-set review needs the typed name, and a stale plan is r
     const planned = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--all", "-c", "prodDeployment=true", "--profile", "dev", "--plan", planDirectory);
     assert.equal(planned.status, 0, planned.output);
     const plan = JSON.parse(readFileSync(path.join(planDirectory, "plan.json"), "utf8"));
-    assert.deepEqual([plan.review, plan.identity.deployment, plan.identity.mode, plan.confirmation.level], ["change-set", "my-aws-app-prod", "prod", "name"]);
+    assert.deepEqual([plan.review, plan.identity.deployment, plan.identity.mode, plan.confirmation.level], ["change-set", PROD_DEPLOYMENT, "prod", "name"]);
     assert.match(plan.confirmation.reasons.join(), /first deployment/);
     const prepared = plan.stacks.filter((stack: any) => stack.changeSet);
     assert.ok(prepared.length > 0 && prepared.every((stack: any) => stack.changeSet.status === "CREATE_COMPLETE"));
@@ -118,29 +120,29 @@ test("a production change-set review needs the typed name, and a stale plan is r
 
     const unconfirmed = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", planDirectory, "--profile", "dev");
     assert.notEqual(unconfirmed.status, 0);
-    assert.match(unconfirmed.output, /needs --confirm my-aws-app-prod/);
+    assert.match(unconfirmed.output, new RegExp(String.raw`needs --confirm ${PROD_DEPLOYMENT}`));
 
     const state = account.read();
     const touched = state.regions[REGION].stacks.find((stack: any) => stack.StackStatus === "REVIEW_IN_PROGRESS");
     touched.CreationTime = "2030-01-01T00:00:00.000Z";
     account.write(state);
-    const stale = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", planDirectory, "--confirm", "my-aws-app-prod", "--profile", "dev");
+    const stale = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", planDirectory, "--confirm", PROD_DEPLOYMENT, "--profile", "dev");
     assert.notEqual(stale.status, 0);
     assert.match(stale.output, /changed since the review/);
   } finally { account.dispose(); }
 });
 
 test("a change-set plan that fails part-way can still be discarded: what it prepared is recorded as it goes", () => {
-  const { account, prodInputs, deploy } = setup({ fakeCdk: { failPrepare: ["my-aws-app-prod-NetworkStack"] } });
+  const { account, prodInputs, deploy } = setup({ fakeCdk: { failPrepare: [`${PROD_DEPLOYMENT}-NetworkStack`] } });
   const planDirectory = path.join(account.directory, "failed-plan");
   try {
     const planned = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--all", "-c", "prodDeployment=true", "--profile", "dev", "--plan", planDirectory);
     assert.notEqual(planned.status, 0);
     assert.equal(existsSync(path.join(planDirectory, "plan.json")), false, "no plan was finished");
     const preparing = JSON.parse(readFileSync(path.join(planDirectory, "preparing.json"), "utf8"));
-    assert.deepEqual(preparing.stacks.map((stack: any) => stack.name), ["my-aws-app-prod-FrontendWebsiteS3Stack", "my-aws-app-prod-NetworkStack"]);
+    assert.deepEqual(preparing.stacks.map((stack: any) => stack.name), [`${PROD_DEPLOYMENT}-FrontendWebsiteS3Stack`, `${PROD_DEPLOYMENT}-NetworkStack`]);
     const before = account.read().regions[REGION].stacks;
-    assert.ok(before.some((stack: any) => stack.StackName === "my-aws-app-prod-FrontendWebsiteS3Stack" && stack.ChangeSets?.length), "the first stack's change set exists");
+    assert.ok(before.some((stack: any) => stack.StackName === `${PROD_DEPLOYMENT}-FrontendWebsiteS3Stack` && stack.ChangeSets?.length), "the first stack's change set exists");
 
     const discarded = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--discard", planDirectory, "--profile", "dev");
     assert.equal(discarded.status, 0, discarded.output);
@@ -182,11 +184,11 @@ test("discard cannot remove a same-name replacement review stack", () => {
 });
 
 test("planning a development deployment over a production one is refused before anything is read or written", () => {
-  const { account, deploy } = setup({ regions: { [REGION]: { stacks: [frameworkStack("my-aws-app", "CognitoStack", "prod")] } } });
+  const { account, deploy } = setup({ regions: { [REGION]: { stacks: [frameworkStack(DEV_DEPLOYMENT, "CognitoStack", "prod")] } } });
   try {
     const planned = deploy({}, "--all", "--profile", "dev", "--plan", path.join(account.directory, "plan"));
     assert.notEqual(planned.status, 0);
-    assert.match(planned.output, /my-aws-app is a prod deployment/);
+    assert.match(planned.output, new RegExp(String.raw`${DEV_DEPLOYMENT} is a prod deployment`));
     assert.deepEqual(account.calls().map((call) => call.key).filter((key) => !READ_VERB.test(key)), []);
     assert.equal(account.calls().some((call) => call.key.startsWith("secretsmanager")), false, "no secret is read either");
   } finally { account.dispose(); }
@@ -198,7 +200,7 @@ test("a confirmed production apply executes the reviewed change sets, verifies t
   try {
     assert.equal(deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--all", "-c", "prodDeployment=true", "--profile", "dev", "--plan", planDirectory).status, 0);
     const plan = JSON.parse(readFileSync(path.join(planDirectory, "plan.json"), "utf8"));
-    const applied = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", planDirectory, "--confirm", "my-aws-app-prod", "--profile", "dev");
+    const applied = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", planDirectory, "--confirm", PROD_DEPLOYMENT, "--profile", "dev");
     assert.equal(applied.status, 0, applied.output);
     const result = JSON.parse(readFileSync(path.join(planDirectory, "result.json"), "utf8"));
     assert.equal(result.status, "partial");
@@ -238,7 +240,7 @@ function withGoogle(inputs: string, value: string) {
 }
 
 test("a reviewed secret update applies only with the reviewed value, and no value reaches any output or record", () => {
-  const google = ownedSecret("my-aws-app", "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
+  const google = ownedSecret(DEV_DEPLOYMENT, "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
   const { account, inputs, deploy } = setup({ regions: { [REGION]: { secrets: [google] } } });
   const planDirectory = path.join(account.directory, "secret-plan");
   let planId: string | undefined;
@@ -259,7 +261,7 @@ test("a reviewed secret update applies only with the reviewed value, and no valu
     withGoogle(inputs, EDITED_VALUE);
     const edited = deploy({}, "--apply", planDirectory, "--profile", "dev");
     assert.notEqual(edited.status, 0);
-    assert.match(edited.output, /the authored value of GOOGLE_CLIENT_SECRET \(my-aws-app\/secret\/GOOGLE_CLIENT_SECRET\) changed\. Plan again\. Nothing was changed\./);
+    assert.match(edited.output, new RegExp(String.raw`the authored value of GOOGLE_CLIENT_SECRET \(${DEV_DEPLOYMENT}\/secret\/GOOGLE_CLIENT_SECRET\) changed\. Plan again\. Nothing was changed\.`));
     assertNoSentinel(edited.output, "the refusal");
     assert.deepEqual(writesOf(account), []);
     assert.equal((account.read().cdkCalls ?? []).some((call: string[]) => call[0] === "deploy"), false, "no stack deployment started");
@@ -275,7 +277,7 @@ test("a reviewed secret update applies only with the reviewed value, and no valu
     assert.deepEqual(writesOf(account).filter((key) => key.startsWith("secretsmanager")), ["secretsmanager put-secret-value", "secretsmanager tag-resource"]);
     assert.equal(JSON.parse(readFileSync(path.join(planDirectory, "result.json"), "utf8")).status, "succeeded");
     assert.equal(existsSync(bindingFile), false, "an applied plan's binding is removed");
-    const record = account.read().regions[REGION].parameters.find((parameter: any) => parameter.Name === "/framework/deployments/my-aws-app");
+    const record = account.read().regions[REGION].parameters.find((parameter: any) => parameter.Name === `/framework/deployments/${DEV_DEPLOYMENT}`);
     assertNoSentinel(applied.output + readFileSync(path.join(planDirectory, "result.json"), "utf8") + record.Value, "applying");
 
     const again = deploy({}, "--apply", planDirectory, "--profile", "dev");
@@ -288,7 +290,7 @@ test("a reviewed secret update applies only with the reviewed value, and no valu
 });
 
 test("a secret written in AWS after the review, or a missing binding, refuses the apply", () => {
-  const google = ownedSecret("my-aws-app", "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
+  const google = ownedSecret(DEV_DEPLOYMENT, "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
   const { account, inputs, deploy } = setup({ regions: { [REGION]: { secrets: [google] } } });
   const planDirectory = path.join(account.directory, "drift-plan");
   let planId: string | undefined;
@@ -304,7 +306,7 @@ test("a secret written in AWS after the review, or a missing binding, refuses th
     account.write(state);
     const drifted = deploy({}, "--apply", planDirectory, "--profile", "dev");
     assert.notEqual(drifted.status, 0);
-    assert.match(drifted.output, /my-aws-app\/secret\/GOOGLE_CLIENT_SECRET changed in Secrets Manager/);
+    assert.match(drifted.output, new RegExp(String.raw`${DEV_DEPLOYMENT}\/secret\/GOOGLE_CLIENT_SECRET changed in Secrets Manager`));
     assert.deepEqual(writesOf(account), []);
     assert.equal(secretOf(account, google.Name).SecretString, "written-by-someone-else");
 
@@ -321,13 +323,13 @@ test("a secret written in AWS after the review, or a missing binding, refuses th
 });
 
 test("--create-secrets creates only missing secrets: an existing secret's new value waits for the confirmed apply", () => {
-  const google = ownedSecret("my-aws-app-prod", "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
+  const google = ownedSecret(PROD_DEPLOYMENT, "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
   const { account, prodInputs, deploy } = setup({ regions: { [REGION]: { secrets: [google] } } });
   writeFileSync(prodInputs, [
     "USE_FRONTEND_CUSTOM_DOMAIN=false", "USE_COGNITO_CUSTOM_DOMAIN=false", "GOOGLE_CLIENT_ID=fake-google-client", `GOOGLE_CLIENT_SECRET=${REVIEWED_VALUE}`,
     "LANGGRAPH_MODEL_PROVIDER=openai", `OPENAI_API_KEY=${OPENAI_VALUE}`, "",
   ].join("\n"));
-  const openai = "my-aws-app-prod/secret/OPENAI_API_KEY";
+  const openai = `${PROD_DEPLOYMENT}/secret/OPENAI_API_KEY`;
   const first = path.join(account.directory, "needs-secrets");
   const second = path.join(account.directory, "with-secrets");
   let planId: string | undefined;
@@ -345,14 +347,14 @@ test("--create-secrets creates only missing secrets: an existing secret's new va
     const plan = JSON.parse(readFileSync(path.join(second, "plan.json"), "utf8"));
     assert.equal(plan.status, "ready");
     assert.deepEqual(plan.secrets.map((secret: any) => [secret.name, secret.action]), [[google.Name, "update"], [openai, "unchanged"]]);
-    assert.match(plan.uncertainties.join("\n"), /Created before review so the change sets could reference them: my-aws-app-prod\/secret\/OPENAI_API_KEY\./);
+    assert.match(plan.uncertainties.join("\n"), new RegExp(String.raw`Created before review so the change sets could reference them: ${PROD_DEPLOYMENT}\/secret\/OPENAI_API_KEY\.`));
     assert.doesNotMatch(plan.uncertainties.join("\n"), /GOOGLE_CLIENT_SECRET/);
     const secretWrites = writesOf(account).filter((key) => key.startsWith("secretsmanager"));
     assert.deepEqual(secretWrites, ["secretsmanager create-secret"], "planning creates the missing secret and updates none");
     assert.equal(secretOf(account, google.Name).SecretString, PREVIOUS_VALUE, "the running application still reads the previous value");
     assertNoSentinel(planned.output + readFileSync(path.join(second, "plan.json"), "utf8") + readFileSync(path.join(BINDINGS, `${planId}.json`), "utf8"), "planning with --create-secrets");
 
-    const applied = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", second, "--confirm", "my-aws-app-prod", "--profile", "dev");
+    const applied = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", second, "--confirm", PROD_DEPLOYMENT, "--profile", "dev");
     assert.equal(applied.status, 0, applied.output);
     assert.deepEqual(writesOf(account).filter((key) => key.startsWith("secretsmanager")), ["secretsmanager create-secret", "secretsmanager put-secret-value", "secretsmanager tag-resource"]);
     assert.equal(secretOf(account, google.Name).SecretString, REVIEWED_VALUE);
@@ -366,7 +368,7 @@ test("--create-secrets creates only missing secrets: an existing secret's new va
 });
 
 test("a secret write that fails during apply stops before any stack deploys and claims no success", () => {
-  const google = ownedSecret("my-aws-app", "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
+  const google = ownedSecret(DEV_DEPLOYMENT, "GOOGLE_CLIENT_SECRET", "googleClientSecret", PREVIOUS_VALUE);
   const { account, inputs, deploy } = setup({ regions: { [REGION]: { secrets: [google] } } });
   const planDirectory = path.join(account.directory, "failing-plan");
   let planId: string | undefined;
@@ -379,7 +381,7 @@ test("a secret write that fails during apply stops before any stack deploys and 
     account.write(state);
     const failed = deploy({}, "--apply", planDirectory, "--profile", "dev");
     assert.notEqual(failed.status, 0);
-    assert.match(failed.output, /Secret synchronization failed for my-aws-app\/secret\/GOOGLE_CLIENT_SECRET\. Secret updates already performed: none\. No infrastructure deployment was started\./);
+    assert.match(failed.output, new RegExp(String.raw`Secret synchronization failed for ${DEV_DEPLOYMENT}\/secret\/GOOGLE_CLIENT_SECRET\. Secret updates already performed: none\. No infrastructure deployment was started\.`));
     assert.doesNotMatch(failed.output, /Updated managed secret/);
     assertNoSentinel(failed.output, "the failure");
     assert.equal((account.read().cdkCalls ?? []).some((call: string[]) => call[0] === "deploy"), false);

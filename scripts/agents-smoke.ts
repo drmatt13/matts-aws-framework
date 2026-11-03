@@ -2,7 +2,8 @@
  * Exercises the example agent in a disposable AWS deployment: Runtime, Gateway
  * and tool Lambdas, each user's own session, and every refusal.
  *
- * Needs a prod-mode deployment whose CDK_APP_NAME contains "smoke", with the
+ * Needs a prod-mode deployment whose name contains "smoke" (a stage such as
+ * `smoke-<you>` deploys as <app>-smoke-<you>), with the
  * example agent and its tools set to `deploy: "both"` (docs/AGENTCORE.md,
  * "Smoke test in AWS"). One turn calls the model, so the deployment needs
  * access to the model LANGGRAPH_MODEL_PROVIDER selects; every other check
@@ -14,7 +15,7 @@
  * Prints verdicts and HTTP statuses only. Tokens, passwords and bodies stay in
  * memory; anything shaped like a JWT is redacted before it is printed.
  *
- *   npm run agents:smoke -- --app <name> [--region us-east-1] [--profile p]
+ *   npm run agents:smoke -- --deployment <name> [--region us-east-1] [--profile p]
  *     [--frontend https://agents-smoke.example.com] [--include-expiry]
  */
 import { execFileSync } from "node:child_process";
@@ -55,7 +56,8 @@ function option(name: string): string | undefined {
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
-const app = option("app");
+// --app is the older spelling of --deployment.
+const app = option("deployment") ?? option("app");
 const region = option("region") ?? process.env.AWS_REGION ?? "us-east-1";
 const profile = option("profile") ?? process.env.AWS_PROFILE;
 const frontend = option("frontend")?.replace(/\/+$/, "");
@@ -291,7 +293,7 @@ function historyOf(reply: AgentReply): AgentEvent | undefined {
 
 async function main(): Promise<void> {
   if (!app || !/smoke/.test(app)) {
-    throw new Error("Pass --app <CDK_APP_NAME> of a disposable deployment; its name must contain \"smoke\".");
+    throw new Error("Pass --deployment <name> of a disposable deployment; its name must contain \"smoke\".");
   }
   const startedAt = Date.now();
   const identity = aws(["sts", "get-caller-identity"]) as { Account: string };

@@ -5,8 +5,9 @@ import {
 } from "@repo/framework/config";
 
 /**
- * The application's deployment settings: what decides which graph is built — its
- * name, domains, mail and retention — rather than what a workload reads.
+ * The application's deployment settings: what decides how a graph is built — its
+ * domains, mail and retention — rather than what a workload reads. The deployment's
+ * name is not among them: cdk-app/cdk.json names it (`framework:app`, `framework:targets`).
  *
  * Declared with the catalog's own builders and resolved by its resolver, so each
  * reads the selected inputs file exactly as every workload input does: `-c`
@@ -20,12 +21,6 @@ import {
 export const deploymentInputs = (mode: CloudMode) =>
   defineResources(
     {
-      cdkAppName: resource
-        .fromEnv("CDK_APP_NAME")
-        .default("matts-aws-framework")
-        .note(
-          "Names a development deployment; a production deployment is its framework:targets name in cdk-app/cdk.json.",
-        ),
       localDevUrl: resource
         .fromEnv("LOCAL_DEV_URL")
         .default("http://localhost:3000")

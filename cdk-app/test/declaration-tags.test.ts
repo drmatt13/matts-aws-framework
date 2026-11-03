@@ -113,13 +113,13 @@ test("the database primary overrides catalog tags and RDS rejects service-reserv
 
 
 test("AWS tag limits include native keys and all missing deployment identity tags", () => {
-  const authored = Object.fromEntries(Array.from({ length: 46 }, (_, index) => [`key${index}`, "value"]));
+  const authored = Object.fromEntries(Array.from({ length: 44 }, (_, index) => [`key${index}`, "value"]));
   const catalog = defineResources({ bucket: resource.cdk<s3.Bucket>({ tags: authored }) });
   const app = new App(); const stack = new Stack(app, "Data"); const bucket = new s3.Bucket(stack, "Bucket");
   TagManager.of(bucket.node.defaultChild as CfnResource)!.setTag("native", "keep");
   linkResource(stack, catalog.bucket, bucket);
   applyFrameworkTags(app, configuration(catalog));
-  assert.throws(() => app.synth(), /47 native\/declaration tags plus 4 reserved deployment tags/);
+  assert.throws(() => app.synth(), /45 native\/declaration tags plus 6 reserved deployment tags/);
 });
 
 test("higher-priority native CDK tags cannot silently disagree with declaration metadata", () => {

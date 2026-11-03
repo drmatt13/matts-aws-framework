@@ -27,8 +27,11 @@ their respective templates, preserving existing files. For CLI-only setup, creat
 Studio's **CDK environment** inspector edits both files side by side and flags required values each one is missing.
 Template creation supplies framework defaults; configure your own deployment values before deploying. Set:
 
-- A distinct CDK_APP_NAME for your own development deployment. It may not be the name of a
-  target declared in `cdk-app/cdk.json` (`framework:targets`), such as the production one.
+- The app's name, `framework:app` in `cdk-app/cdk.json` (Studio's navbar edits it, and adds
+  the app's permanent `framework:appId` if it is missing). Your development deployment is
+  `<app>-dev`; one AWS account per developer keeps teammates' dev deployments apart. After a
+  rename, the next development deploy starts `<new-name>-dev` fresh and notes the earlier one
+  still running; Studio's Deploy page deletes it, or keeps deploying to it.
 - LOCAL_DEV_URL, LOCAL_AWS_REGION, and the framework tooling's host ports in the example.
   The client API, WebSocket and tester ports may stay blank: their input defaults are
   8080, 8081 and 3001, shared by client URL generation and the local Compose export. Leave
@@ -78,7 +81,7 @@ Before any secret is uploaded, deploy reads what CloudFormation already holds un
 deployment's name and refuses to change stacks it does not own:
 
 - **The other mode.** It refuses a deployment that is currently the other mode, such as a
-  dev deploy over a prod deployment of the same `CDK_APP_NAME`.
+  dev deploy over a prod deployment of the same name.
 - **Unidentified stacks.** It refuses stacks that follow the deployment's names but carry
   no framework identity; they are never adopted on their name alone.
 - **Stacks that disagree.** It refuses stacks whose identities disagree with each other or

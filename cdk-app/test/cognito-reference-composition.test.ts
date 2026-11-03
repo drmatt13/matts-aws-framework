@@ -17,7 +17,7 @@ test("actual composition reuses Cognito in both modes and retained PostgreSQL/ne
     const cached = existsSync(path.join(root, "cdk-app/cdk.context.json")) ? JSON.parse(readFileSync(path.join(root, "cdk-app/cdk.context.json"), "utf8")) : {};
     for (const mode of ["dev", "prod"] as const) {
       const inputs = path.join(directory, `${mode}.env`), shim = path.join(directory, `${mode}.cjs`), outdir = path.join(directory, `${mode}-out`);
-      writeFileSync(inputs, "CDK_APP_NAME=reference-fixture\nLOCAL_DEV_URL=http://localhost:3000\nUSE_FRONTEND_CUSTOM_DOMAIN=false\nUSE_COGNITO_CUSTOM_DOMAIN=false\n");
+      writeFileSync(inputs, "LOCAL_DEV_URL=http://localhost:3000\nUSE_FRONTEND_CUSTOM_DOMAIN=false\nUSE_COGNITO_CUSTOM_DOMAIN=false\n");
       // Process-local mutation only: the application imports the same export,
       // while source and every other test worker retain their authored bytes.
       const policies = { cognito: { reference }, ...(mode === "prod" ? { database: { reference: databaseReference } } : {}) };
@@ -26,7 +26,7 @@ test("actual composition reuses Cognito in both modes and retained PostgreSQL/ne
       for (const key of Object.keys(inherited)) if (/^(CDK_|FRAMEWORK_|AWS_|PROD_DEPLOYMENT$|DEPLOY_PROD_WEBSOCKET_API$|DATABASE_)/.test(key)) delete inherited[key];
       const result = spawnSync(process.execPath, ["--import", "tsx", shim], { cwd: root, encoding: "utf8", timeout: 120_000, env: {
         ...inherited, CDK_OUTDIR: outdir, CDK_DEFAULT_ACCOUNT: account, CDK_DEFAULT_REGION: region, AWS_EC2_METADATA_DISABLED: "true", FRAMEWORK_INPUTS_FILE: inputs,
-        CDK_CONTEXT_JSON: JSON.stringify({ ...project, ...cached, "framework:targets": { "reference-fixture-prod": { mode: "prod", account, region, inputs: "cdk-app/.env.prod" } }, "aws:cdk:bundling-stacks": [], prodDeployment: String(mode === "prod") }),
+        CDK_CONTEXT_JSON: JSON.stringify({ ...project, ...cached, "framework:app": "reference-fixture", "framework:targets": { prod: { account, region, inputs: "cdk-app/.env.prod" } }, "aws:cdk:bundling-stacks": [], prodDeployment: String(mode === "prod") }),
       } });
       assert.equal(result.status, 0, `${mode} reference composition: ${result.stdout}\n${result.stderr}`);
       const manifest = JSON.parse(readFileSync(path.join(outdir, "manifest.json"), "utf8"));

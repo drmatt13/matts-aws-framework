@@ -11,14 +11,23 @@ identity administration and frontend publication. Each has its own destination a
 ## Before deployment
 
 Install dependencies with npm ci and verify the account with aws sts get-caller-identity.
-A production deployment is a target declared in `cdk-app/cdk.json`, with its name, the
-account it is pinned to, and its own inputs file:
+A production deployment is a stage declared in `cdk-app/cdk.json`, with the account it is
+pinned to and its own inputs file. It deploys as `<app>-<stage>`, the app being named by
+`framework:app` and identified by `framework:appId`, which never changes:
 
 ```json
+"framework:app": "my-app",
+"framework:appId": "<a UUID, generated once>",
 "framework:targets": {
-  "my-aws-app-prod": { "mode": "prod", "account": "<12-digit id>", "region": "us-east-1", "inputs": "cdk-app/.env.prod" }
+  "prod": { "account": "<12-digit id>", "region": "us-east-1", "inputs": "cdk-app/.env.prod" }
 }
 ```
+
+The `prod` stage deploys as `my-app-prod`, and every stack is tagged with the app id and its
+stage. A stage deployed under another name keeps it with `"deployAs": "<that name>"`. Renaming
+the app in Studio adds that itself for a production stage AWS shows deployed, and deploying a
+new production deployment is refused while the same app's stage is deployed here under another
+name, so a live production never moves by accident. A second production is another stage.
 
 Every command states production with `-c prodDeployment=true`; with one production target
 declared it is selected automatically, and `-c deployment=<name>` picks among several. A synth
@@ -267,7 +276,7 @@ Production deployment does not automatically export root .env or a local resourc
 public deployment outputs directly from CloudFormation or the CDK deployment output:
 
 ```powershell
-aws cloudformation describe-stacks --stack-name <CDK_APP_NAME>-CognitoStack --query 'Stacks[0].Outputs' --region <REGION> --profile <PROFILE>
+aws cloudformation describe-stacks --stack-name <DEPLOYMENT>-CognitoStack --query 'Stacks[0].Outputs' --region <REGION> --profile <PROFILE>
 ```
 
 Use the same command for FrontendWebsiteS3Stack and RdsStack as needed. Their established

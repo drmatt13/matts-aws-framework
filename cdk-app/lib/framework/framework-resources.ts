@@ -30,6 +30,12 @@ interface Options {
   readonly config: FrameworkConfig;
   readonly mode: CloudMode;
   readonly deployment: string;
+  /**
+   * `framework:appId` and the `framework:targets` stage this deployment is, under
+   * whatever name it is deployed: every stack is tagged with both, so a rename
+   * cannot hide a deployment of the same stage. Absent for an undeclared name.
+   */
+  readonly lineage?: { readonly appId?: string; readonly stage?: string };
   /** The application's shared destination, also enforced for native VPC callers. */
   readonly env?: cdk.Environment;
   readonly readers?: ResourceEnvironmentReaders;
@@ -356,7 +362,11 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
   if (!state.options) throw new Error("Initialize framework resources before finalizing them.");
   for (const action of state.pending) action();
   validateDatabaseNetwork(scope);
-  const { config, mode, deployment } = state.options;
+  const { config, mode, deployment, lineage } = state.options;
+  const lineageTags: Record<string, string> = {
+    ...(lineage?.appId ? { [IDENTITY_TAGS.appId]: lineage.appId } : {}),
+    ...(lineage?.stage ? { [IDENTITY_TAGS.stage]: lineage.stage } : {}),
+  };
   attachFrameworkTriggers(scope, config);
   const stacks = scope.node.root.node.findAll().filter(cdk.Stack.isStack);
   if (mode === "dev") {
@@ -395,16 +405,20 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
     const role = stack.stackName.startsWith(`${deployment}-`) ? stack.stackName.slice(deployment.length + 1) : stack.stackName;
     stack.templateOptions.metadata = {
       ...stack.templateOptions.metadata,
-      [DEPLOYMENT_METADATA_KEY]: { contract: 2, owner: FRAMEWORK_OWNER, deployment, mode, account: stack.account, region: stack.region, stack: role },
+      [DEPLOYMENT_METADATA_KEY]: {
+        contract: 2, owner: FRAMEWORK_OWNER, deployment, mode, account: stack.account, region: stack.region, stack: role,
+        ...(lineage?.appId ? { appId: lineage.appId } : {}), ...(lineage?.stage ? { stage: lineage.stage } : {}),
+      },
     };
     stack.tags.setTag(IDENTITY_TAGS.owner, FRAMEWORK_OWNER);
     stack.tags.setTag(IDENTITY_TAGS.deployment, deployment);
     stack.tags.setTag(IDENTITY_TAGS.mode, mode);
     stack.tags.setTag(IDENTITY_TAGS.contract, "2");
+    for (const [key, value] of Object.entries(lineageTags)) stack.tags.setTag(key, value);
   }
   applyFrameworkTags(scope.node.root, config, {
     [IDENTITY_TAGS.owner]: FRAMEWORK_OWNER, [IDENTITY_TAGS.deployment]: deployment,
-    [IDENTITY_TAGS.mode]: mode, [IDENTITY_TAGS.contract]: "2",
+    [IDENTITY_TAGS.mode]: mode, [IDENTITY_TAGS.contract]: "2", ...lineageTags,
   });
   const active = new Set<cdk.Stack>();
   const done = new Set<cdk.Stack>();

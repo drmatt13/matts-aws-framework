@@ -28,7 +28,8 @@ starting deployment operations. Keep this terminal running while using Studio.
 
 **2. Prepare development inputs.** Generate a missing `cdk-app/.env.dev` from Studio's
 **CDK environment files** island, or copy `cdk-app/.env.dev.template` only if the private
-file does not exist. Set a distinct `CDK_APP_NAME`, your local origin/ports and any required
+file does not exist. Name the app in Studio's navbar (or set `framework:app` and a permanent
+`framework:appId` in `cdk-app/cdk.json`; deployments are `<app>-dev` and `<app>-prod`), then set your local origin/ports and any required
 workload inputs. Preserve existing values. Development reads `.env.dev`; explicit
 production commands read the selected production target's inputs, conventionally
 `.env.prod`. There is no mode-less `cdk-app/.env`.

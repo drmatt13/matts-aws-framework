@@ -29,7 +29,7 @@ function local(overrides: Partial<LocalRunView> = {}): LocalRunView {
 function input(overrides: Partial<FindingsInput> = {}): FindingsInput {
   return {
     name: "my-aws-app",
-    target: { name: "my-aws-app", mode: "dev", origin: "personal" },
+    target: { name: "my-aws-app", mode: "dev", origin: "implicit" },
     context, profileKind: "sso",
     local: local(), jobs: [],
     ...overrides,
@@ -179,8 +179,8 @@ test("a plan that stopped after preparing change sets is offered for discarding"
 
 test("a deployment read from another region than its pin offers nothing to do there", () => {
   const value = input({
-    target: { name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2" },
-    match: { name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2", status: "elsewhere", detail: "Pinned to 734849394764/us-west-2; the selected profile is 734849394764/us-east-1." },
+    target: { name: "my-aws-app", mode: "dev", origin: "implicit", region: "us-west-2" },
+    match: { name: "my-aws-app", mode: "dev", origin: "implicit", region: "us-west-2", status: "elsewhere", detail: "Pinned to 734849394764/us-west-2; the selected profile is 734849394764/us-east-1." },
   });
   assert.equal(codes(value).includes("TARGET_ABSENT"), false, "absence in this region says nothing about the pinned one");
   assert.equal(deploymentFindings(value).flatMap((finding) => finding.actions).some((action) => action.id === "deploy" || action.id === "delete"), false);
@@ -195,4 +195,33 @@ test("a failed verification is persistent recovery evidence, while another accou
   assert.equal(deploymentFindings(ours).some((finding) => /^Deployed ·/.test(finding.title)), false);
   const foreign = input({ deployment: deployed(), plans: [{ ...plan, account: "111122223333" }] });
   assert.equal(codes(foreign).includes("OPERATION_UNVERIFIED"), false);
+});
+
+const APP = "5b7e3c1a-9d2f-4e6b-8a1c-3f0d2e9b7a64";
+
+test("a production stage deployed under another name blocks deploying the new one and offers to keep that name", () => {
+  const target = { name: "acme-prod", mode: "prod" as const, origin: "declared" as const, stage: "prod", appId: APP, account: context.account };
+  const value = input({ name: "acme-prod", target, match: { ...target, status: "absent", deployedAs: "aws-studio-prod" } });
+  const findings = deploymentFindings(value);
+  assert.deepEqual(findings.map((finding) => [finding.code, finding.severity, finding.title]), [["STAGE_DEPLOYED_AS", "blocking", "Deployed as aws-studio-prod"]]);
+  assert.match(findings[0]!.detail ?? "", /prod stage is already deployed here under that name, with its users, database and secrets\. Deploying acme-prod would start a second production beside it/);
+  const action = nextAction(findings);
+  assert.deepEqual([action?.id, action?.label, action?.deployAs], ["deploy-as", "Keep deploying to aws-studio-prod", "aws-studio-prod"], "keeping the name comes first; no plan is offered");
+});
+
+test("a development stage deployed under another name notes it, offers to keep it, and still deploys fresh", () => {
+  const target = { name: "acme-dev", mode: "dev" as const, origin: "implicit" as const, stage: "dev", appId: APP };
+  const findings = deploymentFindings(input({ name: "acme-dev", target, match: { ...target, status: "absent", deployedAs: "aws-studio-dev" } }));
+  const earlier = findings.find((finding) => finding.code === "STAGE_DEPLOYED_AS")!;
+  assert.deepEqual([earlier.severity, earlier.title, earlier.actions.map((action) => action.label)], ["info", "Earlier deployment: aws-studio-dev", ["Keep deploying to aws-studio-dev"]]);
+  assert.equal(nextAction(findings)?.label, "Compare AWS templates");
+});
+
+test("a discovered deployment of this app's own stage says so, rather than calling itself undeclared", () => {
+  const old = deployed({ name: "aws-studio-dev", appId: APP, stage: "dev" });
+  const mine = deploymentFindings(input({ name: "aws-studio-dev", target: undefined, deployment: old, appId: APP })).find((finding) => finding.code === "NOT_DECLARED")!;
+  assert.deepEqual([mine.title, mine.detail], ["An earlier deployment of this app's dev stage", "cdk-app/cdk.json no longer deploys the dev stage as aws-studio-dev. It keeps running, and billing, until you delete it."]);
+  assert.deepEqual(mine.actions.map((action) => action.id), ["delete"]);
+  const theirs = deploymentFindings(input({ name: "aws-studio-dev", target: undefined, deployment: old, appId: "0f0e0d0c-0b0a-4908-8706-050403020100" })).find((finding) => finding.code === "NOT_DECLARED")!;
+  assert.equal(theirs.title, "Discovered in this account, not declared here");
 });

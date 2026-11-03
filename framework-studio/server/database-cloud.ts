@@ -33,7 +33,7 @@ export class DatabaseCloudService {
 
   private async destination(deployment: string, profile: string): Promise<Destination> {
     if (!isAwsProfileName(profile)) throw new EditError(400, "Choose a configured AWS profile.");
-    const target = repositoryTargets(this.root, this.env).find(target => target.name === deployment && target.mode === "prod");
+    const target = repositoryTargets(this.root).find(target => target.name === deployment && target.mode === "prod");
     if (!target?.account || !target.region) throw new EditError(422, "Production database operations require a named production target with a pinned account and region.");
     const caller = await this.aws(profile, target.region, ["sts", "get-caller-identity"]);
     if (caller.Account !== target.account) throw new EditError(409, "The profile account differs from this production deployment. No database task was started.");

@@ -20,7 +20,7 @@ export function snapshot(): SnapshotResponse {
     Object.assign(model, { fields: { "lambda:fixture-0": [{ field: "lambda.memorySize", label: "Memory", path: ["memorySize"], domain: { kind: "number", min: 128, max: 10240, unit: "MB" }, effective: 256, authored: 256, provenance: "Declaration" }] } });
   }
   return { evaluating: false, commands: {}, busy: null, sourceRecovery: [], sourceWatch: { status: "watching", checkedAt: NOW, pollIntervalMs: 1000, problems: [] }, snapshot: {
-    revision: "browser-revision", generatedAt: NOW, repositoryRoot: "/studio-fixture", descriptions: { values: { "lambda:fixture-0": "A deterministic fixture for Studio browser checks." } },
+    revision: "browser-revision", generatedAt: NOW, repositoryRoot: "/studio-fixture", application: { name: "studio-fixture", appId: "5b7e3c1a-9d2f-4e6b-8a1c-3f0d2e9b7a64" }, descriptions: { values: { "lambda:fixture-0": "A deterministic fixture for Studio browser checks." } },
     schema, databaseProblems: [], models: { dev, prod }, files: {}, source: {
       cdkLinks: { version: 2, files: {}, edges: [], notes: [], manualWiring: [] }, links: {}, catalog: {}, problems: [],
       entities: { "lambda:fixture-0": { origin: 'http["/fixture/0"]', key: location, value: location } },
@@ -30,7 +30,7 @@ export function snapshot(): SnapshotResponse {
 }
 export function overview(): DeployOverview {
   return {
-    targets: [{ name: "browser-dev", mode: "dev", origin: "personal", inputs: "cdk-app/.env.dev" }, { name: "browser-prod", mode: "prod", origin: "declared", account: "123456789012", region: "us-east-1" }],
+    targets: [{ name: "browser-dev", mode: "dev", origin: "implicit", inputs: "cdk-app/.env.dev" }, { name: "browser-prod", mode: "prod", origin: "declared", account: "123456789012", region: "us-east-1" }],
     prerequisites: [{ id: "docker", label: "Docker", status: "ok", summary: "Fixture engine ready" }],
     local: { project: "browser-fixture", docker: { engine: "running", desktop: true }, services: [], watch: { running: false }, client: { running: false }, exported: { client: false }, startedBy: "none", restartNeeded: [] },
     jobs: [], preferences: { profiles: {}, profile: "browser", deployment: "browser-dev" }, profiles: [{ name: "browser", kind: "sso", region: "us-east-1" }],
@@ -38,7 +38,7 @@ export function overview(): DeployOverview {
 }
 export function discovery(): DiscoveryView {
   return { context: { arn: "arn:aws:iam::123456789012:role/browser-fixture", profile: "browser", account: "123456789012", region: "us-east-1" }, deployments: [], unrecognized: [], records: {}, unreadable: [], observedAt: NOW,
-    targets: [{ name: "browser-dev", mode: "dev", origin: "personal", status: "absent" }, { name: "browser-prod", mode: "prod", origin: "declared", status: "absent" }] };
+    targets: [{ name: "browser-dev", mode: "dev", origin: "implicit", status: "absent" }, { name: "browser-prod", mode: "prod", origin: "declared", status: "absent" }] };
 }
 export function identity(mode: "dev" | "prod"): IdentitySource {
   return { mode, file: `cdk-app/.env.${mode}`, hash: `identity-${mode}`, exists: true, inputs: {}, signInProviders: [], providers: [], declaredProviders: [], identityPools: "not-declared", problems: [] };

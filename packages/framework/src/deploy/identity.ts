@@ -66,6 +66,9 @@ export function identityFromOutputs(stack: ObservedStack): DeploymentIdentity | 
  * failed create or a stack awaiting review), and as stack tags, which
  * describe-stacks returns and CloudFormation copies onto the stack's resources.
  * The owner field says the stack is this framework's, not a lookalike's.
+ * Both also carry the app's permanent id and the stage: which app and stage a
+ * deployment is, under whatever name it was deployed. They are optional, so a
+ * stack from before they existed still reads.
  */
 export const DEPLOYMENT_METADATA_KEY = "framework:deployment";
 export const FRAMEWORK_OWNER = "matts-aws-framework";
@@ -74,6 +77,8 @@ export const IDENTITY_TAGS = {
   deployment: "framework:deployment",
   mode: "framework:mode",
   contract: "framework:contract",
+  appId: "framework:app-id",
+  stage: "framework:stage",
 } as const;
 
 export interface StackIdentity extends DeploymentIdentity {
@@ -81,6 +86,15 @@ export interface StackIdentity extends DeploymentIdentity {
   readonly contract?: 1 | 2;
   /** The stack's role in its deployment, e.g. CognitoStack (contract 2). */
   readonly stack?: string;
+  /** `framework:appId` of the app that deployed it. */
+  readonly appId?: string;
+  /** The `framework:targets` stage it was deployed as. */
+  readonly stage?: string;
+}
+
+/** Which app and stage a stack is, when it says so: stacks tagged before lineage existed do not. */
+function lineage(appId: unknown, stage: unknown): { appId?: string; stage?: string } {
+  return { ...(typeof appId === "string" && appId ? { appId } : {}), ...(typeof stage === "string" && stage ? { stage } : {}) };
 }
 
 export function identityFromMetadata(metadata: unknown): StackIdentity | undefined {
@@ -88,7 +102,7 @@ export function identityFromMetadata(metadata: unknown): StackIdentity | undefin
   if (!value || value.contract !== 2 || value.owner !== FRAMEWORK_OWNER) return undefined;
   try {
     const identity = parseIdentity(JSON.stringify({ ...value, version: 1 }));
-    return { ...identity, contract: 2, ...(typeof value.stack === "string" ? { stack: value.stack } : {}) };
+    return { ...identity, contract: 2, ...(typeof value.stack === "string" ? { stack: value.stack } : {}), ...lineage(value.appId, value.stage) };
   } catch {
     return undefined;
   }
@@ -101,7 +115,7 @@ export function identityFromTags(stack: ObservedStack): StackIdentity | undefine
   const mode = tags.get(IDENTITY_TAGS.mode);
   const deployment = tags.get(IDENTITY_TAGS.deployment);
   if (!location || !deployment || (mode !== "dev" && mode !== "prod")) return undefined;
-  return { deployment, mode, account: location.account, region: location.region, contract: 2 };
+  return { deployment, mode, account: location.account, region: location.region, contract: 2, ...lineage(tags.get(IDENTITY_TAGS.appId), tags.get(IDENTITY_TAGS.stage)) };
 }
 
 /** A parsed template or its JSON text. YAML, intrinsics and anything unreadable give no identity. */

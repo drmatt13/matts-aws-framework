@@ -248,7 +248,7 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     expect(studio.requests.filter(request => /apply$/.test(request.path))).toHaveLength(0);
   });
 
-  test("Deploy expanded publication settings, identity review, actions and deletion review remain bounded", async ({ page, studio }, info) => {
+  test("Deploy expanded publication settings, stage review, actions and deletion review remain bounded", async ({ page, studio }, info) => {
     const observed = { ...discovery(), deployments: [deployment], targets: discovery().targets.map(target => ({ ...target, status: target.name === "browser-dev" ? "deployed" as const : target.status })) };
     studio.reply("GET", "/api/deploy/discover", route => route.fulfill({ json: { ok: true, value: observed } }));
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: expandedOverview() }));
@@ -258,7 +258,7 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     studio.reply("GET", "/api/deploy/jobs/fixture-completed-job/log", route => route.fulfill({ json: { job: expandedOverview().jobs[0], lines: [{ seq: 1, at: context.observedAt, stream: "info", text: "Fixture template comparison finished without mutations." }] } }));
     studio.reply("POST", "/api/frontend-release/build", route => route.fulfill({ json: frontendReview }));
     studio.reply("POST", "/api/frontend-release/settings/review", route => route.fulfill({ json: { id: "fixture-settings-review", file: "framework-config/frontend-release.json", before: "{}", after: JSON.stringify({ buildScript: "fixture-build" }, null, 2) } }));
-    studio.reply("POST", "/api/frontend-release/identities/review", route => route.fulfill({ json: { id: "fixture-identity-review", mode: "prod", name: "fixture-staging", warnings: ["A new identity does not rename or adopt an existing deployment."], changes: [{ file: "cdk-app/cdk.json", before: "{}", after: '{"fixture-staging":{"mode":"prod"}}' }] } }));
+    studio.reply("POST", "/api/frontend-release/identities/review", route => route.fulfill({ json: { id: "fixture-stage-review", stage: "staging", mode: "prod", name: "studio-fixture-staging", warnings: ["Existing stages keep their names."], changes: [{ file: "cdk-app/cdk.json", before: "{}", after: '{"framework:targets":{"staging":{"mode":"prod","account":"111122223333"}}}' }] } }));
     await studio.goto("/deploy");
     await expect(page.getByRole("heading", { name: /browser-dev/ }).first()).toBeVisible();
     await expandAll(page);
@@ -267,13 +267,15 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     await expect(logs).toBeVisible();
     await capture(page, info, "deploy-local-service-logs");
     await logs.getByRole("button", { name: "Close", exact: true }).click();
-    await capture(page, info, "deploy-expanded-identities", page.getByText("Development & production deployment names", { exact: true }));
-    const identities = page.locator("details").filter({ has: page.locator("summary", { hasText: /^Development & production deployment names$/ }) }).first();
-    await identities.getByRole("combobox", { name: "Environment", exact: true }).selectOption("prod");
-    await identities.getByLabel("New deployment name", { exact: true }).fill("fixture-staging");
-    await identities.getByRole("button", { name: "Review new deployment source", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Deployment identity source review" })).toBeVisible();
-    await capture(page, info, "deploy-new-identity-review", page.getByRole("region", { name: "Deployment identity source review" }));
+    await capture(page, info, "deploy-expanded-stages", page.getByText("Add a deployment stage", { exact: true }));
+    const stages = page.locator("details").filter({ has: page.locator("summary", { hasText: /^Add a deployment stage$/ }) }).first();
+    await stages.getByRole("textbox", { name: "Stage", exact: true }).fill("staging");
+    await stages.getByRole("combobox", { name: "Mode", exact: true }).selectOption("prod");
+    await stages.getByRole("textbox", { name: "Account", exact: true }).fill("111122223333");
+    await expect(stages).toContainText("Deploys as studio-fixture-staging.");
+    await stages.getByRole("button", { name: "Review new stage", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Deployment stage source review" })).toBeVisible();
+    await capture(page, info, "deploy-new-stage-review", page.getByRole("region", { name: "Deployment stage source review" }));
     await page.getByRole("button", { name: "Build & review release", exact: true }).click();
     await expect(page.getByRole("region", { name: "Frontend publication review", exact: true })).toBeVisible();
     await expandAll(page);

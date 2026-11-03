@@ -86,6 +86,11 @@ npm run studio            # http://127.0.0.1:4590/  (--port <n>, or STUDIO_PORT)
 npm run studio -- --print # the whole model as JSON, then exit
 ```
 
+**Agent test** (`/test`) is a small [local coding-agent experiment](../docs/framework-studio/local-agent-lab.md):
+select an installed Codex or Claude CLI, generate a plan, review the exact diff and
+separately apply a change to one Studio demo message. It does not grant general
+framework code execution. Planning uses the selected provider account.
+
 It runs on your machine beside your editor, not in Compose. When it writes a file,
 Compose Watch carries the change into the running dev servers, just as a save in your
 editor would.

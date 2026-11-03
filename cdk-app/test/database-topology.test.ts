@@ -17,7 +17,7 @@ function synth(settings: Record<string, string>): Assembly {
   try {
     const inputs = path.join(directory, "inputs.env");
     const output = path.join(directory, "templates.json");
-    writeFileSync(inputs, "CDK_APP_NAME=example\n");
+    writeFileSync(inputs, "LOCAL_DEV_URL=http://localhost:3000\n");
     // Start from public fixture inputs, independent of the developer's authored env.
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("DATABASE_") && key !== "RETAIN_STATEFUL_RESOURCES"));
     const run = spawnSync(process.execPath, ["--import", "tsx", path.join(__dirname, "fixtures/database-synth.ts"), output], {

@@ -43,6 +43,7 @@ fixed command children. See [snapshots](snapshots.md) for startup, reload and di
 | Identity and identity-policy services | Source-owned identity configuration, selected AWS observations and typed operation boundaries | A generic IAM policy simulator or proof that provider-side sign-in works |
 | `AwsConnectionsService` | Machine-local profile catalog, identity observations, native authentication coordination, reviewed non-secret AWS configuration and profile deletion | Deployment approval, complete IAM authorization or browser access to credentials |
 | `CommandRunner` | Fixed `framework:check` and confirmed `framework:generate` scripts | A request-controlled shell or the complete operations surface |
+| `AgentLabService` | Experimental local CLI planning and a separate, guarded save of one demo string declaration | Arbitrary agent-authored code execution or general framework editing |
 
 Each authority has its own typed request and checks. The generic configuration writer
 allows existing `framework.config.ts` and `framework-config/**/*.ts` by real path,
@@ -87,11 +88,13 @@ All prefixes in this table are relative to `/api`.
 | `/database/application`, `/database/cloud`, `/database/sql` | Separate target review/application and SQL operations |
 | `/deploy` | `server/deploy/routes.ts`: target discovery, plans, approvals, operations and local runtime |
 | `/aws-connections` | `server/aws-connections`: catalog, protected connection checks, ephemeral authentication, configuration, deletion and logout reviews |
-| `/frontend-release` | `server/frontend-release-routes.ts`: frontend release and deployment identity workflows |
+| `/frontend-release` | `server/frontend-release-routes.ts`: frontend release and add-a-deployment-stage workflows |
+| `/app-name` | `server/app-name-routes.ts`: the app's name and id (`framework:app`, `framework:appId`): read, review (read-only AWS discovery by app id and stage decides which production stages keep their deployed name), `/deploy-as/review` (keep one stage's deployed name, from Deploy) and hash-guarded apply to `cdk-app/cdk.json`; source edits, not AWS operations |
 | `/identity`, `/identity-policy` | `server/identity/routes.ts`, `server/identity-policy.ts`: identity/domain evidence and source/operation workflows |
 | `/stateful-resources` | `server/stateful-resources.ts`: lifecycle inventory, reviews and operations |
 | `/websockets/defaults` | Starting endpoint URLs; not a proxy for WebSocket traffic |
 | `/commands/:name` | Fixed allowlisted commands with bounded output and runtime |
+| `/agent-lab` | Experimental `/status`, `/plan`, `/apply` for the fixed Studio demo message; see [local agent lab](../../framework-studio/local-agent-lab.md) |
 
 Unknown API routes return JSON 404. There are no `/edits/undo` or `/edits/redo` routes.
 The generic mutation protocol version is checked separately from authentication; a stale

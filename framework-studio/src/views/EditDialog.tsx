@@ -16,11 +16,11 @@ import {
   dialogPrimaryActionClasses,
 } from "../inspector-ui";
 import { AlertTriangle, Check, ExternalLink, MessageSquare } from "lucide-react";
-import { Fragment, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { SourceDiff } from "./SourceDiff";
 import type { Review } from "../draft";
 import { useStudio } from "../studio";
 
-const diffCellClasses = "px-2.5 py-0 whitespace-pre align-top text-meta leading-[1.7]";
 
 export function EditDialog({ review }: { readonly review: Review | undefined }) {
   const { snapshot, draft, draftState, applyDraft } = useStudio();
@@ -305,64 +305,12 @@ export function EditDialog({ review }: { readonly review: Review | undefined }) 
               </ul>
             ) : null}
             {review.plan.changes.map((change) => (
-              <div
-                className="border border-rule rounded-md overflow-auto font-mono text-[0.8rem]"
+              <SourceDiff
                 key={change.file}
-                role="region"
-                tabIndex={0}
-                aria-label={`Changes to ${change.file}`}
-                data-slot="diff"
-              >
-                <div className="border-b border-rule bg-wash px-2.5 py-1.5 text-meta wrap-anywhere">
-                  {change.file}
-                  {"operation" in change && change.operation === "create" ? " · New file" : ""}
-                </div>
-                <table className="w-full border-collapse">
-                  <tbody>
-                    {change.diff.lines.map((line, at) => (
-                      <Fragment key={at}>
-                        {line.hunk ? (
-                          <tr className="bg-paper" data-slot="hunk">
-                            <td className={diffCellClasses} colSpan={3}>
-                              {line.hunk}
-                            </td>
-                          </tr>
-                        ) : null}
-                        <tr
-                          className={
-                            line.kind === "add"
-                              ? "bg-added"
-                              : line.kind === "remove"
-                                ? "bg-removed"
-                                : undefined
-                          }
-                        >
-                          <td
-                            className={cx(
-                              diffCellClasses,
-                              "w-[1%] text-right text-ink select-none",
-                            )}
-                          >
-                            {line.oldLine ?? ""}
-                          </td>
-                          <td
-                            className={cx(
-                              diffCellClasses,
-                              "w-[1%] text-right text-ink select-none",
-                            )}
-                          >
-                            {line.newLine ?? ""}
-                          </td>
-                          <td className={diffCellClasses}>
-                            {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
-                            {line.text}
-                          </td>
-                        </tr>
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                file={change.file}
+                lines={change.diff.lines}
+                note={"operation" in change && change.operation === "create" ? "New file" : undefined}
+              />
             ))}
             <p className="text-caption text-graphite">
               {review.kind === "environment"

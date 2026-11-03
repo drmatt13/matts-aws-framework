@@ -1,7 +1,9 @@
 import {
   classifyDeployment,
   deploymentCandidates,
+  discoverDeployments,
   identityFromOutputs,
+  stageDeployments,
   type ClassifiedStack,
   type DeploymentIdentity,
   type DeploymentState,
@@ -16,6 +18,11 @@ import {
  * not update a prod deployment's stacks (or the reverse), a stack without an
  * identity is never adopted, and a deployment CloudFormation is still changing
  * is left alone. Reading AWS is the only side effect; a read that fails refuses.
+ *
+ * A new deployment is also checked against the app and stage it is: if the
+ * same stage of the same app (by `framework:appId`, which a rename never
+ * changes) is already deployed here under another name, a production deploy
+ * is refused, and a development one notes the earlier deployment still running.
  */
 
 export interface GuardReaders {
@@ -87,6 +94,11 @@ export function assertDeploymentAllowed(
   identity: DeploymentIdentity, args: readonly string[], readers: GuardReaders,
   /** Stacks a reviewed plan created to hold its change sets: expected to be awaiting review, and nothing else. */
   plannedReviews: ReadonlySet<string> = new Set(),
+  options: {
+    /** The app id and stage the assembly was synthesized as; absent for an undeclared name. */
+    readonly lineage?: { readonly appId?: string; readonly stage?: string };
+    readonly note?: (message: string) => void;
+  } = {},
 ): DeploymentState {
   if (identity.mode === "prod") {
     const flags = unsafeProductionFlags(args);
@@ -108,6 +120,7 @@ export function assertDeploymentAllowed(
     try { templates.set(stack.StackName, readers.readTemplate(stack.StackName)); } catch { /* No identity: refused below. */ }
   }
   const state = classifyDeployment(stacks, identity, templates);
+  if (state.kind === "absent") assertStageNotDeployedElsewhere(identity, stacks, options);
   switch (state.kind) {
     case "absent":
     case "ready":
@@ -121,4 +134,22 @@ export function assertDeploymentAllowed(
     case "conflict":
       throw new Error(`${state.message} Nothing was changed.`);
   }
+}
+
+/**
+ * Before a deployment is created: this app's same stage, deployed here under
+ * another name, most likely because the app was renamed or `deployAs` removed.
+ */
+function assertStageNotDeployedElsewhere(
+  identity: DeploymentIdentity, stacks: readonly ObservedStack[],
+  options: { readonly lineage?: { readonly appId?: string; readonly stage?: string }; readonly note?: (message: string) => void },
+): void {
+  const stage = options.lineage?.stage;
+  const [earlier] = stageDeployments(discoverDeployments(stacks, identity), options.lineage ?? {}).filter((deployment) => deployment.name !== identity.deployment);
+  if (!earlier || !stage) return;
+  const keep = `set "deployAs": "${earlier.name}" in framework:targets.${stage} (cdk-app/cdk.json); AWS Studio's Deploy page does this in one reviewed step`;
+  if (identity.mode === "prod") {
+    throw new Error(`${earlier.name} already deploys this app's ${stage} stage in ${identity.account}/${identity.region}, with its own users, database and secrets. Deploying ${identity.deployment} would start a second production beside it, so nothing was changed. To keep deploying to ${earlier.name}, ${keep}. For a second production, declare another stage.`);
+  }
+  (options.note ?? console.log)(`${earlier.name}, an earlier deployment of this app's ${stage} stage, is still in ${identity.account}/${identity.region} and keeps billing until you delete it. To keep deploying to it instead of ${identity.deployment}, ${keep}.`);
 }

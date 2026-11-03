@@ -28,6 +28,9 @@ export interface DiscoveredDeployment {
   readonly state: DeploymentState;
   readonly stacks: readonly ClassifiedStack[];
   readonly lastUpdated?: string;
+  /** The app and stage its stacks agree they were deployed as; absent for stacks that predate lineage, or disagree. */
+  readonly appId?: string;
+  readonly stage?: string;
 }
 
 export interface UnrecognizedStack {
@@ -90,8 +93,13 @@ export function discoverDeployments(
     const state = classifyDeployment(members, { deployment: name, mode, ...context }, templates);
     const stacksOf = "stacks" in state ? state.stacks : [];
     const times = members.map((stack) => stack.LastUpdatedTime ?? stack.CreationTime).filter((time): time is string => !!time).sort();
+    const appIds = new Set(identities.map((identity) => identity.appId));
+    const stages = new Set(identities.map((identity) => identity.stage));
+    const [appId] = appIds;
+    const [stage] = stages;
     deployments.push({
       name, mode, ...context,
+      ...(appIds.size === 1 && stages.size === 1 && appId && stage ? { appId, stage } : {}),
       contracts: [...new Set(identities.map((identity) => identity.contract ?? 1))].sort(),
       state, stacks: stacksOf,
       ...(times.length ? { lastUpdated: times[times.length - 1] } : {}),
@@ -106,6 +114,19 @@ export interface MatchedTarget extends DeploymentTarget {
   /** deployed: here, in its mode. absent: nothing here. conflict: here, in another mode. elsewhere: pinned to another account or region. */
   readonly status: "deployed" | "absent" | "conflict" | "elsewhere";
   readonly detail?: string;
+  /** Absent under its own name, but the same app's same stage is deployed here as this one. */
+  readonly deployedAs?: string;
+}
+
+/**
+ * The deployments here that are this app's given stage, by the app id and stage
+ * their stacks carry, under any name, most recently updated first.
+ */
+export function stageDeployments(discovery: Discovery, lineage: { readonly appId?: string; readonly stage?: string }): DiscoveredDeployment[] {
+  if (!lineage.appId || !lineage.stage) return [];
+  return discovery.deployments
+    .filter((deployment) => deployment.appId === lineage.appId && deployment.stage === lineage.stage)
+    .sort((a, b) => (b.lastUpdated ?? "").localeCompare(a.lastUpdated ?? ""));
 }
 
 export function matchTargets(targets: readonly DeploymentTarget[], discovery: Discovery, context: DiscoveryContext): MatchedTarget[] {
@@ -114,7 +135,10 @@ export function matchTargets(targets: readonly DeploymentTarget[], discovery: Di
       return { ...target, status: "elsewhere", detail: `Pinned to ${target.account ?? context.account}/${target.region ?? context.region}; the selected profile is ${context.account}/${context.region}.` };
     }
     const deployed = discovery.deployments.find((deployment) => deployment.name === target.name);
-    if (!deployed) return { ...target, status: "absent" };
+    if (!deployed) {
+      const earlier = stageDeployments(discovery, target).find((deployment) => deployment.name !== target.name);
+      return { ...target, status: "absent", ...(earlier ? { deployedAs: earlier.name } : {}) };
+    }
     if (deployed.mode !== target.mode) {
       return { ...target, status: "conflict", detail: `${target.name} is deployed as ${deployed.mode} here, but the repository declares it ${target.mode}.` };
     }

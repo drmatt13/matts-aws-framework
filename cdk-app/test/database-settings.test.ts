@@ -91,7 +91,7 @@ test("both authored templates document all resolver settings with production def
 
 test("application deployment validates overrides against authored database defaults", () => {
   const deployment = resolveDeploymentInputs({
-    env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", CDK_APP_NAME: "example", DATABASE_STORAGE_IOPS: "2000" },
+    env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", DATABASE_STORAGE_IOPS: "2000" },
     getContext: key => key === "databaseMultiAz" ? true : undefined,
     databaseSettings: { multiAz: false, storageType: "io2", allocatedStorage: 100, maxAllocatedStorage: 1000, iops: 1000 },
   });
