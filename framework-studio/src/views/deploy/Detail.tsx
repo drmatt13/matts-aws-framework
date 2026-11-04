@@ -112,7 +112,7 @@ export function Detail(props: {
       data-mode={row.mode}
       className="group/detail min-w-0"
     >
-      <PageToolbar className="flex flex-wrap items-start justify-between gap-3">
+      <PageToolbar appearance="plain" className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid min-w-0 gap-1">
           <h1
             id="deployment-heading"

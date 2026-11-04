@@ -41,7 +41,7 @@ function DeployState({ title, machine, children }: {
 }) {
   return (
     <>
-      <PageToolbar className="flex flex-wrap items-center justify-between gap-3">
+      <PageToolbar appearance="plain" className="flex flex-wrap items-center justify-between gap-3">
         <h1 className={pageTitleClasses}>{title}</h1>
         {machine ? <div className="ml-auto min-w-0 max-w-full">{machine}</div> : null}
       </PageToolbar>

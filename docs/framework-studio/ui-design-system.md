@@ -167,8 +167,9 @@ Database's tabs keep that frame so its navigation stays still when moving to and
 Schema editor. **Document pages** (Deploy, GraphQL, Cognito, Domains, WebSockets and Agent
 test) share one column; a new page is a document page unless it needs the whole window.
 
-Document pages use the same toolbar surface; Deploy keeps machine readiness beside its
-deployment heading within that toolbar's column.
+Document pages share header geometry; Deploy uses a plain page header that blends into
+the page, keeping machine readiness beside its deployment heading in the same column.
+It has no toolbar surface or visible bottom rule. Other document pages retain their toolbar surface.
 `pageToolbarClasses` owns `--toolbar-padding` (12px vertically), `--toolbar-height` (57px
 minimum including the rule), the `--sheet` surface and the `--rule` bottom border.
 `WorkspaceToolbar` adds `--workspace-gutter` (16px) for workbenches. Controls are 32px tall.
@@ -213,7 +214,7 @@ Load failures use a contained `Notice` in the same content column, with
 wrapping details and a nearby retry action. Keep independent source and deployment
 context failures independently recoverable, and show progress during retry. Alerts
 must remain visible without widening the document or separating them from their controls.
-Deploy keeps its title toolbar and column through loading, missing profiles, missing targets
+Deploy keeps its plain title header and column through loading, missing profiles, missing targets
 and read failures; background read failures retain the deployment and contextual retry.
 
 The Board is set aside and not routed; the rules below still describe its source.

@@ -1,5 +1,5 @@
 import type { ComponentPropsWithRef } from "react";
-import { cardClasses, pageToolbarClasses } from "../ui/Surface";
+import { cardClasses, pageHeaderClasses, pageToolbarClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
 
 /** Reading cards shared by document pages. Native dialogs keep their own margins. */
@@ -47,9 +47,9 @@ export const pageWidthClasses = "mx-auto w-full min-w-0 max-w-(--workspace-page-
 /** A document page's content: the column plus the rhythm below its toolbar. */
 export const pageBodyClasses = cx(pageWidthClasses, "pt-4 pb-6 vp-720:pt-3");
 export const pageTitleClasses = "m-0 font-sans text-step1 font-semibold leading-[1.3]";
-export function PageToolbar({ className, ...props }: ComponentPropsWithRef<"div">) {
+export function PageToolbar({ appearance = "toolbar", className, ...props }: ComponentPropsWithRef<"div"> & { readonly appearance?: "toolbar" | "plain" }) {
   return (
-    <header className={cx(pageToolbarClasses, "flex items-center")}>
+    <header className={cx(appearance === "plain" ? cx(pageHeaderClasses, "border-b border-transparent") : pageToolbarClasses, "flex items-center")}>
       <div {...props} className={cx(pageWidthClasses, className)} />
     </header>
   );
