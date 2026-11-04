@@ -129,6 +129,9 @@
   --color-map-compose: #3b9bff;
   --color-map-compose-deep: #1d63ed;
   --color-map-compose-light: #a9d5ff;
+  /* The resting whale: map-muted mixed into map-ground, opaque so draining water never shows through. */
+  --color-map-compose-off: color-mix(in srgb, #9ba8b8 55%, #0a0d13);
+  --color-map-compose-off-hover: color-mix(in srgb, #9ba8b8 70%, #0a0d13);
   --color-map-row: #26364b;
   /* Issues on the map: rules and glyphs match scene/look.ts ISSUE_COLOR; text is a lighter, readable tint. */
   --color-map-error: #ff5f6d;

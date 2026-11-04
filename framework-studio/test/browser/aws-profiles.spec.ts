@@ -404,6 +404,36 @@ test("expired, unavailable and missing profiles never imply another identity", a
   await expect(page.getByRole("combobox", { name: "AWS profile" })).toHaveValue("dev");
 });
 
+test("a session-backed profile can sign in again after a failure Studio cannot name", async ({
+  page,
+  studio,
+}) => {
+  let code: "failed" | "network" = "failed";
+  studio.reply("POST", "/api/aws-connections/check", (route) =>
+    route.fulfill({
+      json: connectionObservationFixture(route.request().postDataJSON().profile, {
+        state: "unavailable",
+        identity: undefined,
+        problem: { code, message: "The check failed.", action: "retry", retryable: true },
+      }),
+    }),
+  );
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
+  const test = modal.getByRole("button", { name: "Test connection", exact: true });
+  const reconnect = modal.getByRole("button", { name: "Reconnect", exact: true });
+  await test.click();
+  await expect(reconnect).toBeVisible();
+  await expect(test).toBeVisible();
+  // Signing in cannot repair a network: only the failure Studio cannot explain offers it.
+  code = "network";
+  await test.click();
+  await expect(reconnect).toBeHidden();
+  await expect(test).toBeVisible();
+  await assertAccessible(page);
+});
+
 test("role creation reviews safe fields and never changes associations implicitly", async ({
   page,
   studio,

@@ -33,7 +33,10 @@ and **Use for** (Dev + Prod, Dev only, Prod only, Not used) changes the selectio
 profile leaves keeps no profile rather than gaining another. Identity and Configuration follow.
 Identity ends in one right-aligned action row. **Test connection** becomes **Reconnect** (the
 primary action) when the last check reports sign-in required for a profile backed by a Console
-or Identity Center session, and **Review sign-out** appears only while such a session is
+or Identity Center session. An unclassified check failure on such a profile keeps **Test
+connection** and adds **Reconnect** beside it, because CLI wording is not a stable contract and
+a session must not become unreachable when that wording changes; network, throttling, timeout
+and permission failures only test. **Review sign-out** appears only while such a session is
 verified; access-key and provider profiles only test. When a profile also configures access
 keys or another method, the verified identity decides how it is described: a Console or
 Identity Center session whose account differs from that identity is not in use, so the profile

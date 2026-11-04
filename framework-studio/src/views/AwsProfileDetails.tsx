@@ -196,6 +196,9 @@ export function AwsProfileDetails({
     ["login", "sso"].includes(index ? item.kind : kind),
   );
   const state = observation?.state ?? "unchecked";
+  const signInRequired = nativeAuthentication && state === "needs-auth";
+  // The CLI's wording is no contract: a failure Studio cannot name may still be a dead session.
+  const signInMayHelp = nativeAuthentication && observation?.problem?.code === "failed";
   const terminal =
     profile.hasMfa || profile.kind === "process" || observation?.problem?.action === "terminal";
   const source = profile.sourceProfile
@@ -361,23 +364,24 @@ export function AwsProfileDetails({
               <CopyCode code={terminalIdentityCommand(profile.name)} label="identity check command" />
             </div>
           ) : null}
-          {/* One slot: Test becomes Reconnect when a session-backed profile needs sign-in;
-              sign-out appears only while a verified session exists to end. */}
+          {/* Test becomes Reconnect when a session-backed profile needs sign-in, and sits beside it
+              when the failure is unexplained; sign-out appears only while a verified session exists to end. */}
           <div className="flex flex-wrap justify-end gap-2" data-slot="aws-profile-identity-actions">
             {nativeAuthentication && state === "connected" ? (
               <Button variant="quiet" disabled={pending} onClick={onLogout}>
                 Review sign-out
               </Button>
             ) : null}
-            {nativeAuthentication && state === "needs-auth" ? (
-              <Button variant="primary" disabled={pending} onClick={onAuthenticate}>
-                Reconnect
-              </Button>
-            ) : (
+            {signInRequired ? null : (
               <Button variant="quiet" disabled={pending} onClick={onTest}>
                 Test connection
               </Button>
             )}
+            {signInRequired || signInMayHelp ? (
+              <Button variant="primary" disabled={pending} onClick={onAuthenticate}>
+                Reconnect
+              </Button>
+            ) : null}
           </div>
         </div>
       </InspectorSection>

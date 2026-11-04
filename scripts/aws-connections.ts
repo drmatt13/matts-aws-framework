@@ -321,7 +321,7 @@ export function classifyAwsConnectionError(stderr: string, missing = false): Aws
   if (/ProfileNotFound|config profile .* could not be found/i.test(stderr)) return problem("profile");
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|Could not connect|EndpointConnection|SSL validation|CERT_|certificate verify|connection.*(?:closed|reset)|proxy|timed out/i.test(stderr)) return problem("network");
   if (/MFA|mfa|EOF when reading a line|Cannot perform an interactive login/.test(stderr)) return problem("mfa-required");
-  if (/ExpiredToken|UnauthorizedSSOToken|SSO session .* expired|Error loading SSO Token|Token has expired|invalid_grant|refresh token.*expired/i.test(stderr)) return problem("expired");
+  if (/ExpiredToken|UnauthorizedSSOToken|SSO session .* expired|Error loading SSO Token|Token has expired|invalid_grant|refresh token.*expired|reauthenticate|Error loading login session token|refresh login credentials|refreshing a login session/i.test(stderr)) return problem("expired");
   if (/AssumeRole.*(?:AccessDenied|denied)|(?:AccessDenied|denied).*AssumeRole/i.test(stderr)) return problem("assume-role");
   if (/credential_process|credential process|process credentials|CredentialRetrievalError/i.test(stderr)) return problem("external-provider");
   if (/Unable to locate credentials|NoCredentials|InvalidClientTokenId|UnrecognizedClientException|No login session|login session.*not found/i.test(stderr)) return problem("no-credentials");

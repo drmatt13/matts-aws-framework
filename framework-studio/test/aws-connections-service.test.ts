@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
-import { loadAwsCatalog, AwsConnectionError, problem } from "../../scripts/aws-connections";
+import { classifyAwsConnectionError, loadAwsCatalog, AwsConnectionError, problem } from "../../scripts/aws-connections";
 import { AuthenticationCoordinator, safeAuthorizationUrl, type AuthRunner } from "../server/aws-connections/authentication";
 import { patchIniSection } from "../server/aws-connections/configuration";
 import { AwsConnectionsService } from "../server/aws-connections/service";
@@ -29,6 +29,33 @@ test("catalog performs metadata discovery and a capability probe, never credenti
   const catalog = await service.catalog();
   assert.deepEqual(calls, [["--version"]]); assert.equal(catalog.capabilities.consoleLogin, true);
   assert.doesNotMatch(JSON.stringify(catalog), /SENTINEL/);
+});
+// Verbatim from AWS CLI 2.34.54: botocore's LoginError family and LoginCredentialFetcher.
+const consoleSessionFailures = [
+  "aws: [ERROR]: Your session has expired. Please reauthenticate using 'aws login'.",
+  "aws: [ERROR]: Unable to refresh login credentials because of a change in your password. Please reauthenticate with your new password using 'aws login'.",
+  "aws: [ERROR]: Unable to create or refresh login credentials due to insufficient permissions. You may be missing permission for the 'signin:CreateOAuth2Token' action.",
+  "aws: [ERROR]: Error loading login session token: Unable to load a existing login session for session arn:aws:iam::123456789012:root, Please reauthenticate with 'aws login'.",
+  "aws: [ERROR]: Error loading login session token: Failed to load access token from token cache, missing one or more required fields.",
+  "aws: [ERROR]: Error loading login session token: Failed to refresh an access token.",
+  "aws: [ERROR]: Error loading login session token: Private key not found in cached token.",
+  "aws: [ERROR]: An unspecified error happened when resolving AWS credentials or refreshing a login session profile.",
+];
+for (const stderr of consoleSessionFailures) test(`a Console session failure asks for sign-in: ${stderr.slice(14, 70)}`, () => {
+  assert.equal(classifyAwsConnectionError(stderr).code, "expired");
+});
+test("classifying Console session failures leaves neighbouring failures alone", () => {
+  assert.equal(classifyAwsConnectionError("No login session is configured for this profile").code, "no-credentials");
+  assert.equal(classifyAwsConnectionError("Could not connect to the endpoint URL: \"https://signin.us-east-1.amazonaws.com/\"").code, "network");
+  assert.equal(classifyAwsConnectionError("An error occurred (AccessDenied) when calling the GetCallerIdentity operation").code, "denied");
+  assert.equal(classifyAwsConnectionError("Something this Studio has never seen").code, "failed");
+});
+test("an expired Console session reports sign-in required and keeps the last verified identity", async () => {
+  const f = fixture(); let expired = false;
+  const service = new AwsConnectionsService(f.directory, { env: f.env, watch: false, run: async () => { if (expired) throw new AwsConnectionError(classifyAwsConnectionError(consoleSessionFailures[0]!)); return { stdout: JSON.stringify({ Account: "123456789012", Arn: "arn:aws:iam::123456789012:root" }), stderr: "", code: 0 }; } }); disposers.push(() => service.dispose());
+  await service.check("base", true);
+  expired = true; const observation = await service.check("base", true);
+  assert.equal(observation.state, "needs-auth"); assert.equal(observation.problem?.action, "connect"); assert.equal(observation.lastKnownIdentity?.arn, "arn:aws:iam::123456789012:root");
 });
 test("identity checks coalesce, keep role summaries and preserve stale identity on classified network failure", async () => {
   const f = fixture(); let calls = 0; let fail = false;

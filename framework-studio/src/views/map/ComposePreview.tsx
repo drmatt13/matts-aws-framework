@@ -107,7 +107,7 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
             fill="none"
             className={cx(
               "absolute inset-0 size-full transition-colors duration-300 forced-colors:text-[CanvasText]",
-              on ? "text-map-compose" : "text-map-muted group-hover/compose:text-map-text",
+              on ? "text-map-compose" : "text-map-compose-off group-hover/compose:text-map-compose-off-hover",
             )}
           >
             <g className={on ? "translate-y-0" : "translate-y-[14px]"} style={timing(on, `translate 560ms ${EXPO_OUT} 30ms`, `translate 420ms ${EASE_IN} 180ms`)}>
@@ -144,7 +144,6 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
                 <g
                   stroke="currentColor"
                   strokeWidth=".8"
-                  strokeOpacity=".55"
                   className={on ? "opacity-0" : "opacity-100"}
                   style={timing(on, "opacity 200ms linear 700ms", "opacity 260ms linear 120ms")}
                 >
