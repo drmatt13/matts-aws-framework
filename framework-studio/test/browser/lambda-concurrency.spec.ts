@@ -13,6 +13,7 @@ test("Lambda concurrency defaults off, supports keyboard editing and validates b
   }
   Object.assign(studio.response.snapshot.source.editability[target]!, Object.fromEntries(concurrency.map(fact => [fact.field, { kind: "absent" }])));
   await studio.goto(`/?select=${encodeURIComponent(target)}`);
+  await page.getByRole("complementary", { name: "Inspector", exact: true }).locator("[data-inspector-disclosure] > details > summary").filter({ hasText: /^Settings$/ }).click();
   const reserved = page.getByRole("switch", { name: "Reserved Concurrency", exact: true });
   const provisioned = page.getByRole("switch", { name: "Provisioned Concurrency", exact: true });
   const reservedCount = page.getByRole("spinbutton", { name: "Reserved Concurrency executions" });

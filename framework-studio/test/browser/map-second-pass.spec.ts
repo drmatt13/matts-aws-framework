@@ -107,6 +107,7 @@ test("short phone viewport can scroll to resource rows and inspector controls", 
   const inspector = page.getByRole("complementary", { name: "Inspector", exact: true });
   await expect(inspector).toBeVisible();
   expect((await inspector.boundingBox())!.height).toBeGreaterThanOrEqual(260);
+  await inspector.locator("[data-inspector-disclosure] > details > summary").filter({ hasText: /^Settings$/ }).click();
   const memory = inspector.getByRole("spinbutton", { name: "Memory" });
   await memory.scrollIntoViewIfNeeded();
   await expect(memory).toBeInViewport({ ratio: 1 });

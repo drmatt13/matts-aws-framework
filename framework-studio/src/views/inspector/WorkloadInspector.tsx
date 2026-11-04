@@ -28,7 +28,7 @@ import { EntityName } from "../EntityName";
 import { BooleanField, FieldRow } from "../FieldRow";
 import { HttpRoutes } from "../HttpRoutes";
 import { IssueNotice } from "../IssueNotice";
-import { DottedName, InspectorDisclosure, InspectorKind, InspectorSection } from "../InspectorUI";
+import { DottedName, FormGroup, InspectorDisclosure, InspectorKind } from "../InspectorUI";
 import { PlacementControl, placementEditable } from "../NetworkControls";
 import { RouteStatus } from "../RouteStatus";
 import { Tags } from "../Tags";
@@ -78,11 +78,11 @@ function PlacementNotes({
   );
 }
 
-function ProductionPlacement({ target }: { readonly target: ModelTarget }) {
+function ProductionPlacement({ target, embedded = false }: { readonly target: ModelTarget; readonly embedded?: boolean }) {
   const { draft } = useStudio();
   const compute = target.compute;
   return (
-    <InspectorDisclosure title="Production placement">
+    <InspectorDisclosure title="Production placement" embedded={embedded} status={draft.placement(target.ref) ? "modified" : undefined}>
       {placementEditable(target) ? (
         <PlacementControl
           target={target}
@@ -113,15 +113,12 @@ function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
   if (!fact) return null;
   return (
-    <section className={inspectorSectionClasses} data-slot="api-auth">
-      <BooleanField
-        flush
-        target={target}
-        fact={fact}
-        editability={snapshot.source.editability[target.ref]?.[fact.field]}
-        description="Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply."
-      />
-    </section>
+    <BooleanField
+      target={target}
+      fact={fact}
+      editability={snapshot.source.editability[target.ref]?.[fact.field]}
+      description="Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply."
+    />
   );
 }
 
@@ -130,15 +127,12 @@ function LocalReplayControl({ target }: { readonly target: ModelTarget }) {
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "events.localReplay");
   if (!fact) return null;
   return (
-    <section className={inspectorSectionClasses} data-slot="api-auth">
-      <BooleanField
-        flush
-        target={target}
-        fact={fact}
-        editability={snapshot.source.editability[target.ref]?.[fact.field]}
-        description="Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together."
-      />
-    </section>
+    <BooleanField
+      target={target}
+      fact={fact}
+      editability={snapshot.source.editability[target.ref]?.[fact.field]}
+      description="Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together."
+    />
   );
 }
 
@@ -220,7 +214,7 @@ function Steps(props: { readonly workflow: ModelWorkflow }) {
 }
 
 export function TargetView(props: { readonly target: ModelTarget }) {
-  const { snapshot, model, select } = useStudio();
+  const { snapshot, model, select, draft, draftState } = useStudio();
   const { target } = props;
   const facts = model.fields[target.ref] ?? [];
   const editability = snapshot.source.editability[target.ref] ?? {};
@@ -248,6 +242,15 @@ export function TargetView(props: { readonly target: ModelTarget }) {
         (settingOrder.indexOf(a.field) < 0 ? 99 : settingOrder.indexOf(a.field)) -
         (settingOrder.indexOf(b.field) < 0 ? 99 : settingOrder.indexOf(b.field)),
     );
+  const routeIds = new Set(model.routes.filter((route) => route.kind === "http" && route.target === target.ref && target.kind === "lambda").map((route) => route.id));
+  const hasHttpSettings = routeIds.size > 0 || facts.some((fact) => fact.field === "http.auth");
+  const hasReplay = facts.some((fact) => fact.field === "events.localReplay");
+  const settingChanges = draftState.entries.filter(
+    (entry) => (entry.kind === "field" && entry.intent.target === target.ref && entry.intent.field !== "deploy") ||
+      (entry.kind === "route" && routeIds.has(entry.route)) ||
+      (entry.kind === "placement" && entry.edit.target === target.ref),
+  );
+  const buildChanges = draftState.entries.filter((entry) => entry.kind === "field" && entry.intent.target === target.ref && buildFields.has(entry.intent.field));
   return (
     <>
       <header className={inspectorHeaderClasses}>
@@ -272,64 +275,86 @@ export function TargetView(props: { readonly target: ModelTarget }) {
       <TargetDeployment target={target} />
       <ImplementationStatus target={target} />
       <WorkloadPermissions key={`permissions:${target.ref}`} target={target} />
-      {settings.length > 0 ? (
-        <InspectorSection title="Settings">
-          {settings.map((fact) => (
-            <FieldRow
-              key={fact.field}
-              target={target}
-              fact={fact}
-              editability={editability[fact.field]}
-            />
-          ))}
-        </InspectorSection>
-      ) : null}
-      <ApiAuthControl target={target} />
-      <LocalReplayControl target={target} />
+      <InspectorDisclosure
+        title="Settings"
+        status={settingChanges.length
+          ? settingChanges.some((entry) => entry.error) || draft.concurrencyError(target.ref)
+            ? "invalid" : "modified"
+          : undefined}
+      >
+        {hasHttpSettings ? (
+          <FormGroup title="HTTP routing and access">
+            <div className="min-w-0">
+              <HttpRoutes target={target} embedded />
+              <ApiAuthControl target={target} />
+            </div>
+          </FormGroup>
+        ) : null}
+        {settings.length ? (
+          <FormGroup title="Runtime and capacity">
+            <div className="min-w-0">
+              {settings.map((fact) => (
+                <FieldRow
+                  key={fact.field}
+                  target={target}
+                  fact={fact}
+                  editability={editability[fact.field]}
+                />
+              ))}
+            </div>
+          </FormGroup>
+        ) : null}
+        {hasReplay ? (
+          <FormGroup title="Development">
+            <div className="min-w-0"><LocalReplayControl target={target} /></div>
+          </FormGroup>
+        ) : null}
+        <div className="mt-4 border-t border-rule first:mt-0 first:border-t-0">
+          {compute.kind === "lambda" ? (
+            <InspectorDisclosure
+              title="Build and runtime"
+              embedded
+              status={buildChanges.length ? buildChanges.some((entry) => entry.error) ? "invalid" : "modified" : undefined}
+            >
+              <dl
+                className="mt-0 mb-4 grid grid-cols-[var(--field-label-width)_minmax(0,1fr)] gap-x-3 gap-y-2 text-caption inspector-420:grid-cols-1 inspector-420:gap-y-0"
+                data-slot="lambda-build"
+              >
+                <dt className="text-graphite">Implementation</dt>
+                <dd className={buildValueClasses}>
+                  {compute.implementation === "container"
+                    ? "Container image"
+                    : compute.implementation === "python"
+                      ? "Python"
+                      : "TypeScript"}
+                </dd>
+                <dt className="text-graphite">Handler</dt>
+                <dd className={buildValueClasses}>
+                  <code>{compute.packaging === "container" ? "Dockerfile CMD" : compute.handler}</code>
+                </dd>
+                {compute.packaging === "container" ? (
+                  <>
+                    <dt className="text-graphite">Runtime</dt>
+                    <dd className={buildValueClasses}>Defined by the Dockerfile</dd>
+                  </>
+                ) : null}
+              </dl>
+              {facts
+                .filter((fact) => buildFields.has(fact.field) && !fact.field.endsWith("subnet"))
+                .map((fact) => (
+                  <FieldRow
+                    key={fact.field}
+                    target={target}
+                    fact={fact}
+                    editability={editability[fact.field]}
+                  />
+                ))}
+            </InspectorDisclosure>
+          ) : null}
+          <ProductionPlacement target={target} embedded />
+        </div>
+      </InspectorDisclosure>
       {target.role === "event" ? <Triggers key={`triggers:${target.ref}`} target={target} /> : null}
-      <HttpRoutes target={target} />
-      {compute.kind === "lambda" ? (
-        <InspectorDisclosure title="Build and runtime">
-          <dl
-            className="mt-0 mb-4 grid grid-cols-[var(--field-label-width)_minmax(0,1fr)] gap-x-3 gap-y-2 text-caption inspector-420:grid-cols-1 inspector-420:gap-y-0"
-            data-slot="lambda-build"
-          >
-            <dt className="text-graphite">Implementation</dt>
-            <dd className={buildValueClasses}>
-              {compute.implementation === "container"
-                ? "Container image"
-                : compute.implementation === "python"
-                  ? "Python"
-                  : "TypeScript"}
-            </dd>
-            <dt className="text-graphite">Source</dt>
-            <dd className={buildValueClasses}>
-              <code>{target.directory}</code>
-            </dd>
-            <dt className="text-graphite">Handler</dt>
-            <dd className={buildValueClasses}>
-              <code>{compute.packaging === "container" ? "Dockerfile CMD" : compute.handler}</code>
-            </dd>
-            {compute.packaging === "container" ? (
-              <>
-                <dt className="text-graphite">Runtime</dt>
-                <dd className={buildValueClasses}>Defined by the Dockerfile</dd>
-              </>
-            ) : null}
-          </dl>
-          {facts
-            .filter((fact) => buildFields.has(fact.field) && !fact.field.endsWith("subnet"))
-            .map((fact) => (
-              <FieldRow
-                key={fact.field}
-                target={target}
-                fact={fact}
-                editability={editability[fact.field]}
-              />
-            ))}
-        </InspectorDisclosure>
-      ) : null}
-      <ProductionPlacement target={target} />
       {workflow ? <Steps workflow={workflow} /> : null}
       <Relations id={target.ref} />
       {target.environment.length + target.secrets.length > 0 ? (
@@ -538,9 +563,12 @@ const routeKind = (route: ModelRoute) =>
         : "Agent route";
 
 export function RouteView(props: { readonly route: ModelRoute }) {
-  const { snapshot, index, model, select } = useStudio();
+  const { snapshot, index, model, select, draft } = useStudio();
   const { route } = props;
   const target = index.targets.get(route.target);
+  const auth = target && model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
+  const authChange = target && auth ? draft.field(target.ref, auth) : undefined;
+  const authenticated = target && auth ? draft.effective(target.ref, auth) === true : route.auth;
   return (
     <>
       <header className={inspectorHeaderClasses}>
@@ -588,7 +616,7 @@ export function RouteView(props: { readonly route: ModelRoute }) {
           </p>
         ) : null}
         <p className="mt-0 mb-2 text-graphite text-caption">
-          {route.auth
+          {authenticated
             ? route.kind === "webSocket"
               ? "The $connect authorizer admits the connection."
               : "The gateway admits signed-in users only. The handler still checks the user itself if it needs one."
@@ -599,8 +627,10 @@ export function RouteView(props: { readonly route: ModelRoute }) {
           external callers that use the old path separately.
         </p>
       </section>
-      {(route.kind === "http" || route.kind === "service") && target ? (
-        <ApiAuthControl target={target} />
+      {(route.kind === "http" || route.kind === "service") && target && auth ? (
+        <InspectorDisclosure title="Settings" status={authChange ? authChange.error ? "invalid" : "modified" : undefined}>
+          <ApiAuthControl target={target} />
+        </InspectorDisclosure>
       ) : null}
       <Relations id={route.id} />
     </>

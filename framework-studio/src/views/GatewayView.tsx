@@ -61,7 +61,7 @@ export function GatewayView({ gateway }: { readonly gateway: ModelGateway }) {
           }))}
         />
       </DeploymentSection>
-      <InspectorDisclosure title="Routes" count={routes.length} defaultOpen>
+      <InspectorDisclosure title="Routes" count={routes.length}>
         <ul className={inspectorRelationListClasses} data-slot="relations">
           {routes.map((route) => (
             <li className={inspectorRelationRowClasses()} key={route.id}>
@@ -94,7 +94,7 @@ export function GatewayView({ gateway }: { readonly gateway: ModelGateway }) {
         </ul>
       </InspectorDisclosure>
       {gateway.authorizer ? (
-        <InspectorDisclosure title="Connection authorizer" defaultOpen>
+        <InspectorDisclosure title="Connection authorizer">
           <button
             className={buttonClasses({ variant: "link" })}
             onClick={() => select(gateway.authorizer)}

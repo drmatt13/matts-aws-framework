@@ -44,16 +44,12 @@ function HttpRouteRow({ route }: { readonly route: ModelRoute }) {
     </div>
   );
 }
-export function HttpRoutes({ target }: { readonly target: ModelTarget }) {
+export function HttpRoutes({ target, embedded = false }: { readonly target: ModelTarget; readonly embedded?: boolean }) {
   const { model } = useStudio();
   const routes = model.routes.filter(
     (route) => route.kind === "http" && route.target === target.ref,
   );
-  return target.kind === "lambda" && routes.length ? (
-    <InspectorSection title="HTTP routes">
-      {routes.map((route) => (
-        <HttpRouteRow key={route.id} route={route} />
-      ))}
-    </InspectorSection>
-  ) : null;
+  if (target.kind !== "lambda" || !routes.length) return null;
+  const content = routes.map((route) => <HttpRouteRow key={route.id} route={route} />);
+  return embedded ? <>{content}</> : <InspectorSection title="HTTP routes">{content}</InspectorSection>;
 }

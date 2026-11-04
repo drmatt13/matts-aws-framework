@@ -82,7 +82,7 @@ hooks on the next deployment, and the source review calls out that effect.
 | Type | 20 px item titles, 14 px body, 13 px labels, 12 px captions; monospace for identifiers and source |
 | Spacing | Shared 4, 8, 12, 16 and 20 px tokens; 20 px panel gutters |
 | Controls | 32 px inputs/selects, actions and icon actions, 24 px supporting disclosures; shared On/Off switches for boolean settings, checkboxes for acknowledgements and multi-selection; 44 px control targets for touch |
-| Sections | `InspectorSection` for immediate controls; `InspectorDisclosure` for supporting information |
+| Sections | `InspectorSection` for immediate context; `InspectorDisclosure` for grouped controls and supporting information |
 | Forms | Stacked label → control → support on one left edge; units inside their input; visible error messages; semantic `FormGroup` boundaries |
 | Color | Existing theme surfaces; teal/violet for environments, accept/refuse colors for validation |
 
@@ -188,7 +188,8 @@ help visible; the catalog does not verify regional service availability.
 Workload **Implementation** shows the configured directory, artifact readiness and an
 editor link. **Create missing starter files** stages a review; it does not immediately
 write, start or deploy anything. Existing code stays intact. **Permissions** is always
-visible, including on new workloads. **Add access** opens a searchable configured-resource
+available as a collapsed section, including on new workloads. Expanding it reveals
+**Add access**, which opens a searchable configured-resource
 picker with existing service artwork; selecting a destination reveals only its supported
 actions. Services and calls precede configuration inputs. Queue permissions omit bucket
 scopes; bucket permissions start with a bounded object-key scope. Saved entries name the
@@ -262,14 +263,32 @@ local replication or live health. Placement uses a separate coordinated source r
 the database and its consumers, with no public or unplaced option. Existing RDS moves need
 migration/cutover planning and separate deployment; routine policy toggles never perform it.
 
-For compute, Deployment precedes memory,
-timeout and other lifecycle settings. Numeric fields keep their
+For workloads, Deployment and Implementation precede one **Settings** disclosure.
+Settings groups **HTTP routing and access**, **Runtime and capacity**, and development
+replay when applicable. Routine route paths, authorizer switches and runtime fields
+appear directly under their group heading. **Build and runtime** and **Production
+placement** are embedded advanced disclosures within Settings, with no second outer
+gutter. Build details omit the source directory already shown under Implementation.
+Empty groups are omitted; placement-only workloads still have Settings.
+Numeric fields keep their
 inherited default visible after an override and offer a direct way to restore it.
 Default, reset and collapsed provenance share one wrapping support row; expanding
 provenance uses the full width below it.
-Routing, authentication and event controls follow.
-Build configuration, placement, connections, environment bindings and
-IAM remain available through explicit disclosures.
+Triggers, connections, environment bindings and permissions keep their own sections.
+Route inspectors group their owner's API authorizer under Settings and preview its
+draft access state. Path editing remains with the owning Lambda's Settings.
+
+Fresh resource inspectors start with disclosures closed, including **Permissions**,
+**Settings**, **Workload access**, stack **Public fields** and **CloudFormation outputs**,
+and gateway **Routes** and **Connection authorizer**. Their full heading is the native
+keyboard-operable toggle. Counts stay visible when collapsed; Permissions and Settings
+also retain their pending-change status, and Settings exposes invalid drafts as
+**Needs attention**. This includes route, authorizer, replay, build and placement edits,
+so closing the parent never hides the existence of a pending change. Add/grant actions
+live inside the expanded access section.
+Returning through inspector or browser Back restores the user's open sections, scroll
+and focus. Explicit links, guided setup and validation may still open their relevant
+controls after an action.
 
 Resource titles use the useful short name, with the full catalog identity on a secondary
 line. Operational flags remain visible; longer ownership and source explanations expand

@@ -61,7 +61,7 @@ async function mount(Component: ComponentType, initial = response) {
 test("primary navigation retains one source toggle and no validation control across all destinations", async () => {
   await mount(() => h(shell.Shell, { children: h("p", null, "Workspace content") }));
   const navigation = ui.screen.getByRole("navigation", { name: "Views" });
-  const destinations = ["Map", "Database", "Deploy", "GraphQL", "Cognito", "Domains", "WebSockets"];
+  const destinations = ["Map", "Database", "Deploy", "GraphQL", "Cognito", "Domains", "WebSockets", "Agent test"];
   assert.deepEqual(ui.within(navigation).getAllByRole("link").map(link => link.textContent), destinations);
   const environment = ui.screen.getByRole("group", { name: "Source environment" });
   for (const name of destinations) {

@@ -224,7 +224,6 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
         <InspectorDisclosure
           title="CloudFormation outputs"
           count={resource.stackOutputs.length}
-          defaultOpen={!!resource.frameworkStack}
           data-slot="stack-outputs"
         >
           <p className="mt-0 mb-2 text-caption text-graphite">
@@ -333,7 +332,6 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
         <InspectorDisclosure
           title="Public fields"
           count={members.length}
-          defaultOpen
           data-slot="stack-members"
         >
           <ul className={inspectorRelationListClasses} data-slot="relations">

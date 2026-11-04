@@ -1,6 +1,6 @@
 import { sourceEditBlocked } from "../editing-state";
 import { displayName } from "../naming";
-import { InspectorCount, InspectorSection, InspectorSummary } from "./InspectorUI";
+import { InspectorCount, InspectorDisclosure, InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
@@ -548,10 +548,16 @@ export function WorkloadPermissions({ target }: { readonly target: ModelTarget }
   const source = snapshot.source.entities[target.ref]?.value;
   const callable = ["task", "workflow", "agent"].includes(target.kind);
   return (
-    <InspectorSection
+    <InspectorDisclosure
       title="Permissions"
-      actions={
-        target.kind !== "workflow" && !editing ? (
+      count={owned.length + incoming.length}
+      status={draftState.entries.some((entry) => entry.kind === "operation" &&
+        entry.operation.kind === "connection" &&
+        (entry.operation.target === target.ref || entry.operation.destination === target.ref))
+        ? "modified" : undefined}
+    >
+      {target.kind !== "workflow" && !editing ? (
+        <div className="mb-3 flex justify-end">
           <button
             ref={add}
             className={buttonClasses({ variant: "quiet" })}
@@ -560,9 +566,8 @@ export function WorkloadPermissions({ target }: { readonly target: ModelTarget }
           >
             Add access
           </button>
-        ) : undefined
-      }
-    >
+        </div>
+      ) : null}
       {editing ? <AccessEditor target={target} onDone={done} /> : null}
       {owned.map((entry) => (
         <AccessRow key={entry.id} entry={entry} disabled={disabled} />
@@ -583,11 +588,7 @@ export function WorkloadPermissions({ target }: { readonly target: ModelTarget }
         </p>
       ) : null}
       {incoming.length || callable ? (
-        <details
-          className="mt-3"
-          open={target.kind === "workflow" || undefined}
-          data-slot="incoming-access"
-        >
+        <details className="mt-3" data-slot="incoming-access">
           <InspectorSummary className="cursor-pointer text-caption text-graphite">
             Incoming access<InspectorCount className="ml-1.5">{incoming.length}</InspectorCount>
           </InspectorSummary>
@@ -612,7 +613,7 @@ export function WorkloadPermissions({ target }: { readonly target: ModelTarget }
           {callable ? <PendingAccess destination={target.ref} /> : null}
         </details>
       ) : null}
-    </InspectorSection>
+    </InspectorDisclosure>
   );
 }
 
@@ -716,10 +717,15 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
     requestAnimationFrame(() => add.current?.focus());
   };
   return (
-    <InspectorSection
+    <InspectorDisclosure
       title="Workload access"
-      actions={
-        !choosing ? (
+      count={consumers.length}
+      status={draftState.entries.some((entry) => entry.kind === "operation" &&
+        entry.operation.kind === "connection" && entry.operation.destination === resource.id)
+        ? "modified" : undefined}
+    >
+      {!choosing ? (
+        <div className="mb-3 flex justify-end">
           <button
             ref={add}
             className={buttonClasses({ variant: "quiet" })}
@@ -728,9 +734,8 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
           >
             Grant access
           </button>
-        ) : undefined
-      }
-    >
+        </div>
+      ) : null}
       {choosing ? <ConsumerAccessEditor destination={resource.id} onDone={done} /> : null}
       {consumers.length ? (
         <ul className={inspectorRelationListClasses} data-slot="resource-consumers">
@@ -752,6 +757,6 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
         <p className="mt-0 mb-2 text-caption text-graphite">No workloads have access yet.</p>
       ) : null}
       <PendingAccess destination={resource.id} />
-    </InspectorSection>
+    </InspectorDisclosure>
   );
 }

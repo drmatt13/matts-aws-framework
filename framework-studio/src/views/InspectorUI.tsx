@@ -248,7 +248,7 @@ export function InspectorSection({
   );
 }
 
-/** Supporting information stays one click away without burying everyday controls. */
+/** A compact, keyboard-accessible section heading; fresh sections start closed. */
 export function InspectorDisclosure({
   title,
   children,

@@ -115,16 +115,21 @@ async function mount(selected = target, mode: "dev" | "prod" = "dev", onClient?:
   return app;
 }
 function openSection(title: string) {
+  if (title === "Build and runtime" || title === "Production placement") openSection("Settings");
   const summary = [...document.querySelectorAll<HTMLElement>("[data-inspector-disclosure] > details > summary")].find((summary) => summary.querySelector("span")?.textContent === title)!;
   assert.ok(summary, `section: ${title}`);
   if (!summary.closest("details")!.open) ui.fireEvent.click(summary);
+  return summary.closest("section")!;
 }
 function descriptionField(): HTMLTextAreaElement {
   const editor = document.querySelector<HTMLDetailsElement>("[data-slot=description-editor]");
   if (editor && !editor.open) ui.fireEvent.click(editor.querySelector("summary")!);
   return (editor ? ui.within(editor) : ui.screen).getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
 }
-const memory = () => ui.screen.getByRole("spinbutton", { name: "Memory in MB" });
+const memory = () => {
+  openSection("Settings");
+  return ui.screen.getByRole("spinbutton", { name: "Memory in MB" });
+};
 const changeMemory = () => ui.fireEvent.change(memory(), { target: { value: "768" } });
 const count = () => ui.screen.getByLabelText("Pending inspector changes").textContent!;
 const waitDialog = (name: string) => ui.waitFor(() => assert.equal(document.querySelector("dialog[open] h2")?.textContent, name));
@@ -183,13 +188,18 @@ test("managed resource families explain inferred deployment without a Deploy sel
 });
 
 
-test("inspectors prioritize controls, disclose supporting details, and reset scroll on selection", async () => {
+test("inspectors start with closed disclosures and reset scroll on selection", async () => {
   await mount();
-  assert.ok(memory());
+  const details = (title: string) => [...document.querySelectorAll<HTMLDetailsElement>("[data-inspector-disclosure] > details")].find((item) => item.querySelector("summary > span")?.textContent === title)!;
+  for (const title of ["Permissions", "Settings", "Build and runtime", "Production placement"]) assert.equal(details(title).open, false, title);
+  openSection("Settings");
   assert.equal(document.querySelector<HTMLDetailsElement>("[data-slot=description-editor]")!.open, false);
-  const build = [...document.querySelectorAll<HTMLDetailsElement>("[data-inspector-disclosure] > details")].find((details) => details.querySelector("summary > span")?.textContent === "Build and runtime")!;
+  const build = details("Build and runtime");
   assert.equal(build.open, false);
-  assert.ok(!memory().closest("details"), "operational controls stay outside disclosures");
+  assert.equal(memory().closest("details"), details("Settings"), "settings controls stay inside their disclosure");
+  assert.equal(ui.screen.getByRole("switch", { name: "API user-pool authorizer" }).closest("details"), details("Settings"));
+  assert.equal(ui.screen.getByRole("textbox", { name: "HTTP route /graphql" }).closest("details"), details("Settings"));
+  for (const title of ["Build and runtime", "Production placement"]) assert.ok(details("Settings").contains(details(title)), `${title} belongs inside Settings`);
   assert.equal(document.querySelector("[data-inspector-section] [data-slot=field] [data-slot=field-label]")?.textContent, "Deploy");
   assert.ok(!document.querySelector("[data-inspector-context]")?.textContent?.includes("Source and identity"));
   openSection("Build and runtime");
@@ -271,6 +281,7 @@ test("numeric defaults stay visible through overrides and restoring them stages 
 
 test("field errors and boolean help are associated with the controls they explain", async () => {
   await mount();
+  openSection("Settings");
   const authentication = ui.screen.getByRole("switch", { name: "API user-pool authorizer" });
   const help = document.getElementById(authentication.getAttribute("aria-describedby")!);
   assert.ok(help?.closest("[data-slot=field]")?.contains(authentication), "boolean help stays in its setting row");
@@ -292,6 +303,7 @@ test("field errors and boolean help are associated with the controls they explai
 
 test("concurrency switches reveal validated counts and share source review and discard", async () => {
   await mount();
+  openSection("Settings");
   const reserved = ui.screen.getByRole("switch", { name: "Reserved Concurrency" });
   const provisioned = ui.screen.getByRole("switch", { name: "Provisioned Concurrency" });
   const count = () => ui.screen.getByRole("spinbutton", { name: "Reserved Concurrency executions" }) as HTMLInputElement;
@@ -338,7 +350,25 @@ test("route tag ownership guidance stays inside the shared Tags section", async 
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
-test("placement-only workloads omit empty settings and secret-only bindings remain discoverable", async () => {
+test("route Settings edits its owning authorizer and previews the staged access policy", async () => {
+  const route = baseline.models.dev.routes.find((route) => route.kind === "http" && route.target === target)!;
+  const fact = baseline.models.dev.fields[target]!.find((fact) => fact.field === "http.auth")!;
+  await mount(route.id);
+  const settings = openSection("Settings");
+  const authentication = ui.within(settings).getByRole("switch", { name: "API user-pool authorizer" });
+  assert.equal(ui.screen.queryByRole("textbox", { name: `HTTP route ${route.path}` }), null, "route path editing stays with the function Settings");
+  ui.fireEvent.click(authentication);
+  assert.ok(ui.screen.getByText(fact.effective ? "Open to any caller." : /The gateway admits signed-in users only/));
+  assert.equal(settings.querySelector("summary [data-slot=section-state]")?.textContent, "Modified");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "field", intent: fact.effective
+    ? { target, field: "http.auth", inherit: true }
+    : { target, field: "http.auth", value: true } }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("placement-only workloads keep placement under Settings and secret-only bindings remain discoverable", async () => {
   const service = baseline.models.dev.targets.find(item => item.kind === "service")!;
   const secrets = [{ name: "EXAMPLE_SECRET", resource: "resource:example", display: "resources.example.arn" }];
   assert.ok(service);
@@ -347,7 +377,9 @@ test("placement-only workloads omit empty settings and secret-only bindings rema
     targets: baseline.models.dev.targets.map(item => item.ref === service.ref ? { ...item, environment: [], secrets } : item),
   } } };
   await mount(service.ref);
-  assert.equal(ui.screen.queryByRole("heading", { name: "Settings" }), null);
+  const settings = openSection("Settings");
+  assert.ok(settings.querySelector("[data-inspector-disclosure]"), "placement remains inside Settings without numeric fields");
+  assert.equal(ui.within(settings).queryByRole("spinbutton", { name: "Memory in MB" }), null);
   openSection("Environment");
   for (const secret of secrets) assert.ok(ui.screen.getByText(secret.name, { selector: "code" }));
   assert.equal(planCalls.length + applyCalls, 0);
@@ -862,6 +894,7 @@ test("WebSocket cloud deployment choices preview both AWS environments", async (
 test("event Lambda local replay switches stage true or property removal through the shared draft", async () => {
   for (const [id, enabled] of [["cognito-custom-message", false], ["cognito-post-confirmation-trigger", true]] as const) {
     await mount(`lambda:${id}`);
+    openSection("Settings");
     const control = ui.screen.getByRole("switch", { name: "Local replay" });
     assert.equal(control.getAttribute("aria-checked"), String(enabled));
     assert.equal(ui.screen.queryByRole("switch", { name: "API user-pool authorizer" }), null);
@@ -1178,6 +1211,7 @@ test("input creation toggles between a value and optional default through the sa
 
 test("actual switches stage immediately, five controls share one review, and Apply All commits once", async () => {
   await mount();
+  openSection("Settings");
   ui.fireEvent.click(ui.screen.getByRole("switch", { name: "API user-pool authorizer" }));
   assert.ok(document.querySelector("dialog[open]") === null); assert.equal(planCalls.length, 0);
   changeMemory(); ui.fireEvent.change(ui.screen.getByRole("spinbutton", { name: "Timeout in s" }), { target: { value: "25" } });
@@ -1862,6 +1896,7 @@ function nativeAccessFixture() {
   return { queue, bucket };
 }
 function chooseAccess(resource: string, search: string) {
+  openSection("Permissions");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add access" }));
   const picker = ui.screen.getByRole("group", { name: "Configured resources" });
   ui.fireEvent.change(ui.within(picker).getByRole("searchbox", { name: "Search configured resources" }), { target: { value: search } });
@@ -1903,7 +1938,7 @@ test("Permissions chooses configured resources with icons, matching grants and s
 
 test("empty Permissions offers Add access and separates incoming API Gateway invocation", async () => {
   await mount("lambda:python-example");
-  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  const permissions = openSection("Permissions");
   assert.ok(ui.within(permissions).getByRole("button", { name: "Add access" }));
   assert.ok(ui.within(permissions).getByText("No outgoing access configured."));
   const incoming = permissions.querySelector<HTMLDetailsElement>("[data-slot=incoming-access]")!;
@@ -1920,6 +1955,7 @@ test("empty Permissions offers Add access and separates incoming API Gateway inv
 test("Permissions picker supports keyboard navigation, empty search and Escape back to Add access", async () => {
   nativeAccessFixture();
   await mount();
+  openSection("Permissions");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add access" }));
   const search = ui.screen.getByRole("searchbox", { name: "Search configured resources" });
   assert.equal(document.activeElement, search);
@@ -1958,7 +1994,7 @@ test("Permissions removes the exact scoped grant and can undo before review", as
   const { bucket } = nativeAccessFixture();
   withNativeAccess(bucket.resource, ["uploads/*", "reports/*"]);
   await mount();
-  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  const permissions = openSection("Permissions");
   const row = [...permissions.querySelectorAll<HTMLDetailsElement>("[data-slot=access-summary]")].find(item => item.textContent?.includes('grantRead("reports/*")'))!;
   assert.ok(row);
   ui.fireEvent.click(row.querySelector("summary")!);
@@ -1979,7 +2015,7 @@ test("Permissions retains different Dev and Prod object scopes for the same conn
     edges: persisted.models.prod.edges.map(edge => edge.id === "test:native-access:0" ? { ...edge, permissionContext: { kind: "native" as const, method: "grantRead", arguments: ["reports/*"] } } : edge),
   }) } };
   await mount();
-  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  const permissions = openSection("Permissions");
   const rows = [...permissions.querySelectorAll<HTMLDetailsElement>("[data-slot=access-summary]")];
   const dev = rows.find(row => row.querySelector("summary")?.textContent?.includes("uploads/*"));
   const prod = rows.find(row => row.querySelector("summary")?.textContent?.includes("reports/*"));
@@ -1996,7 +2032,7 @@ test("Permissions retains different Dev and Prod object scopes for the same conn
 test("resource Grant access searches consumers and stages permission for the chosen workload", async () => {
   const { queue } = nativeAccessFixture();
   await mount(queue.resource);
-  const section = ui.screen.getByRole("region", { name: "Workload access" });
+  const section = openSection("Workload access");
   ui.fireEvent.click(ui.within(section).getByRole("button", { name: "Grant access" }));
   ui.fireEvent.change(ui.within(section).getByRole("searchbox", { name: "Search workloads" }), { target: { value: "graphql" } });
   const candidate = ui.within(section).getByRole("button", { name: /\/graphql · AWS Lambda/ });
@@ -2015,8 +2051,9 @@ test("workflow Add caller configures its invocation from a compatible function",
   const workflow = baseline.models.dev.targets.find(item => item.kind === "workflow")!;
   assert.ok(workflow);
   await mount(workflow.ref);
-  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  const permissions = openSection("Permissions");
   assert.equal(ui.within(permissions).queryByRole("button", { name: "Add access" }), null, "workflow role access stays defined by its steps");
+  ui.fireEvent.click(permissions.querySelector("[data-slot=incoming-access] > summary")!);
   ui.fireEvent.click(ui.within(permissions).getByRole("button", { name: "Add caller" }));
   ui.fireEvent.change(ui.within(permissions).getByRole("searchbox", { name: "Search workloads" }), { target: { value: "graphql" } });
   ui.fireEvent.click(ui.within(permissions).getByRole("button", { name: /\/graphql · AWS Lambda/ }));
@@ -2040,7 +2077,7 @@ test("Environment keeps input mapping removal and undo separate from IAM permiss
   });
   persisted = { ...baseline, models: { dev: change("dev"), prod: change("prod") } };
   await mount(); openSection("Environment");
-  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  const permissions = openSection("Permissions");
   assert.equal(ui.within(permissions).queryByText(name), null);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: `Remove ${name} mapping` }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: `Undo removal of ${name}` }));

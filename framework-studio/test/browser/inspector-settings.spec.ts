@@ -8,6 +8,64 @@ const authorizer: FieldFact = {
   provenance: "Shared HTTP defaults from a deliberately long source description that must wrap below the setting instead of sizing its switch column.",
 };
 
+test("Settings groups routing, access and runtime while collapsed status preserves errors and drafts", async ({ page, studio }) => {
+  for (const model of Object.values(studio.response.snapshot.models)) {
+    Object.assign(model, { fields: { ...model.fields, "lambda:fixture-0": [...model.fields["lambda:fixture-0"]!, authorizer] } });
+  }
+  Object.assign(studio.response.snapshot.source.editability["lambda:fixture-0"]!, { "http.auth": { kind: "absent" } });
+  await studio.goto("/?select=lambda%3Afixture-0");
+  const inspector = page.getByRole("complementary", { name: "Inspector", exact: true });
+  const summary = inspector.locator("[data-inspector-disclosure] > details > summary").filter({ hasText: /^Settings/ });
+  const settings = summary.locator("..");
+  const authentication = inspector.getByRole("switch", { name: authorizer.label, exact: true });
+  const route = inspector.getByRole("textbox", { name: "HTTP route /fixture/0", exact: true });
+  await expect(settings).not.toHaveAttribute("open");
+  await expect(authentication).toBeHidden();
+  await expect(route).toBeHidden();
+  await summary.press("Enter");
+  await expect(authentication).toBeVisible();
+  await expect(route).toBeVisible();
+  await expect(settings.getByRole("spinbutton", { name: "Memory in MB", exact: true })).toBeVisible();
+  expect(await authentication.evaluate(element => element.closest("details")!.querySelector(":scope > summary > span")!.textContent)).toBe("Settings");
+  expect(await route.evaluate(element => element.closest("details")!.querySelector(":scope > summary > span")!.textContent)).toBe("Settings");
+  for (const title of ["Build and runtime", "Production placement"]) {
+    const nested = settings.locator("[data-inspector-disclosure] > details").filter({ has: page.locator(":scope > summary", { hasText: title }) });
+    await expect(nested).toHaveCount(1);
+    await expect(nested).not.toHaveAttribute("open");
+  }
+
+  await route.fill("invalid route");
+  await summary.click();
+  await expect(summary).toContainText("Needs attention");
+  await expect(page.getByRole("button", { name: "Review Changes", exact: true })).toBeDisabled();
+  await summary.click();
+  await route.fill("/fixture/reviewed");
+  await authentication.click();
+  await summary.click();
+  await expect(summary).toContainText("Modified");
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await summary.scrollIntoViewIfNeeded();
+    expect(await inspector.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.getByRole("button", { name: "Review Changes", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Apply All", exact: true })).toBeEnabled();
+  const request = studio.requests.find(request => request.path === "/api/edits/batch/plan");
+  expect(JSON.stringify(request?.body)).toContain('"http.auth"');
+  expect(JSON.stringify(request?.body)).toContain('"/fixture/reviewed"');
+  await page.getByRole("button", { name: "Back to Editing", exact: true }).click();
+  await expect(summary).toContainText("Modified");
+  await summary.click();
+  await expect(route).toHaveValue("/fixture/reviewed");
+  await expect(authentication).toHaveAttribute("aria-checked", "false");
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(route).toHaveValue("/fixture/0");
+  await expect(authentication).toHaveAttribute("aria-checked", "true");
+  await expect(summary).not.toContainText("Modified");
+  expect(studio.requests.filter(request => /apply$/.test(request.path))).toHaveLength(0);
+});
+
 test("Boolean settings keep readable labels and full-width help through source details and narrow panels", async ({ page, studio }) => {
   for (const model of Object.values(studio.response.snapshot.models)) {
     Object.assign(model, { fields: { ...model.fields, "lambda:fixture-0": [
@@ -23,6 +81,7 @@ test("Boolean settings keep readable labels and full-width help through source d
   await page.getByRole("button", { name: "Resources", exact: true }).click();
   await page.locator('[data-resource-id="lambda:fixture-0"]').click();
   const inspector = page.getByRole("complementary", { name: "Inspector", exact: true });
+  await inspector.locator("[data-inspector-disclosure] > details > summary").filter({ hasText: /^Settings$/ }).click();
   const control = inspector.getByRole("switch", { name: authorizer.label, exact: true });
   const row = control.locator("xpath=ancestor::*[@data-slot='field'][1]");
   const origin = row.locator(":scope > [data-slot=field-origin]");
@@ -77,6 +136,7 @@ test("event local-replay help stays beneath its switch at desktop and mobile wid
   await studio.goto();
   await page.getByRole("button", { name: "Resources", exact: true }).click();
   await page.locator('[data-resource-id="lambda:fixture-0"]').click();
+  await page.getByRole("complementary", { name: "Inspector", exact: true }).locator("[data-inspector-disclosure] > details > summary").filter({ hasText: /^Settings$/ }).click();
   const control = page.getByRole("switch", { name: "Local replay", exact: true });
   const row = control.locator("xpath=ancestor::*[@data-slot='field'][1]");
   await row.locator(":scope > [data-slot=field-origin] > summary").click();

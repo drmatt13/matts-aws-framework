@@ -227,6 +227,18 @@ pool defaults live in Application PostgreSQL's Connection pool defaults and stil
 independently of the server policy declaration. See the
 [inspector conventions](../../framework-studio/inspector-design.md).
 
+Resource-inspector disclosures start closed on a fresh visit. Workload Permissions
+and Settings and catalog Workload access use the same `InspectorDisclosure` as stack
+fields/outputs and gateway sections. Settings groups HTTP routes/access, runtime capacity
+and local replay directly, with embedded advanced build and production-placement
+disclosures. Counts and draft status remain on the collapsed heading; Settings includes
+route, auth, replay, build and placement changes and marks invalid drafts. Route
+inspectors expose their owning target's authorizer in Settings and derive access text
+from the draft. Shared-compute edit locks remain authoritative; path editing stays in
+the Lambda inspector. Access actions appear after expansion.
+The navigation presentation contract still restores open states on Back/Forward;
+action-driven focus, guided setup and validation may reveal the relevant controls.
+
 `InterfaceEndpointPicker.tsx` replaces comma entry in VPC editing and creation with
 searchable service icons and removable selections. It stages exact endpoint IDs through
 the existing network/create drafts. `ModeModel.interfaceEndpointServices` is projected
