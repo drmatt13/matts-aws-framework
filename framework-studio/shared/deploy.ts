@@ -1,3 +1,5 @@
+import type { OperationKind, OperationRequest, JobView } from "./operations";
+
 /**
  * Deploy & Run, as the server and the page share it.
  *
@@ -179,45 +181,7 @@ export interface LocalRunView {
   readonly restartNeeded: readonly string[];
 }
 
-export type OperationKind =
-  | "deploy-plan" | "deploy-apply" | "deploy-discard"
-  | "destroy-plan" | "destroy"
-  | "export"
-  | "local-start" | "local-stop" | "local-restart" | "local-attach-watch"
-  | "deps-install" | "docker-start" | "aws-login" | "drift";
-
-export interface OperationRequest {
-  readonly kind: OperationKind;
-  readonly params: Readonly<Record<string, string | boolean | undefined>>;
-}
-
-export type JobStatus = "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
-
-export interface JobView {
-  readonly id: string;
-  readonly kind: OperationKind | "local-watch" | "local-client";
-  readonly title: string;
-  readonly params: Readonly<Record<string, string | boolean | undefined>>;
-  readonly status: JobStatus;
-  readonly startedAt: string;
-  readonly endedAt?: string;
-  readonly exitCode?: number | null;
-  /** A one-line outcome: the last meaningful line, or the failure. */
-  readonly summary?: string;
-  /** A plan this job wrote or applied. */
-  readonly planId?: string;
-  /** The deployment a cloud job acts on, for following its stacks. */
-  readonly deployment?: string;
-  readonly lastSeq: number;
-  readonly steps?: readonly { readonly label: string; readonly status: "pending" | "running" | "done" | "failed" | "skipped" }[];
-}
-
-export interface JobLogLine {
-  readonly seq: number;
-  readonly at: string;
-  readonly stream: "out" | "err" | "info";
-  readonly text: string;
-}
+export type { OperationKind, OperationRequest, JobStatus, JobView, JobLogLine } from "./operations";
 
 export interface ResourceChangeView {
   readonly before?: unknown;

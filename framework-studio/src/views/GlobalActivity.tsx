@@ -1,26 +1,27 @@
 import { memo, useCallback, useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import type { DeployOverview, JobView } from "../../shared/deploy";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { JobView } from "../../shared/operations";
 import { OPEN_ACTIVITY_EVENT } from "../activity";
-import { deployApi } from "../deploy/api";
-import { useDeployLive } from "../deploy/live";
-import { deploymentOverviewQuery } from "../deploy/queries";
+import { operationsApi } from "../operations/api";
+import { useOperationsLive } from "../operations/live";
+import { operationsQuery } from "../operations/queries";
 import { Activity } from "./deploy/Activity";
 
 const NO_JOBS: readonly JobView[] = [];
-const selectJobs = (overview: DeployOverview) => overview.jobs;
+const selectJobs = (overview: { jobs: readonly JobView[] }) => overview.jobs;
 
 /** Route-independent state and subscriptions; navigation does not render this tray. */
 export const GlobalActivity = memo(function GlobalActivity() {
+  const queryClient = useQueryClient();
   const overview = useQuery({
-    ...deploymentOverviewQuery(),
+    ...operationsQuery(),
     select: selectJobs,
     staleTime: 30_000,
     refetchInterval: 30_000,
     retry: false,
     notifyOnChangeProps: ["data", "error", "isPending"],
   });
-  useDeployLive();
+  useOperationsLive();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string>();
   const [cancelError, setCancelError] = useState<string>();
@@ -31,19 +32,28 @@ export const GlobalActivity = memo(function GlobalActivity() {
       if (typeof job !== "string") return;
       setSelected(job);
       setOpen(true);
+      // A durable acceptance response can arrive while the live stream is disconnected.
+      void queryClient.invalidateQueries({ queryKey: operationsQuery().queryKey });
     };
     window.addEventListener(OPEN_ACTIVITY_EVENT, reveal);
     return () => window.removeEventListener(OPEN_ACTIVITY_EVENT, reveal);
-  }, []);
+  }, [queryClient]);
   const toggle = useCallback(() => setOpen(value => !value), []);
   const cancel = useCallback(async (id: string) => {
     setCancelError(undefined);
     try {
-      await deployApi.cancel(id);
+      const job = await operationsApi.cancel(id);
+      queryClient.setQueryData<{ jobs: readonly JobView[] }>(operationsQuery().queryKey, current => {
+        const observed = current?.jobs.find(entry => entry.id === id);
+        const latest = observed && (observed.lastSeq > job.lastSeq || observed.status !== "running" && job.status === "running")
+          ? { ...observed, cancelRequested: job.cancelRequested }
+          : job;
+        return { jobs: [latest, ...(current?.jobs ?? []).filter(entry => entry.id !== id)].sort((a, b) => b.startedAt.localeCompare(a.startedAt)) };
+      });
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : String(error));
     }
-  }, []);
+  }, [queryClient]);
 
   return <Activity
     jobs={overview.data ?? NO_JOBS}

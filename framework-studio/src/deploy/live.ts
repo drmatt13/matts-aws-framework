@@ -1,35 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { DeployOverview, JobLogLine, JobView, StackEventView } from "../../shared/deploy";
+import { useEffect, useRef } from "react";
+import type { DeployOverview, JobView, StackEventView } from "../../shared/deploy";
 import { token } from "../http";
 import { connectStudioEvents } from "../events";
-import { deployApi } from "./api";
-import { LogStore } from "./log-store";
 import { deploymentOverviewQuery } from "./queries";
 
-/** Every job's log lines, shared by whatever shows them. */
-export const logs = new LogStore();
-
-/**
- * A job's log: what was missed is replayed from where the unbroken log ends,
- * on opening and whenever a gap appears; the rest arrives as events.
- */
-export function useJobLog(id: string | undefined, lastSeq = 0): readonly JobLogLine[] {
-  const version = useSyncExternalStore(logs.subscribe, logs.snapshot);
-  const opened = useRef<string | undefined>(undefined);
-  const fetching = useRef(new Set<string>());
-  useEffect(() => {
-    if (!id || fetching.current.has(id)) return;
-    if (opened.current === id && !logs.incomplete(id) && logs.resumeAfter(id) >= lastSeq) return;
-    opened.current = id;
-    fetching.current.add(id);
-    void deployApi.log(id, logs.resumeAfter(id))
-      .then((result) => logs.add(id, result.lines))
-      .catch(() => {})
-      .finally(() => { fetching.current.delete(id); });
-  }, [id, version, lastSeq]);
-  return id ? logs.get(id) : [];
-}
+export { logs, useJobLog } from "../operations/live";
 
 export interface LiveHandlers {
   readonly onConnectionChange?: () => void;
@@ -52,10 +28,6 @@ export function useDeployLive(): void {
         ...overview, jobs: [job, ...overview.jobs.filter((entry) => entry.id !== job.id)].sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
       });
     });
-    source.addEventListener("deploy-log", (event) => {
-      const { id, lines } = parse<{ id: string; lines: JobLogLine[] }>(event);
-      logs.add(id, lines);
-    });
     source.addEventListener("deploy-stacks", (event) => {
       const { deployment } = parse<{ deployment: string }>(event);
       void queryClient.invalidateQueries({ queryKey: ["deploy", "status"], predicate: (entry) => entry.queryKey.includes(deployment) });
@@ -75,6 +47,7 @@ export function useDeployLive(): void {
 
 /** Page-specific reactions share the stream without repeating global cache/log writes. */
 export function useDeployEvents(handlers: LiveHandlers): void {
+  useDeployLive();
   const current = useRef(handlers);
   current.current = handlers;
   useEffect(() => {

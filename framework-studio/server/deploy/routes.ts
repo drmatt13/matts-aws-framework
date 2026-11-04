@@ -75,13 +75,13 @@ export function deployRouter(service: DeployService): express.Router {
       throw new OperationError(400, "An operation names its kind and gives named parameters.");
     }
     if (body.kind === "aws-login") return service.authenticate(body.params?.profile);
-    return service.perform({ kind: body.kind, params: body.params ?? {} });
+    return service.perform({ kind: body.kind, params: body.params ?? {}, requestKey: body.requestKey });
   }));
 
-  router.post("/jobs/:id/cancel", (request, response) => send(response, () => service.jobs.cancel(String(request.params.id))));
+  router.post("/jobs/:id/cancel", (request, response) => send(response, () => service.cancelOperation(String(request.params.id))));
   router.get("/jobs/:id/log", (request, response) => send(response, () => {
     const after = Number(request.query.after ?? 0);
-    return service.jobs.log(String(request.params.id), Number.isFinite(after) && after > 0 ? Math.floor(after) : 0);
+    return service.operationLog(String(request.params.id), Number.isFinite(after) && after > 0 ? Math.floor(after) : 0);
   }));
 
   router.get("/local/logs", (request, response) => send(response, async () => {

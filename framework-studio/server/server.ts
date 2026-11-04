@@ -262,14 +262,14 @@ async function configureServer(
     for (const client of clients) client.write(message);
   };
   const infrastructure = new InfrastructureService(repositoryRoot, () => builder.current?.snapshot, undefined, () => broadcast("infrastructure", {}));
-  const deploy = new DeployService(repositoryRoot, broadcast, { disabledLocalServices: () => {
+  const deploy = new DeployService(repositoryRoot, broadcast, { operations: true, disabledLocalServices: () => {
     const model = builder.current?.snapshot.models.dev;
     return new Set(model?.status === "ok" && !model.stale ? model.targets.filter(target => target.kind === "service" && !target.lanes.local).map(target => target.id) : []);
   } });
   defer(() => deploy.dispose());
   let activeAwsRequests = 0;
   const connections = new AwsConnectionsService(repositoryRoot, {
-    busy: profiles => activeAwsRequests > 0 || deploy.jobs.running().some(job => !["local-watch", "local-client"].includes(job.kind) && typeof job.params.profile === "string" && profiles.includes(job.params.profile)),
+    busy: profiles => activeAwsRequests > 0 || deploy.hasUnobservedOperations() || deploy.activeJobs().some(job => !["local-watch", "local-client"].includes(job.kind) && typeof job.params.profile === "string" && profiles.includes(job.params.profile)),
     changed: profiles => {
       if (profiles.length) for (const profile of profiles) deploy.observer.invalidate(profile);
       else deploy.observer.invalidate();
@@ -325,7 +325,7 @@ async function configureServer(
     next();
   });
   api.use((request, response, next) => {
-    const awsOperation = request.method === "POST" && /^\/(?:deploy\/operations|identity\/(?:operations|domain-dns)|frontend-release|database\/(?:cloud|application)|stateful-resources)(?:\/|$)/.test(request.path);
+    const awsOperation = request.method === "POST" && /^\/(?:operations|deploy\/operations|identity\/(?:operations|domain-dns)|frontend-release|database\/(?:cloud|application)|stateful-resources)(?:\/|$)/.test(request.path);
     if (!awsOperation) { next(); return; }
     if (connections.hasCredentialMutation) {
       response.status(409).json({ error: "AWS session sign-out is in progress. Wait for it to finish before starting an AWS operation." }); return;
@@ -507,6 +507,8 @@ async function configureServer(
       const name = String(request.params.name);
       broadcast("command", { name, running: true });
       try {
+        if (name === "framework:check") return await deploy.frameworkCheck(request.body?.requestKey);
+        if (deploy.hasUnobservedOperations() || deploy.activeJobs().some(job => !["local-watch", "local-client"].includes(job.kind))) throw Object.assign(new Error("Wait for active operations before regenerating workspace files."), { status: 409 });
         return await commands.run(name, (request.body as { confirmed?: unknown })?.confirmed === true);
       } finally {
         broadcast("command", { name, running: false });
@@ -515,6 +517,14 @@ async function configureServer(
   );
 
   api.use("/deploy", deployRouter(deploy));
+  api.get("/operations", (_request, response) => send(response, async () => ({ jobs: await deploy.listOperations() })));
+  api.post("/operations", (request, response) => send(response, () => deploy.perform(request.body)));
+  api.post("/operations/:id/cancel", (request, response) => send(response, () => deploy.cancelOperation(String(request.params.id))));
+  api.get("/operations/:id/log", (request, response) => send(response, () => {
+    const after = Number(request.query.after ?? 0);
+    if (!Number.isSafeInteger(after) || after < 0) throw Object.assign(new Error("Invalid log cursor."), { status: 400 });
+    return deploy.operationLog(String(request.params.id), after);
+  }));
   api.use((_request, response) => {
     response.status(404).json({ error: "This API is unavailable in the running Studio server. Restart npm run studio in this checkout and reload the page." });
   });

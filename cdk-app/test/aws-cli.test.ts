@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AwsCliError, classifyAwsError, runAwsSync } from "../../scripts/aws-cli";
+import { classifyAwsConnectionError } from "../../scripts/aws-connections";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,6 +18,16 @@ test("explicit expired sessions and tokens retain their diagnosis", () => {
     "Error loading SSO Token: refresh failed; Unable to locate credentials",
     "Run aws login to refresh the session.",
   ]) assert.equal(classifyAwsError(message), "expired", message);
+});
+
+test("AWS resource absence is not confused with the ENOTFOUND transport code", () => {
+  const absent = "An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation: Secrets Manager can't find the specified secret.";
+  assert.equal(classifyAwsError(absent), "not-found", "planning must recognize a secret that has not been created yet");
+  assert.notEqual(classifyAwsConnectionError(absent).code, "network");
+  for (const code of ["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT"]) {
+    assert.equal(classifyAwsConnectionError(`request failed: ${code} example.test`).code, "network");
+    assert.equal(classifyAwsError(`request failed: ${code} example.test`), "failed");
+  }
 });
 
 test("network and TLS refresh failures retain a network remedy instead of requesting sign-in", () => {

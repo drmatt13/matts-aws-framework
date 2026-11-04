@@ -7,6 +7,10 @@ read_when:
 source:
   - framework-studio/server/deploy/service.ts
   - framework-studio/server/deploy/registry.ts
+  - framework-studio/server/operations/coordinator.ts
+  - framework-studio/server/operations/worker.ts
+  - framework-studio/server/operations/store.ts
+  - framework-studio/server/operations/adapter.ts
   - scripts/deploy.ts
   - scripts/destroy.ts
   - framework-studio/server/database-application.ts
@@ -31,8 +35,9 @@ CloudFront cache state. None of these approvals implies another.
 
 This is the central operational boundary to preserve when extending Studio. The
 browser supplies a typed request; a dedicated server service validates its context;
-the existing CLI or bounded service performs the effect. The server is a local
-engineering tool running with its operator's filesystem access and AWS credentials,
+the existing CLI or bounded service performs the effect. Supported deployment work
+passes through private local IPC to an independent host coordinator and worker.
+These are local engineering processes running with the operator's filesystem access and AWS credentials,
 not a hosted account administration service with a separate authorization system.
 
 ## The lifecycle and its separate reviews
@@ -102,12 +107,25 @@ converting them into a success indicator.
 
 [`DeployService`](../../../framework-studio/server/deploy/service.ts) combines
 target preferences, prerequisite probes, `AwsObserver`, `LocalEnvironment`,
-`PlanStore`, `TeardownStore` and `JobManager`. Its
+`PlanStore`, `TeardownStore`, a legacy `JobManager` and an
+[`OperationsClient`](../../../framework-studio/server/operations/client.ts). Its
 [`buildOperation`](../../../framework-studio/server/deploy/registry.ts) registry
 accepts known actions and converts validated parameters to fixed argv. It does not
 accept arbitrary shell commands. Child processes use the selected profile; direct
 credential and mode carryover is removed by
 [`studioEnvironment`](../../../framework-studio/server/deploy/process.ts).
+
+Production Studio submits plan/apply/discard, destroy, drift, export and the fixed
+`framework-check` operation to the
+[`coordinator`](../../../framework-studio/server/operations/coordinator.ts).
+It commits acceptance, duplicate-request identity, review consumption and resource
+claims to SQLite before acknowledging acceptance. A detached
+[`worker`](../../../framework-studio/server/operations/worker.ts) reconstructs the
+allowlisted adapter, repeats its preconditions, owns credential snapshots and captures
+redacted output. The worker owns the command tether and CloudFormation observation;
+Studio shutdown closes observation without cancelling that worker. Coordinator loss
+does not close the worker's output streams. See [operations](operations.md) for lifecycle,
+replay and current platform limits.
 
 The CLI remains the infrastructure safety authority. `scripts/deploy.ts` selects
 inputs and identity, synthesizes, locks, verifies ownership, reviews and applies.
@@ -132,7 +150,8 @@ job registry and do not inherit an infrastructure plan's approval.
 | Infrastructure plan | CLI-selected plan directory; Studio's `PlanStore` under `.cache/framework-studio` | Saved assembly, review and operation/result records; 24-hour review expiry, no automatic uncertain apply retry |
 | Secret review binding | `.cache/deploy/secret-bindings/` | Private keyed value digests and version evidence kept outside shareable plans; moving a plan without its binding requires replanning |
 | Deploy coordination | `.cache/deploy/<deployment>.lock` and physical-reference locks | Checkout-local exclusion only; unknown locks require inspection before manual recovery |
-| Studio jobs | `.cache/framework-studio/jobs/` by default | Process/job logs and interruption evidence; process restart does not resume CloudFormation execution |
+| Independent operations | `.cache/framework-studio/operations/operations.sqlite` and WAL by default | Durable accepted intents, consumed reviews, resource claims, worker identity and numbered redacted logs; lost execution is never replayed |
+| Legacy Studio jobs | `.cache/framework-studio/jobs/` by default | Existing records and Studio-owned local development/dependency/remedy jobs; old records remain readable and running legacy records restore as interrupted |
 | Database and SQL outcomes | `.cache/framework-studio/database-operations/` and `sql-operations/` by default | Redacted durable outcomes; reviews live in memory, unknown COMMIT outcomes are never automatically retried |
 | Cognito operations | `.cache/framework-studio/cognito-operations/` by default | Redacted outcomes and pool lock; acknowledgement, follow-up observation and successful authentication are distinct |
 | Frontend release | `.cache/framework-studio/frontend-releases/<id>/` | Staged files, hashes, previous local output and confirmed effects; prior output is not a deployed rollback |
@@ -151,6 +170,16 @@ successful API acknowledgement does not mean all downstream effects have converg
 CloudFormation rollback does not undo secret versions, SQL commits, Cognito user
 changes or already uploaded frontend objects.
 
+Runner recovery distinguishes execution from domain outcome. Missing/reused worker
+identity becomes lost execution with an uncertain outcome and retained resource claims.
+A matching durable CLI result can establish verified infrastructure completion and
+update the domain outcome while execution remains marked lost. Resource claims stay
+held: the CLI records infrastructure success before local export, and that result does
+not prove that every descendant stopped. The reviewed apply stays consumed. An explicit
+inspected lock-release workflow is not implemented in this version. Cancellation does
+not authorize another attempt. Storage failures and
+unreadable evidence are surfaced rather than interpreted as absence of effects.
+
 ## Present scope and extension boundaries
 
 Implemented source-backed paths include named deployment targets, template and
@@ -165,13 +194,19 @@ rewrites, no CloudWatch application log/metric/trace explorer, no production Sav
 SQL console, and no automated CloudFormation import or snapshot restore. A retained
 resource reference preserves external ownership; it is not adoption into a new stack.
 
+The independent runner currently supports macOS/Linux host execution. It has no remote
+executor, distributed lock, OS startup service or automatic continuation after reboot.
+Workers use the installed checkout tooling; tooling-version pinning and retained-log
+garbage collection are not implemented. Database, frontend publication, Cognito, DNS,
+authentication and legacy local processes retain their existing service authorities.
+
 A future action should identify its source of authority, exact destination,
 reviewed bytes/preconditions, effect boundary and recovery evidence before adding a
 button. Broader hosted collaboration, promotion pipelines and cross-machine locking
 would require new architecture; the current code does not establish those features
 or a delivery commitment.
 
-This reference was reconstructed from source on 2026-10-29. It does not claim a new
+The runner boundary was updated from source on 2026-11-04. It does not claim a new
 live deployment, database application, identity mutation or publication test. Use
 the linked operational guides and the task's actual verification record for runtime
 evidence.

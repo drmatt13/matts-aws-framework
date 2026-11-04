@@ -252,8 +252,9 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     const observed = { ...discovery(), deployments: [deployment], targets: discovery().targets.map(target => ({ ...target, status: target.name === "browser-dev" ? "deployed" as const : target.status })) };
     studio.reply("GET", "/api/deploy/discover", route => route.fulfill({ json: { ok: true, value: observed } }));
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: expandedOverview() }));
+    studio.reply("GET", "/api/operations", route => route.fulfill({ json: { jobs: expandedOverview().jobs } }));
     studio.reply("GET", "/api/deploy/status", (route, url) => route.fulfill({ json: { ok: true, value: { ...observed, deployment: url.searchParams.get("deployment"), detail: { ...deployment, events: [], changeSets: [] } } } }));
-    studio.reply("GET", "/api/deploy/jobs/fixture-completed-job/log", route => route.fulfill({ json: { job: expandedOverview().jobs[0], lines: [{ seq: 1, at: context.observedAt, stream: "info", text: "Fixture template comparison finished without mutations." }] } }));
+    studio.reply("GET", "/api/operations/fixture-completed-job/log", route => route.fulfill({ json: { job: expandedOverview().jobs[0], lines: [{ seq: 1, at: context.observedAt, stream: "info", text: "Fixture template comparison finished without mutations." }] } }));
     await studio.goto("/deploy");
     await expect(page.getByRole("heading", { name: /browser-dev/ }).first()).toBeVisible();
     await expect(page.getByRole("region", { name: "This machine", exact: true })).toHaveCount(0);

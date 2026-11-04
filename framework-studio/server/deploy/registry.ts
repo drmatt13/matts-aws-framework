@@ -35,7 +35,7 @@ export interface OperationContext {
   readonly env: NodeJS.ProcessEnv;
   readonly run: Runner;
   readonly exportDirectory: string;
-  readonly jobs: JobManager;
+  readonly jobs: Pick<JobManager, "holder">;
   readonly plans: PlanStore;
   readonly teardowns: TeardownStore;
   readonly local: LocalEnvironment;
@@ -121,6 +121,15 @@ export async function buildOperation(context: OperationContext, request: Operati
 type Builder = (context: OperationContext, params: Params) => Promise<JobSpec>;
 
 const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
+  async "framework-check"(context) {
+    return {
+      kind: "framework-check", title: "Check framework", params: {}, locks: ["workspace-tooling"],
+      steps: [
+        { label: "Check generated contracts", command: () => context.tools.script("packages/framework/scripts/generate-contracts.ts", ["--check"], studioEnvironment(context.env)) },
+        { label: "Check local declarations", command: () => context.tools.script("packages/framework/scripts/check-local.ts", [], studioEnvironment(context.env)) },
+      ],
+    };
+  },
   async "deploy-plan"(context, params) {
     const name = deploymentName(params);
     const declared = target(context, name);

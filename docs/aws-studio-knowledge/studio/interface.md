@@ -15,6 +15,9 @@ source:
   - framework-studio/src/views/Shell.tsx
   - framework-studio/src/views/GlobalActivity.tsx
   - framework-studio/src/activity.ts
+  - framework-studio/src/operations/live.ts
+  - framework-studio/src/operations/api.ts
+  - framework-studio/shared/operations.ts
   - framework-studio/src/views/AgentLab.tsx
   - framework-studio/server/agent-lab.ts
   - framework-studio/src/views/CreationWizard.tsx
@@ -131,7 +134,7 @@ own exact-text session and navigation protection.
 | Latest snapshot and source-read evidence | TanStack Query; [snapshot.ts](../../../framework-studio/src/snapshot.ts) and feature query definitions retain existing keys and refresh policies |
 | Inspector return trail | In-memory accepted visits, with presentation retained separately per source mode; see [rendering](rendering.md) |
 | Prisma text, validation and diagram | Independent `DatabaseSession`, preserving editor identity/undo |
-| Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and job reads; shared log storage and one global deployment-event observer continue on every route |
+| Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and operation reads; shared log storage and one global operation-event observer continue on every route. Execution belongs to the runner or the operation's legacy service |
 | Deployment target and observations | Owning operational workspace; separate from source mode and source-save approval |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
 | Camera, hover, filters and disclosures | Local view state; never persisted as framework configuration |
@@ -148,11 +151,22 @@ The bottom **Activity** tray belongs to `Shell` and is mounted once for every ro
 `GlobalActivity` is memoized and consumes no route or Studio context, so navigation does
 not render it again. Open state, selected job, log DOM, and the reader's scroll position
 survive navigation. Job/log changes and tray interactions still update it normally.
-The tray observes jobs from the shared deployment overview and owns the global deployment
-event subscription. Deploy's event observer handles only its plan-review/CloudFormation
+The tray observes `/api/operations` through the shared operation transport and owns the
+global operation-event subscription. Deploy's event observer handles its plan-review/CloudFormation
 callbacks. Operations started from Deploy call `openActivity(job.id)` to reveal their job
 in the same tray. Cancellation retains the existing command semantics; failed reads and
-cancellation errors stay in the tray, with read retry available there.
+cancellation errors stay in the tray, with read retry available there. Cursor-based replay
+recovers historical log pages and missed tails without adding duplicate lines. Replay
+failures remain explicit and retryable. Operations with an origin link offer **Open
+workspace**; uncertainty, unverified outcomes and recovery instructions remain visible
+separately from command completion.
+
+Deployment plan/apply/discard, deletion, drift, export and the fixed framework-check
+operation use independent host workers. Their logs continue through Studio shutdown and
+can be read after restart. Legacy local development and host-remedy jobs retain their
+Studio-owned lifetime. Activity itself owns presentation and observation, never approval
+or execution. See [operation lifecycle](../deployment/operations.md) for exact recovery
+guarantees and the current macOS/Linux boundary.
 
 ## Reading the map
 

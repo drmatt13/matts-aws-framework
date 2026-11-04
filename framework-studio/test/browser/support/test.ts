@@ -69,6 +69,7 @@ export const test = base.extend<{ studio: StudioFixture }>({
           case "GET /api/snapshot": value = response; break;
           case "GET /api/source-recovery": value = []; break;
           case "GET /api/deploy/overview": value = overview(); break;
+          case "GET /api/operations": value = { jobs: [] }; break;
           case "GET /api/deploy/profiles": value = overview().profiles; break;
           case "GET /api/aws-connections": value = connectionCatalogFixture(overview().profiles); break;
           case "POST /api/aws-connections/check": value = connectionObservationFixture((body as {profile:string}).profile); break;

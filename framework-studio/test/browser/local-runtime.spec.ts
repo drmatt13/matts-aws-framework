@@ -48,7 +48,7 @@ for (const width of [1440, 320]) test(`local runtime explains Docker and starts 
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog").getByRole("status")).toContainText("Waiting for the Docker engine");
   await expect(page.getByRole("button", { name: "Starting…", exact: true })).toBeDisabled();
-  expect(studio.requests.filter(request => request.path === "/api/deploy/operations").map(request => request.body)).toEqual([{ kind: "docker-start", params: {} }]);
+  expect(studio.requests.filter(request => request.path === "/api/deploy/operations").map(request => { const { requestKey, ...intent } = request.body as { requestKey: string; kind: string; params: object }; expect(requestKey).toEqual(expect.any(String)); return intent; })).toEqual([{ kind: "docker-start", params: {} }]);
   release();
   const ready = page.getByRole("dialog", { name: "Docker is ready", exact: true });
   await expect(ready).toBeVisible();

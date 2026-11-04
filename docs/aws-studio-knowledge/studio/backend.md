@@ -10,6 +10,11 @@ source:
   - framework-studio/server/edits/batch.ts
   - framework-studio/server/edits/journal.ts
   - framework-studio/server/database-workbench.ts
+  - framework-studio/server/operations/client.ts
+  - framework-studio/server/operations/coordinator.ts
+  - framework-studio/server/operations/worker.ts
+  - framework-studio/server/operations/ipc.ts
+  - framework-studio/shared/operations.ts
 related:
   - studio.interface
   - studio.snapshots
@@ -27,7 +32,9 @@ hosted multi-user administration service.
 routes, server-sent events, Vite and the watcher. [index.ts](../../../framework-studio/server/index.ts)
 finds the repository and chooses server mode or one-shot `--print`. The listener claims
 loopback before expensive initialization; shutdown owns evaluators, watcher, Vite and
-fixed command children. See [snapshots](snapshots.md) for startup, reload and disposal.
+legacy fixed command children. Independent operation workers outlive this shutdown;
+Studio closes only its runner client. See [snapshots](snapshots.md) for startup, reload
+and disposal, and [operations](../deployment/operations.md) for runner lifecycle.
 
 ## Separate authorities
 
@@ -40,6 +47,7 @@ fixed command children. See [snapshots](snapshots.md) for startup, reload and di
 | `DatabaseApplicationService`, `DatabaseCloudService`, SQL router | Separately targeted, reviewed database operations | Authority derived merely from editing Prisma or choosing a source mode |
 | `InfrastructureService` | Explicit CDK synthesis and sanitized assembly inventory, with per-mode freshness | Deployment, live drift or AWS runtime health |
 | `DeployService`, frontend-release and stateful-resource services | Named targets, plans, operation approvals, evidence and recovery/lifecycle workflows | Implicit authority from source Apply or a canvas selection |
+| Operations coordinator and workers | Durable accepted intents, duplicate prevention, resource claims, independent execution/log capture and shared projection for supported adapters | New deployment authority, replay of uncertain mutations or approval for database/publication/identity actions |
 | Identity and identity-policy services | Source-owned identity configuration, selected AWS observations and typed operation boundaries | A generic IAM policy simulator or proof that provider-side sign-in works |
 | `AwsConnectionsService` | Machine-local profile catalog, identity observations, native authentication coordination, reviewed non-secret AWS configuration and profile deletion | Deployment approval, complete IAM authorization or browser access to credentials |
 | `CommandRunner` | Fixed `framework:check` and confirmed `framework:generate` scripts | A request-controlled shell or the complete operations surface |
@@ -55,8 +63,16 @@ validators. Do not broaden the generic allowlist to accommodate a new workflow.
 
 The browser fetches `/api/snapshot` and subscribes to `/api/events`. A snapshot contains
 both mode models and source locations, not live AWS state. One reference-counted
-EventSource per tab serves snapshot and deployment observers. Reconnect invalidates
+EventSource per tab serves snapshot, operation and deployment observers. Reconnect invalidates
 queries; source changes expire reviews. Dirty drafts keep their own snapshot baseline.
+
+Shared operation requests pass from guarded Studio HTTP routes through
+[`OperationsClient`](../../../framework-studio/server/operations/client.ts) and
+[private Unix-socket IPC](../../../framework-studio/server/operations/ipc.ts) to a
+separate host coordinator. The coordinator commits acceptance before acknowledgement;
+workers reconstruct allowlisted adapters rather than executing request-supplied commands.
+Worker-owned SQLite log writes continue without Studio. The API combines these records
+with legacy jobs for Activity; execution and domain outcome are separate fields.
 
 An Inspector review sends typed intent and its source revision. The server locates
 the authored syntax, composes candidate text in memory, validates the complete overlay
@@ -87,6 +103,7 @@ All prefixes in this table are relative to `/api`.
 | `/database/workbench`, `/database/history` | Source validation/format/review/save; history compare/plan/install/discard |
 | `/database/application`, `/database/cloud`, `/database/sql` | Separate target review/application and SQL operations |
 | `/deploy` | `server/deploy/routes.ts`: target discovery, plans, approvals, operations and local runtime |
+| `/operations` | `server/server.ts`: shared operation list/submission, `/:id/log?after=<seq>` replay and `/:id/cancel`; adapter-specific approval stays with its owning workspace |
 | `/aws-connections` | `server/aws-connections`: catalog, protected connection checks, ephemeral authentication, configuration, deletion and logout reviews |
 | `/frontend-release` | `server/frontend-release-routes.ts`: frontend release and add-a-deployment-stage workflows |
 | `/app-name` | `server/app-name-routes.ts`: the app's name and id (`framework:app`, `framework:appId`): read, review (read-only AWS discovery by app id and stage decides which production stages keep their deployed name), `/deploy-as/review` (keep one stage's deployed name, from Deploy) and hash-guarded apply to `cdk-app/cdk.json`; source edits, not AWS operations |
@@ -106,6 +123,13 @@ The server binds `127.0.0.1`, accepts only exact loopback Host/port values, and 
 per-process token on every API request. SSE uses the token in its query; other calls use
 `x-studio-token`. Non-GET requests also require the exact origin and current
 `x-studio-protocol`. Responses are no-store; Vite filesystem serving is restricted.
+
+Runner IPC is separately restricted by current-user ownership and private directory/socket
+permissions, with protocol-version checks and no network listener. Its allowlisted
+deployment adapter retains CLI review checks and private credential handling. Process
+identity includes user and start-time evidence; an uncertain or unreadable execution
+record is preserved rather than automatically reclaimed. The runner is local macOS/Linux
+infrastructure, separate from application Compose and its stop/cleanup lifecycle.
 
 Evaluator children receive synthetic mode inputs and condition outcomes rather than
 authored environment-file values. They still inherit the host process environment and

@@ -107,7 +107,7 @@ afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.cle
 function render(scripted: Record<string, unknown>, content?: ReactNode, associations: { dev?: string; prod?: string } = { dev: "dev", prod: "prod" }) {
   posted = [];
   requested.length = 0;
-  answers = { "/deploy/plans": [], "/deploy/drift": null,
+  answers = { "/operations": { jobs: [] }, "/deploy/plans": [], "/deploy/drift": null,
     "/frontend-release/settings": { settings: DEFAULT_FRONTEND_RELEASE, hash: "settings-review-hash" },
     "/frontend-release/history": [],
     ...scripted };
@@ -122,7 +122,7 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
   return ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
 }
 
-const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => entry.body);
+const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => { const { requestKey, ...intent } = entry.body; assert.equal(typeof requestKey, "string"); return intent; });
 
 test("unapplied frontend settings block env generation and builds with a source-review explanation", async () => {
   const { FrontendRelease } = await import("../src/views/deploy/FrontendRelease");
@@ -218,7 +218,7 @@ for (const kind of ["expired", "no-credentials"] as const) test(`${kind} credent
   render({ "/deploy/overview": overview(), "/deploy/discover": expired, "/deploy/status": expired });
   const error = await ui.screen.findByRole("button", { name: "AWS sign-in required. Open AWS profile configuration" }, { timeout: 3000 });
   assert.ok(error.closest('[data-slot="deployment-context"]'));
-  assert.equal(ui.screen.queryByRole("button", { name: "Sign in", exact: true }), null);
+  assert.equal(ui.screen.queryByRole("button", { name: "Sign in" }), null);
   assert.equal(ui.screen.queryByText("Sign in to dev", { exact: true }), null);
   assert.equal(ui.screen.queryByText(expired.problem.message, { exact: true }), null);
   let opened = 0; const onOpen = () => { opened++; };

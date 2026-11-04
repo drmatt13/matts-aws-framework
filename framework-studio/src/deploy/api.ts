@@ -24,7 +24,7 @@ export const deployApi = {
   plans: () => call<PlanSummaryView[]>("/deploy/plans"),
   plan: (key: string) => call<PlanView>(`/deploy/plans/${encodeURIComponent(key)}`),
   drift: (deployment: string, account?: string, region?: string) => call<DriftView | null>(`/deploy/drift${query({ deployment, account, region })}`),
-  operate: (kind: OperationKind, params: Record<string, string | boolean | undefined>) => call<JobView>("/deploy/operations", { kind, params }),
+  operate: (kind: OperationKind, params: Record<string, string | boolean | undefined>, requestKey = crypto.randomUUID()) => call<JobView>("/deploy/operations", { kind, params, requestKey }),
   cancel: (id: string) => call<JobView>(`/deploy/jobs/${encodeURIComponent(id)}/cancel`, {}),
   log: (id: string, after = 0) => call<{ lines: JobLogLine[]; job: JobView }>(`/deploy/jobs/${encodeURIComponent(id)}/log${query({ after: after ? String(after) : undefined })}`),
   serviceLogs: (service: string) => call<{ text: string }>(`/deploy/local/logs${query({ service })}`),

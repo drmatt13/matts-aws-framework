@@ -14,8 +14,9 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { JobView } from "../../../shared/deploy";
-import { useJobLog } from "../../deploy/live";
+import type { JobView } from "../../../shared/operations";
+import { useOperationLog } from "../../operations/live";
+import { Link } from "@tanstack/react-router";
 import { relativeTime } from "./format";
 
 /** stderr lines that read as a failure, rather than one of the notices tools write there. */
@@ -29,6 +30,15 @@ const STATUS_LABEL: Readonly<Record<JobView["status"], string>> = {
   cancelled: "Stopped",
   interrupted: "Interrupted",
 };
+
+function statusLabel(job: JobView): string {
+  if (job.outcome === "uncertain") return "Outcome uncertain";
+  if (job.outcome === "unverified") return "Unverified";
+  if (job.cancelRequested && job.status === "running") return "Stopping";
+  if (job.execution === "accepted") return "Accepted";
+  if (job.execution === "dispatching") return "Starting";
+  return STATUS_LABEL[job.status];
+}
 
 function StepIcon({ status }: { readonly status: string }) {
   if (status === "done") return <Check size={13} aria-label="done" />;
@@ -64,7 +74,8 @@ export function Activity(props: {
   readonly cancelError?: string;
 }) {
   const job = props.jobs.find((entry) => entry.id === props.selected) ?? props.jobs[0];
-  const lines = useJobLog(props.open ? job?.id : undefined, job?.lastSeq);
+  const replay = useOperationLog(props.open ? job?.id : undefined, job?.lastSeq);
+  const lines = replay.lines;
   const log = useRef<HTMLPreElement>(null);
   const pinned = useRef(true);
   useEffect(() => {
@@ -107,7 +118,7 @@ export function Activity(props: {
                 {headline.steps
                   .map((step) => step.label)
                   .find((_label, index) => headline.steps![index]!.status === "running") ??
-                  STATUS_LABEL[headline.status]}
+                  statusLabel(headline)}
               </span>
             ) : null}
             {headline.summary && headline.status !== "running" ? (
@@ -153,7 +164,7 @@ export function Activity(props: {
                 >
                   <span className="truncate text-step-minus1 font-medium">{entry.title}</span>
                   <span className="text-meta text-[color-mix(in_srgb,var(--graphite)_85%,var(--ink))] group-data-[status=running]/job:text-[color-mix(in_srgb,var(--local)_60%,var(--ink))] group-data-[status=failed]/job:text-refuse">
-                    {STATUS_LABEL[entry.status]} · {relativeTime(entry.endedAt ?? entry.startedAt)}
+                    {statusLabel(entry)} · {relativeTime(entry.endedAt ?? entry.startedAt)}
                   </span>
                 </button>
               </li>
@@ -169,23 +180,25 @@ export function Activity(props: {
                       "ml-2 text-meta tracking-[0.06em] uppercase",
                       job.status === "running"
                         ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
-                        : job.status === "succeeded"
+                        : job.status === "succeeded" && job.outcome !== "unverified" && job.outcome !== "uncertain"
                           ? "text-accept"
                           : job.status === "failed"
                             ? "text-refuse"
                             : "text-graphite",
                     )}
                   >
-                    {STATUS_LABEL[job.status]}
+                    {statusLabel(job)}
                   </span>
+                  {job.origin ? <Link to={job.origin} className={buttonClasses({ variant: "link", className: "mt-1 block w-fit text-caption" })}>Open workspace</Link> : null}
                   {job.summary ? (
                     <p className="mt-1 mb-0 text-caption text-graphite">{job.summary}</p>
                   ) : null}
                 </div>
-                {job.status === "running" ? (
+                {job.status === "running" && job.execution !== "lost" ? (
                   <button
                     className={buttonClasses({ variant: "quiet", size: "regular" })}
                     onClick={() => props.onCancel(job.id)}
+                    disabled={job.cancelRequested}
                     title={
                       job.kind.startsWith("deploy") || job.kind === "destroy"
                         ? "Stops the command. A CloudFormation operation already started continues in AWS."
@@ -201,6 +214,12 @@ export function Activity(props: {
                   </button>
                 ) : null}
               </header>
+              {job.observationProblem ? <p role="status" className="m-0 px-4 pb-2 text-caption text-graphite">{job.observationProblem}</p> : null}
+              {job.recovery ? <p role="status" className="m-0 px-4 pb-2 text-caption text-graphite">{job.recovery}</p> : null}
+              {replay.problem ? <div role="alert" className="flex items-center justify-between gap-3 px-4 pb-2 text-caption">
+                <span>{replay.problem}</span>
+                <button className={buttonClasses({ variant: "quiet", size: "compact" })} disabled={replay.retrying} onClick={replay.retry}>Retry log</button>
+              </div> : null}
               {job.steps?.length ? (
                 <ol className="m-0 flex flex-none list-none flex-wrap gap-x-4 gap-y-1 px-4 pt-0 pb-2 text-step-minus1 text-graphite">
                   {job.steps.map((step, index) => (

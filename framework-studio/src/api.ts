@@ -39,6 +39,6 @@ export const api = {
   applyBatch: (planId: string) => call<ApplyResponse>("/edits/batch/apply", { planId }),
   resourceDetails: (id: string, mode: Mode, signal?: AbortSignal) => call<ResourceDetails>(`/resources/details?id=${encodeURIComponent(id)}&mode=${mode}`, undefined, signal),
   refreshCdkLinks: () => call<{ edges: number; files: number }>("/cdk-links/refresh", {}),
-  command: (name: string, confirmed = false) => call<CommandResult>(`/commands/${encodeURIComponent(name)}`, { confirmed }),
+  command: (name: string, confirmed = false) => call<CommandResult>(`/commands/${encodeURIComponent(name)}`, { confirmed, requestKey: crypto.randomUUID() }),
   webSocketDefaults: () => call<WebSocketDefaults>("/websockets/defaults"),
 };

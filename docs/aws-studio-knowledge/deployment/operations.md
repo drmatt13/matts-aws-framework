@@ -8,6 +8,12 @@ source:
   - framework-studio/server/deploy/registry.ts
   - framework-studio/server/deploy/jobs.ts
   - framework-studio/server/deploy/observe.ts
+  - framework-studio/shared/operations.ts
+  - framework-studio/server/operations/coordinator.ts
+  - framework-studio/server/operations/worker.ts
+  - framework-studio/server/operations/store.ts
+  - framework-studio/server/operations/adapter.ts
+  - framework-studio/src/operations/live.ts
   - framework-studio/server/infrastructure.ts
   - scripts/deployment-status.ts
   - scripts/destroy.ts
@@ -44,15 +50,77 @@ per-target profile.
 
 Activity is a persistent shell tray on every route. `GlobalActivity` owns its job-query
 observer and presentation state; it is memoized independently of route/source context.
-The shared deployment-event observer updates job/log caches once globally, while Deploy
+The shared operation-event observer updates job/log caches once globally, while Deploy
 subscribes separately for its route-specific plan-review and CloudFormation callbacks.
 Navigation preserves the selected job, open state, mounted log and scroll position.
-The overview read is local and profile-metadata-only; global Activity does not enable AWS
-discovery or selected-target status reads outside their owning workspaces.
+Activity reads `/api/operations` independently of the deployment overview; it does not
+enable AWS discovery or selected-target status reads outside their owning workspaces.
 
-`DeployService` in [service.ts](../../../framework-studio/server/deploy/service.ts) coordinates targets/preferences, prerequisites, plans, jobs, cloud observer and local environment state. `buildOperation` in [registry.ts](../../../framework-studio/server/deploy/registry.ts) maps recognized actions to fixed repository commands/argv: plan/apply/discard, export, destroy, drift, local start/stop, dependencies, Docker and AWS login. It is not an arbitrary terminal API.
+`DeployService` in [service.ts](../../../framework-studio/server/deploy/service.ts) coordinates targets/preferences, prerequisites, plans, operation projection, cloud observer and local environment state. `buildOperation` in [registry.ts](../../../framework-studio/server/deploy/registry.ts) maps recognized actions to fixed repository commands/argv: plan/apply/discard, export, destroy, drift, framework checks, local start/stop, dependencies and Docker. It is not an arbitrary terminal API.
 
-`process.ts` in [deploy/](../../../framework-studio/server/deploy/) launches commands without shell interpolation and delegates selected-profile environments to the shared host connection resolver. Deliberate `credential_source=Environment` dependencies retain their inputs; unrelated ambient sources are removed. [jobs.ts](../../../framework-studio/server/deploy/jobs.ts) locks overlapping operations in the server, persists job metadata/log lines, batches SSE events and permits client gap replay. Native sign-in now uses the separate ephemeral [AWS connection coordinator](../../framework-studio/aws-connections.md), never generic raw-output job logs. Old running records are restored as interrupted; this is not resumable CloudFormation execution. Watch/client child lifetimes use [tether.mjs](../../../framework-studio/server/deploy/tether.mjs). Process-tree cancellation does not undo AWS requests already accepted.
+`process.ts` in [deploy/](../../../framework-studio/server/deploy/) launches commands without shell interpolation and delegates selected-profile environments to the shared host connection resolver. Deliberate `credential_source=Environment` dependencies retain their inputs; unrelated ambient sources are removed. Native sign-in uses the separate ephemeral [AWS connection coordinator](../../framework-studio/aws-connections.md), never generic raw-output job logs. Process-tree cancellation does not undo AWS requests already accepted.
+
+## Independent host operations
+
+[Shared contracts](../../../framework-studio/shared/operations.ts) describe versioned
+intents, execution state, domain outcomes, cancellation requests and numbered log lines.
+Production Studio submits plan/apply/discard, destroy, drift, export and the fixed
+`framework-check` operation through a same-user Unix socket to the independent
+[coordinator](../../../framework-studio/server/operations/coordinator.ts). The socket
+has no TCP listener: its private temporary directory is keyed by user, workspace and
+canonical state path. A database lease prevents competing coordinators from replacing a
+live socket, including when clients use symlink aliases. The operation database binds to
+one canonical checkout and refuses discovery or execution from another checkout.
+
+The [store](../../../framework-studio/server/operations/store.ts) uses SQLite WAL with
+FULL synchronous commits. Acceptance atomically records immutable intent, request-key
+identity, resource scopes and any consumed review before responding. Identical request
+keys return the original operation; different intent under that key is refused. A new
+key cannot reuse a consumed apply/deletion review. Overlapping operations are refused;
+the current adapter also takes a conservative checkout-tooling scope. Existing CLI
+deployment and physical-reference locks remain authoritative.
+
+A detached [worker](../../../framework-studio/server/operations/worker.ts) claims one
+dispatch token and owns the complete adapter execution, child processes, output pipes,
+credential snapshots and CloudFormation observation. Its children are tethered to the
+worker. Browser disconnect and Studio shutdown leave it running. Coordinator restart
+discovers existing execution through PID, user and process-start identity; an unavailable
+identity probe displays an observation problem and does not prove that the worker died.
+Ambiguous dispatch and lost workers
+are never dispatched again. Resource claims remain held on execution uncertainty. A
+matching verified CLI result can reconcile infrastructure completion without changing
+lost execution to successful execution or making the review reusable. That observation
+does not release resource claims: the CLI records success before local export, so it
+does not prove that all local execution has stopped. There is no explicit inspected
+lock-release workflow in this version.
+
+Studio projects worker progress into shared operation events and preserves deployment
+event compatibility. Sanitized CloudFormation stack/event payloads have a separate
+durable cursor. Log and event replay pages are limited to 4 MiB as well as row counts;
+oversized log lines carry a truncation marker, and oversized observation events fail
+explicitly. The browser deduplicates committed logs and replays gaps, including the
+missed tail after reconnect. Secret values and encoded
+forms are redacted before durable logging, including transport chunk boundaries.
+Authentication output and private SQL parameters do not belong to this log protocol.
+Drift reports retain their account/region/deployment scope in separate private artifacts.
+
+State defaults to `.cache/framework-studio/operations/`, including `operations.sqlite`
+and its WAL. The database has a 256 MiB page limit; WAL overhead is additional. Storage
+failure refuses acceptance or stops further execution rather than silently dropping
+evidence. There is no automatic retained-log or recovery-record purge. Preserve this
+directory with the separate CLI plans, bindings and journals during investigation.
+
+[Legacy JobManager](../../../framework-studio/server/deploy/jobs.ts) continues to own
+local development, dependency installation and host remedies. Watch/client tethers still
+belong to Studio. Existing job files remain readable; they are not converted into
+resumable runner operations. Database, publication, identity, DNS, authentication and
+synthesis services retain their current review, privacy and recovery boundaries.
+
+The coordinator starts on demand and exits after 60 seconds without client requests
+when no accepted/dispatched/running worker remains. It is independent of application
+Compose and development-stop labels. This version supports macOS/Linux, not Windows;
+it installs no OS startup service and provides no remote execution, distributed locking,
+automatic reboot continuation or worker-toolchain version pinning.
 
 Both development and production require explicit plan review before Studio applies. Saved plans include inline security/property/template evidence, retained stacks and incomplete-analysis blockers. UI checks complement, rather than replace, the [CLI safety gates](planning-and-safety.md).
 
@@ -70,6 +138,11 @@ Both development and production require explicit plan review before Studio appli
 [destroy.ts](../../../scripts/destroy.ts) discovers deployment-owned stacks from AWS identity instead of relying on current source, validates account/mode, orders importers before exports, saves a 15-minute deletion review binding account/region/mode, immutable StackIds, policies/templates/imports and retain-failed/protection choices. Required unreadable consequences or external importers block execution. Apply rechecks the scope, uses StackIds, records each phase atomically and requires typed confirmation plus reviewed opt-in to lift termination protection. Managed secrets are retained. Studio's destroy service can address discovered deployments beyond repository-declared targets; the current Deploy page follows the active source-mode target and does not expose the former discovery rail or actions menu. Teardown requires separate environment-specific authorization.
 
 Tests: Studio [jobs](../../../framework-studio/test/deploy-jobs.test.ts), [tether](../../../framework-studio/test/deploy-tether.test.ts), [log store](../../../framework-studio/test/deploy-log-store.test.ts), [infrastructure](../../../framework-studio/test/infrastructure.test.ts); CDK [status](../../../cdk-app/test/deployment-status.test.ts), [destroy](../../../cdk-app/test/deployment-destroy.test.ts), [inventory](../../../cdk-app/test/infrastructure-inventory.test.ts). Cloud status, Docker readiness and browser event recovery need their corresponding environments, not just offline verify.
+
+Independent runner fixtures cover [store/recovery](../../../framework-studio/test/operations-store.test.ts),
+[worker output and failure handling](../../../framework-studio/test/operations-worker.test.ts)
+and [coordinator lifecycle](../../../framework-studio/test/operations-process.test.ts).
+These use controlled local commands; they do not establish live AWS execution.
 
 Cloud evidence, plans, drift and events are scoped to the resolved destination. Default-region discovery failures do not hide a readable selected-region target; partial failures retain contextual retry feedback. Detailed observation timestamps and stack lists remain in service responses, while the former AWS card is absent from the page. Failed/unverified/interrupted/export-failed releases retain their phase/result evidence and expose review/recheck/new-plan or separate export recovery. CloudFormation completion never claims application health.
 
