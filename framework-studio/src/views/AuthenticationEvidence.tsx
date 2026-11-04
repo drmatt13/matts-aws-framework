@@ -2,7 +2,16 @@ import type { CognitoObservation, IdentityPoolsObservation, IdentitySource } fro
 import { editorLink } from "../lookup";
 import { useStudio } from "../studio";
 import { buttonClasses } from "../ui/Button";
-import { DocumentCard, documentDataTableClasses, documentTableRegionClasses } from "./DocumentUI";
+import {
+  DocumentCard,
+  documentDataTableClasses,
+  documentTableRegionClasses,
+  documentTitleClasses,
+  documentProseClasses,
+  documentSupportClasses,
+  documentSummaryClasses,
+  documentDisclosureClasses,
+} from "./DocumentUI";
 
 /** Read-only authentication evidence. The workspace owns requests, approvals and panel lifetime. */
 export const evidenceFactsClasses =
@@ -63,8 +72,8 @@ export function ProviderEvidence({
   ];
   return (
     <DocumentCard className="mb-3">
-      <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Federation providers</h2>
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+      <h3 className={documentTitleClasses}>Federation providers</h3>
+      <p className={documentSupportClasses}>
         The framework manages Google, Microsoft and Meta sign-in; Studio also supports declared
         OIDC and SAML providers. Source, AWS metadata and a working sign-in are separate checks.
       </p>
@@ -82,7 +91,7 @@ export function ProviderEvidence({
           >
             Open sign-in provider inputs in editor
           </a>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption text-graphite">
+          <p className={documentSupportClasses}>
             <code>{source.file}</code>
             {framework.flatMap((provider) => provider.lines).map((line) => (
               <span key={line.name}>
@@ -157,8 +166,8 @@ export function ProviderEvidence({
         </table>
       </div>
       {result?.providers.map((provider) => (
-        <details className="mt-3" key={provider.name}>
-          <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+        <details className={documentDisclosureClasses} key={provider.name}>
+          <summary className={documentSummaryClasses}>
             {provider.name} · observed configuration
           </summary>
           <dl className={evidenceFactsClasses}>
@@ -169,16 +178,16 @@ export function ProviderEvidence({
               </div>
             ))}
           </dl>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             Mapped attributes: {provider.mappedAttributes.join(", ") || "none returned"}
           </p>
         </details>
       ))}
-      <details className="mt-3">
-        <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+      <details className={documentDisclosureClasses}>
+        <summary className={documentSummaryClasses}>
           Provider setup and verification
         </summary>
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <p className={documentProseClasses}>
           For Google, review the{" "}
           <a
             href="https://console.cloud.google.com/apis/credentials"
@@ -191,13 +200,13 @@ export function ProviderEvidence({
           <code>https://&lt;cognito-domain&gt;/oauth2/idpresponse</code> redirect. Start sign-in
           from the application to preserve PKCE/state.
         </p>
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <p className={documentProseClasses}>
           For Microsoft, the Entra app registration is single tenant, uses the same redirect and
           adds the <code>xms_edov</code> optional claim to its ID token; without it every
           Microsoft identity arrives unverified. For Meta, the Facebook Login app grants the{" "}
           <code>email</code> permission and lists the same redirect as a valid OAuth redirect URI.
         </p>
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <p className={documentProseClasses}>
           For{" "}
           <a
             href="https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-oidc-idp.html"
@@ -217,7 +226,7 @@ export function ProviderEvidence({
           , verify metadata, SP entity ID and ACS. The application callback is distinct from the
           provider callback.
         </p>
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <p className={documentProseClasses}>
           Secret values are never requested here. Authored presence does not establish a deployed
           value, accessible secret or accepted provider credentials.
         </p>
@@ -229,7 +238,7 @@ export function ProviderEvidence({
 export function Groups({ result }: { readonly result?: CognitoObservation }) {
   return (
     <DocumentCard className="mb-3">
-      <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Groups and role claims</h2>
+      <h3 className={documentTitleClasses}>Groups and role claims</h3>
       {result ? (
         <>
           <div
@@ -278,17 +287,17 @@ export function Groups({ result }: { readonly result?: CognitoObservation }) {
             </table>
           </div>
           {!result.groups.length ? (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               No groups returned for this pool.
             </p>
           ) : null}
         </>
       ) : (
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <p className={documentProseClasses}>
           Inspect authentication to read groups from the selected deployment-owned user pool.
         </p>
       )}
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+      <p className={documentSupportClasses}>
         Cognito groups influence token claims. Application RBAC, identity-pool role selection and
         IAM authorization are independent.
       </p>
@@ -301,8 +310,8 @@ export function PoolRelationships({ result }: { readonly result?: IdentityPoolsO
     <>
       {result?.pools.map((pool) => (
         <DocumentCard className="mb-3" key={pool.id}>
-          <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">{pool.name}</h2>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <h3 className={documentTitleClasses}>{pool.name}</h3>
+          <p className={documentProseClasses}>
             <code>{pool.id}</code>{" "}
             <span className="inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]">
               AWS metadata observed
@@ -328,25 +337,25 @@ export function PoolRelationships({ result }: { readonly result?: IdentityPoolsO
               </dd>
             </div>
           </dl>
-          <details className="mt-3" open>
-            <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+          <details className={documentDisclosureClasses} open>
+            <summary className={documentSummaryClasses}>
               Role selection and mapping
             </summary>
             <pre className="max-h-[350px] max-w-full overflow-auto text-caption">
               {JSON.stringify({ roles: pool.roles, mappings: pool.mappings }, null, 2)}
             </pre>
           </details>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+          <p className={documentSupportClasses}>
             These role mappings do not prove successful credential issuance or effective AWS access.
           </p>
         </DocumentCard>
       ))}
       {result && !result.pools.length ? (
         <DocumentCard className="mb-3">
-          <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+          <h3 className={documentTitleClasses}>
             No owned deployed identity pools found
-          </h2>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          </h3>
+          <p className={documentProseClasses}>
             This inspection covers resources in verified stacks for the selected deployment.
             Retained and external pools may exist separately.
           </p>

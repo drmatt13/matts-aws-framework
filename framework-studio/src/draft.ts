@@ -71,7 +71,7 @@ export class InspectorDraft {
   get count(): number { return this.state.entries.reduce((sum, entry) => sum + (entry.kind === "resource" || entry.kind === "clientEnvironment" ? entry.count : entry.kind === "environment" ? entry.edits.length : 1), 0); }
   get dirty(): boolean { return this.count > 0; }
   get conflict(): boolean { return this.dirty && this.state.baseline.revision !== this.state.latest.revision; }
-  get invalid(): boolean { return this.state.entries.some((entry) => !!entry.error); }
+  get invalid(): boolean { return this.state.entries.some((entry) => !!entry.error || (entry.kind === "field" && !!this.concurrencyError(entry.intent.target))); }
   reviewAgainstLatest(): void {
     if (this.state.busy || !this.conflict) return;
     if (this.state.entries.some(entry => entry.kind === "environment")) { this.publish({ ...this.state, error: "The selected input file changed. Preserve your values, then reload that inspector before reviewing." }); return; }
@@ -217,6 +217,19 @@ export class InspectorDraft {
     if (entry?.intent.inherit || fact.authored === undefined) return this.inherited(fact, visited) ?? fact.effective;
     return fact.effective;
   }
+  concurrencyError(target: string): string | undefined {
+    const count = (field: string) => {
+      const fact = this.state.baseline.models[this.state.mode].fields[target]?.find((fact) => fact.field === field);
+      if (!fact) return undefined;
+      const entry = this.field(target, fact);
+      return entry ? entry.error || entry.intent.inherit ? undefined : entry.intent.value : fact.effective;
+    };
+    const reserved = count("lambda.reservedConcurrentExecutions");
+    const provisioned = count("lambda.provisionedConcurrentExecutions");
+    return typeof reserved === "number" && typeof provisioned === "number" && provisioned > reserved
+      ? "Provisioned concurrency cannot exceed reserved concurrency."
+      : undefined;
+  }
   setField(target: string, fact: FieldFact, raw: LiteralValue | undefined): void {
     const key = fieldKey(target, fact.field);
     let value: LiteralValue | undefined = raw;
@@ -225,7 +238,7 @@ export class InspectorDraft {
       if (!fact.inherited) error = `${fact.label} is required.`;
     } else if (fact.domain.kind === "number") {
       value = typeof raw === "number" ? raw : Number(raw);
-      if (!Number.isSafeInteger(value) || value < fact.domain.min || value > fact.domain.max) error = `Enter a whole number from ${fact.domain.min} to ${fact.domain.max} ${fact.domain.unit}.`;
+      if ((typeof raw !== "number" && (typeof raw !== "string" || raw.trim() === "")) || !Number.isSafeInteger(value) || value < fact.domain.min || value > fact.domain.max) error = `Enter a whole number from ${fact.domain.min} to ${fact.domain.max} ${fact.domain.unit}.`;
     } else {
       value = fact.domain.values.find((option) => String(option) === String(raw));
       if (value === undefined) error = `Choose a valid ${fact.label.toLowerCase()}.`;

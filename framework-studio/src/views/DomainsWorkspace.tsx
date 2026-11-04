@@ -12,14 +12,21 @@ import { AwsConnectionSummary } from "./AwsConnectionSummary";
 import { openEnvironmentVariable } from "../environment-variable-link";
 import { buttonClasses } from "../ui/Button";
 import { Select, TextInput } from "../ui/FormControls";
-import { noticeClasses, workspaceToolbarClasses } from "../ui/Surface";
+import { noticeClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
 import {
   DocumentCard,
+  documentTitleClasses,
+  documentSubheadingClasses,
+  documentProseClasses,
+  documentSupportClasses,
   documentFieldsetClasses,
   documentLabelClasses,
+  documentSwitchLabelClasses,
   inspectionControlClasses,
-  pageWidthClasses,
+  PageToolbar,
+  pageBodyClasses,
+  pageTitleClasses,
   inspectionFieldClasses,
   inspectionRegionFieldClasses,
   inspectionActionClasses,
@@ -61,8 +68,8 @@ function DomainControls({ source }: { readonly source: IdentitySource }) {
   const problems = domainSettingsProblems("prod", values);
   return (
     <DocumentCard>
-      <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Production domain intent</h2>
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+      <h2 className={documentTitleClasses}>Production domain intent</h2>
+      <p className={documentProseClasses}>
         These settings edit the same protected <code>cdk-app/.env.prod</code> inputs used by Deploy.
         Source approval does not request a certificate, write DNS or deploy.
       </p>
@@ -82,9 +89,7 @@ function DomainControls({ source }: { readonly source: IdentitySource }) {
       ].map(([title, toggle, domain, cert]) => (
         <fieldset className={documentFieldsetClasses} key={toggle}>
           <legend className="px-1 text-label">{title}</legend>
-          <label
-            className={cx(documentLabelClasses, "!flex-row items-center justify-between gap-4")}
-          >
+          <label className={documentSwitchLabelClasses}>
             Use custom domain{" "}
             <InspectorSwitch
               label={`Use ${title} custom domain`}
@@ -122,20 +127,20 @@ function DomainControls({ source }: { readonly source: IdentitySource }) {
         </fieldset>
       ))}
       {problems.length ? (
-        <div className={noticeClasses()} role="alert">
+        <div className={noticeClasses({ className: "grid gap-2" })} role="alert">
           {problems.map((problem) => (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={problem}>
+            <p className={documentProseClasses} key={problem}>
               {problem}
             </p>
           ))}
         </div>
       ) : null}
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+      <p className={documentSupportClasses}>
         Both certificates must be in us-east-1 in the deployment account and cover the configured
         hostname. Cognito additionally needs an A record for the immediate parent hostname. Issued
         certificate metadata, DNS answers and actual application health are separate evidence.
       </p>
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+      <p className={documentProseClasses}>
         <a
           href="https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-add-custom-domain.html"
           target="_blank"
@@ -161,19 +166,19 @@ function DomainEvidence({ result }: { result?: DomainsObservation }) {
     <>
       {result.certificates.map((cert) => (
         <DocumentCard key={cert.purpose}>
-          <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+          <h2 className={documentTitleClasses}>
             {cert.purpose} certificate · {cert.status ?? "unavailable"}
           </h2>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             <code>{cert.arn}</code>
           </p>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             Names: {cert.names.join(", ") || "unobserved"} · expiry: {cert.expires ?? "unobserved"}{" "}
             · region: us-east-1 required
           </p>
           {cert.problems.map((problem) => (
             <p
-              className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+              className={noticeClasses()}
               role="alert"
               key={problem}
             >
@@ -181,41 +186,41 @@ function DomainEvidence({ result }: { result?: DomainsObservation }) {
             </p>
           ))}
           {cert.validation.map((record) => (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={record.domain}>
+            <p className={documentProseClasses} key={record.domain}>
               {record.domain}: {record.status} · {record.type} {record.name} → {record.value}
             </p>
           ))}
         </DocumentCard>
       ))}
       <DocumentCard>
-        <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+        <h2 className={documentTitleClasses}>
           DNS observations and external records
         </h2>
         {result.dns.map((record) => (
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={record.hostname}>
+          <p className={documentProseClasses} key={record.hostname}>
             {record.hostname}: {record.addresses.join(", ") || record.problem}
           </p>
         ))}
         {result.records.map((record) => (
-          <div key={record.hostname}>
-            <h3 className="mt-3 mb-2 text-label">{record.hostname}</h3>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">{record.instruction}</p>
+          <div className="grid gap-3" key={record.hostname}>
+            <h3 className={documentSubheadingClasses}>{record.hostname}</h3>
+            <p className={documentProseClasses}>{record.instruction}</p>
           </div>
         ))}
         {!result.records.length ? (
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             No enabled production custom domains were configured.
           </p>
         ) : null}
       </DocumentCard>
       <DocumentCard>
-        <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Frontend health</h2>
+        <h2 className={documentTitleClasses}>Frontend health</h2>
         {result.health.map((check) => (
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={check.check}>
+          <p className={documentProseClasses} key={check.check}>
             {check.check}: <strong>{check.status}</strong>. {check.detail}
           </p>
         ))}
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <p className={documentProseClasses}>
           DNS resolution and ACM metadata alone do not establish a healthy website.
         </p>
       </DocumentCard>
@@ -288,26 +293,19 @@ export function DomainsWorkspace() {
   };
   return (
     <div className="h-full w-full min-w-0 overflow-auto">
-      <header
-        className={cx(
-          workspaceToolbarClasses,
-          "px-0! [&_p]:m-0 [&_p]:text-label [&_p]:text-graphite",
-        )}
-      >
-        <div className={cx(pageWidthClasses, "grid gap-2")}>
-          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-            <h1 className="m-0 font-sans text-step1 font-semibold leading-[1.3]">DNS / Domains</h1>
-            <span className="inline-flex items-center gap-2 text-label">
-              Production domain settings
-            </span>
-          </div>
-          <p>
-            Source intent, deployed metadata and actual application health have independent
-            evidence.
-          </p>
+      <PageToolbar className="grid gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+          <h1 className={pageTitleClasses}>DNS / Domains</h1>
+          <span className={documentSupportClasses}>
+            Production domain settings
+          </span>
         </div>
-      </header>
-      <div className={cx(pageWidthClasses, "pt-4 pb-6 [&>:not(dialog)+:not(dialog)]:mt-3")}>
+        <p className={documentSupportClasses}>
+          Source intent, deployed metadata and actual application health have independent
+          evidence.
+        </p>
+      </PageToolbar>
+      <div className={cx(pageBodyClasses, "[&>:not(dialog)+:not(dialog)]:mt-3")}>
         {source.error ? (
           <RetryNotice
             message={source.error.message}
@@ -317,13 +315,13 @@ export function DomainsWorkspace() {
           />
         ) : null}
         {source.isFetching && !source.data && !source.error ? (
-          <p className="text-graphite" role="status">
+          <p className={documentSupportClasses} role="status">
             Loading source declaration…
           </p>
         ) : null}
         {source.data && !source.data.exists ? (
           <DocumentCard>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               {source.data.file} does not exist. Retry setup in CDK environment before staging
               settings.
             </p>
@@ -336,7 +334,7 @@ export function DomainsWorkspace() {
           </DocumentCard>
         ) : null}
         <DocumentCard>
-          <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Read-only deployment inspection</h2>
+          <h2 className={documentTitleClasses}>Read-only deployment inspection</h2>
           {overview.error ? (
             <RetryNotice
               message={overview.error.message}
@@ -346,7 +344,7 @@ export function DomainsWorkspace() {
             />
           ) : null}
           {overview.isFetching && !overview.data && !overview.error ? (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite" role="status">
+            <p className={documentSupportClasses} role="status">
               Loading deployment context…
             </p>
           ) : null}
@@ -396,32 +394,32 @@ export function DomainsWorkspace() {
               {busy ? "Inspecting…" : "Inspect deployed settings"}
             </button>
           </div>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+          <p className={documentSupportClasses}>
             Reads verified owned CloudFormation resources using the selected credentials. No users,
             policies, DNS, certificates or stacks are modified.
           </p>
           {error ? (
             <p
-              className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+              className={noticeClasses()}
               role="alert"
             >
               {error}
             </p>
           ) : null}
           {result ? (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" role="status">
+            <p className={documentProseClasses} role="status">
               Observed {result.context.observedAt} · account {result.context.account} ·{" "}
               {result.context.region} · {result.context.deployment}. Production source intent is
               shown separately below.
             </p>
           ) : (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               Deployed state: unverified. Choose Inspect to read AWS.
             </p>
           )}
           {result && observedHash !== source.data?.hash ? (
             <p
-              className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+              className={noticeClasses()}
               role="alert"
             >
               Source inputs changed since this observation. Inspect again before comparing source
@@ -429,7 +427,7 @@ export function DomainsWorkspace() {
             </p>
           ) : null}
           {result?.warnings.map((warning) => (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite" key={warning}>
+            <p className={documentSupportClasses} key={warning}>
               {warning}
             </p>
           ))}

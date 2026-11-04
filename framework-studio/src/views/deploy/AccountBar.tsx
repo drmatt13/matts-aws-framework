@@ -42,34 +42,12 @@ export function AccountBar(props: {
     };
   }, [showReady, ready.length, positionPanel]);
   return (
-    <section className="px-4 py-3 text-label text-ink" aria-label="Machine readiness">
+    <section className="min-w-0 max-w-full text-label text-ink" aria-label="Machine readiness">
       {props.prerequisites.length ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-          {ready.length ? (
-            <button
-              ref={trigger}
-              type="button"
-              className="group/machine inline-flex min-h-7 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent p-0 text-caption text-graphite hover:text-ink"
-              popoverTarget={readyId}
-              aria-haspopup="dialog"
-              aria-expanded={showReady}
-              aria-controls={readyId}
-              onClick={positionPanel}
-            >
-              <Check size={13} className="text-accept" aria-hidden />
-              <span>
-                This machine · {ready.length} {ready.length === 1 ? "check" : "checks"} passed
-              </span>
-              <ChevronDown
-                size={13}
-                className="transition-transform duration-120 group-aria-expanded/machine:rotate-180"
-                aria-hidden
-              />
-            </button>
-          ) : null}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-1">
           {attention.length ? (
             <ul
-              className="m-0 flex list-none flex-wrap gap-x-4 gap-y-2 p-0 text-caption"
+              className="m-0 flex min-w-0 list-none flex-wrap justify-end gap-x-4 gap-y-2 p-0 text-caption"
               aria-label="Machine issues"
             >
               {attention.map((item) => (
@@ -112,6 +90,28 @@ export function AccountBar(props: {
                 </li>
               ))}
             </ul>
+          ) : null}
+          {ready.length ? (
+            <button
+              ref={trigger}
+              type="button"
+              className="group/machine inline-flex min-h-7 cursor-pointer items-center gap-1 rounded-sm border-0 bg-transparent p-0 text-caption text-graphite hover:text-ink"
+              popoverTarget={readyId}
+              aria-haspopup="dialog"
+              aria-expanded={showReady}
+              aria-controls={readyId}
+              onClick={positionPanel}
+            >
+              <Check size={13} className="text-accept" aria-hidden />
+              <span>
+                This machine · {ready.length} {ready.length === 1 ? "check" : "checks"} passed
+              </span>
+              <ChevronDown
+                size={13}
+                className="group-aria-expanded/machine:rotate-180"
+                aria-hidden
+              />
+            </button>
           ) : null}
           <div
             ref={panel}

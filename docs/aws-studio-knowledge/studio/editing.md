@@ -209,6 +209,16 @@ forms need not have identical permissions.
 
 Inspector settings consume `FieldFact` inheritance and source editability. `FIELDS`, `DEFAULT_FIELDS`, `fieldFacts` and `fieldById` in [edits/fields.ts](../../../framework-studio/server/edits/fields.ts) define recognized fields, domains, parsers, source paths and defaults. Add a field through this shared contract rather than a UI-only input. Effective inherited values and authored overrides must remain distinct; removal restores inheritance. Some boolean fields support true/absence rather than explicit false.
 
+Lambda Resources settings expose **Reserved Concurrency** and **Provisioned
+Concurrency** as off-by-default switches with numeric execution counts when on.
+Their canonical source is the optional `reservedConcurrentExecutions` or
+`provisionedConcurrentExecutions` count, so off removes the property instead of
+persisting a redundant boolean. They are excluded from shared defaults. Reserved
+allows 0 and provisioned starts at 1; the draft and both-mode source validation
+reject provisioned counts above a configured reservation. Source review explains
+reserved zero and provisioned capacity billing. Applying saves source; deployment
+remains separate.
+
 Boolean settings reuse `InspectorSwitch` in `InspectorUI.tsx`, including VPC/database
 policies and creation forms; toggling stages the owning draft and never applies source.
 VPC inspectors contain only network settings and membership, not global workload defaults.

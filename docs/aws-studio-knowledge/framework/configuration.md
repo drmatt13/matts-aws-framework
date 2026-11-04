@@ -42,6 +42,16 @@ In [config/index.ts](../../../packages/framework/src/config/index.ts), `defineFr
 
 `NormalizedTarget` records kind, role, resolved compute/settings, source origin, references and bindings. Several routes may share one compatible target; target-level settings must agree. Lambda inheritance resolves framework defaults → section defaults → workload override. Container architecture has its own defaults chain.
 
+Lambda `reservedConcurrentExecutions` and `provisionedConcurrentExecutions` are
+optional per-function counts, excluded from shared defaults. Absence disables
+each setting; reserved permits 0 (pausing invocations), provisioned requires at
+least 1, and provisioned cannot exceed a configured reservation. Normalization
+validates safe integers and shared-route agreement. CDK preserves the function's
+construct identity and adds a published version and `provisioned` invocation
+alias only when provisioned capacity is configured. Framework integrations and
+native `eventFunction` consumers use that alias; local execution does not emulate
+these AWS capacity settings.
+
 Every workload role accepts `deploy`, including events and tools. Events default to
 both and include enabled cloud functions in both AWS modes. Tools default to consuming
 agents' union, with explicit policies overriding it. Disabled events omit optional

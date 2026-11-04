@@ -80,7 +80,8 @@ export function registerServiceTriggerAdapters(): void {
       if (queue.fifo && (Number(options.batchSize ?? 10) > 10 || Number(options.batchWindowSeconds ?? 0) > 0)) throw new Error(`${context.binding.origin}: FIFO queues support batches up to ten and no batching window.`);
       const child = queue.node.defaultChild as sqs.CfnQueue;
       const visibility = cdk.Stack.of(queue).resolve(child.visibilityTimeout ?? 30);
-      const timeout = context.fn.timeout?.toSeconds() ?? 3;
+      const implementation = context.fn instanceof lambda.Alias ? context.fn.lambda : context.fn;
+      const timeout = implementation instanceof lambda.Function ? implementation.timeout?.toSeconds() ?? 3 : 3;
       if (typeof visibility !== "number") throw new Error(`${context.binding.origin}: queue visibility is unresolved; manual review required.`);
       if (visibility < timeout) throw new Error(`${context.binding.origin}: queue visibility must be at least the function timeout (${timeout}s).`);
       const recommended = 6 * timeout + Number(options.batchWindowSeconds ?? 0);

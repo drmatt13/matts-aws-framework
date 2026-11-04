@@ -3,7 +3,16 @@ import { deploymentOverviewQuery } from "../deploy/queries";
 import { InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
+import { cardClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
+import {
+  documentTitleClasses,
+  documentSubheadingClasses,
+  documentProseClasses,
+  documentSupportClasses,
+  documentSummaryClasses,
+  documentCardClasses,
+} from "./DocumentUI";
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -29,20 +38,24 @@ function retentionStyles(appearance: RetentionAppearance) {
   const document = appearance === "document";
   return {
     heading: document
-      ? "mt-0 mb-2 font-condensed text-[15px] font-semibold leading-[1.4]"
+      ? documentTitleClasses
       : "m-0 font-condensed text-[21px] font-semibold [line-height:normal]",
     subheading: document
-      ? "mt-3 mb-2 font-condensed text-label font-semibold [line-height:normal]"
+      ? documentSubheadingClasses
       : "m-0 font-condensed text-[17px] font-semibold [line-height:normal]",
-    paragraph: document ? "mt-0 mb-2 text-label leading-[1.5] last:mb-0" : "m-0",
-    label: document
-      ? "mb-3 flex min-w-0 max-w-full flex-col gap-1 text-caption"
-      : "grid min-w-0 max-w-full gap-1 text-label",
+    paragraph: document ? documentProseClasses : "m-0",
+    support: document ? documentSupportClasses : "m-0 text-caption text-graphite",
+    caption: document ? documentSupportClasses : "m-0 text-caption",
+    label: "grid min-w-0 max-w-full gap-1 text-label",
+    card: document
+      ? cardClasses({ variant: "document", className: "grid gap-3" })
+      : "grid gap-3 p-4 border border-rule rounded-lg bg-sheet min-w-0 vp-600:p-3",
+    content: document ? "grid min-w-0 gap-3" : "grid min-w-0 gap-4",
     details: document
       ? "mt-3 min-w-0 [&[open]>:not(summary)]:mt-3"
       : "min-w-0 [&[open]>:not(summary)]:mt-3",
     summary: document
-      ? "cursor-pointer py-1 text-label font-semibold [[open]>&]:mb-2"
+      ? documentSummaryClasses
       : "cursor-pointer py-2 font-semibold",
   };
 }
@@ -56,14 +69,14 @@ export function LifecycleDisclosure({ selection }: { readonly selection: Statefu
   const [open, setOpen] = useState(false);
   return (
     <details
-      className="min-w-0 rounded-lg border border-rule bg-sheet p-4 wrap-anywhere [&[open]>:not(summary)]:mt-3 [&[open]>:not(summary)]:mb-0"
+      className={documentCardClasses()}
       onToggle={(event) => setOpen(event.currentTarget.open)}
       data-slot="state-panel"
     >
-      <InspectorSummary className="-my-2 cursor-pointer py-2 font-semibold">
-        Stateful retention and retained-resource references
-      </InspectorSummary>
-      {open ? <DataRetention selection={selection} /> : null}
+      <summary className={documentSummaryClasses}>
+        <h2 className={cx(documentTitleClasses, "inline")}>Stateful retention and retained-resource references</h2>
+      </summary>
+      {open ? <DataRetention appearance="document" headingLevel={3} selection={selection} /> : null}
     </details>
   );
 }
@@ -72,12 +85,16 @@ export function DataRetention({
   kind,
   selection: suppliedSelection,
   appearance = "workbench",
+  headingLevel = 2,
 }: {
   readonly kind?: StatefulKind;
   readonly selection?: StatefulSelection;
   readonly appearance?: RetentionAppearance;
+  readonly headingLevel?: 2 | 3;
 }) {
   const styles = retentionStyles(appearance);
+  const Heading = headingLevel === 3 ? "h3" : "h2";
+  const Subheading = headingLevel === 3 ? "h4" : "h3";
   const { snapshot, mode: selectedMode, draft, draftState, live, awsProfile } = useStudio();
   const [mode, setMode] = useState<Mode>(suppliedSelection?.mode ?? selectedMode);
   const [source, setSource] = useState<StatefulSource>();
@@ -126,11 +143,11 @@ export function DataRetention({
   const kinds: readonly StatefulKind[] = kind ? [kind] : ["database", "cognito"];
   return (
     <section
-      className="grid min-w-0 gap-4"
+      className={styles.content}
       aria-label="Stateful retention and reuse"
       data-slot="data-retention"
     >
-      <h2 className={styles.heading}>Retention and reuse</h2>
+      <Heading className={styles.heading}>Retention and reuse</Heading>
       <p className={styles.paragraph}>
         Configure each resource in TypeScript, review the change, then deploy separately. Existing
         policies inherit <code className={retentionCodeClasses}>RETAIN_STATEFUL_RESOURCES</code>{" "}
@@ -147,7 +164,7 @@ export function DataRetention({
         </p>
       ) : null}
       {sourceBusy ? (
-        <p className={cx(styles.paragraph, "text-caption text-graphite")}>
+        <p className={styles.support}>
           Finish or discard the current source draft before changing lifecycle configuration.
         </p>
       ) : null}
@@ -179,10 +196,10 @@ export function DataRetention({
           return (
             <section
               key={resource}
-              className="grid gap-3 p-4 border border-rule rounded-lg bg-sheet min-w-0 vp-600:p-3"
+              className={styles.card}
               data-slot="stateful-policy"
             >
-              <h3 className={styles.subheading}>{title(resource)}</h3>
+              <Subheading className={styles.subheading}>{title(resource)}</Subheading>
               <p className={styles.paragraph}>
                 <strong>Configured intent:</strong>{" "}
                 {source
@@ -234,13 +251,13 @@ export function DataRetention({
                 </Select>
               </label>
               {value?.reference ? (
-                <p className={cx(styles.paragraph, "text-caption")}>
+                <p className={styles.caption}>
                   This policy applies to managed creation only. Deleting this deployment does not
                   delete the externally referenced resource or change its protection.
                 </p>
               ) : null}
               {resource === "database" && mode === "dev" ? (
-                <p className={cx(styles.paragraph, "text-caption")}>
+                <p className={styles.caption}>
                   Development uses local PostgreSQL. This AWS policy does not control Docker
                   volumes.
                 </p>
@@ -250,7 +267,7 @@ export function DataRetention({
         })}
       </div>
       {source ? (
-        <p className={cx(styles.paragraph, "text-caption text-graphite")}>
+        <p className={styles.support}>
           <code className={retentionCodeClasses}>{source.file}</code>{" · legacy fallback from "}
           <code className={retentionCodeClasses}>{source.legacy.file}</code>{": "}
           {source.legacy.configured
@@ -261,6 +278,7 @@ export function DataRetention({
       ) : null}
       <StatefulRecovery
         appearance={appearance}
+        headingLevel={headingLevel}
         key={`${kind ?? "all"}:${mode}:${suppliedSelection?.deployment ?? ""}:${suppliedSelection?.profile ?? ""}:${suppliedSelection?.region ?? ""}`}
         mode={mode}
         kinds={kinds}
@@ -394,6 +412,7 @@ function StatefulRecovery({
   disabled,
   onReview,
   appearance,
+  headingLevel,
 }: {
   mode: Mode;
   kinds: readonly StatefulKind[];
@@ -401,8 +420,10 @@ function StatefulRecovery({
   disabled: boolean;
   onReview(payload: Record<string, unknown>): Promise<void>;
   appearance: RetentionAppearance;
+  headingLevel: 2 | 3;
 }) {
   const styles = retentionStyles(appearance);
+  const Heading = headingLevel === 3 ? "h4" : "h3";
   const overview = useQuery({ ...deploymentOverviewQuery(), staleTime: 15_000 });
   const { awsProfile, mode: declarationMode, live } = useStudio();
   const profile = awsProfile ?? "";
@@ -486,11 +507,11 @@ function StatefulRecovery({
   };
   return (
     <section
-      className="grid gap-3 p-4 border border-rule rounded-lg bg-sheet min-w-0 vp-600:p-3"
+      className={styles.card}
       aria-label="Retained resource references"
       data-slot="stateful-recovery"
     >
-      <h3 className={styles.subheading}>Inspect protection and retained resources</h3>
+      <Heading className={styles.subheading}>Inspect protection and retained resources</Heading>
       <p className={styles.paragraph}>
         Read deployed templates and saved teardown evidence, then review an explicit reference. A
         saved observation alone does not prove that a resource is still available.

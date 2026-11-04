@@ -430,6 +430,19 @@ export interface LambdaTargetDefinition {
   /** Override how many days CloudWatch keeps this function's logs. */
   readonly logRetentionDays?: number;
   /**
+   * Reserve and cap this function's concurrent executions. Omitted disables
+   * the reservation; zero deliberately throttles every invocation. Per-function
+   * only, never inherited from defaults.
+   */
+  readonly reservedConcurrentExecutions?: number;
+  /**
+   * Keep this many execution environments ready on a published version behind
+   * the framework's invocation alias. Must be at least one and cannot exceed
+   * reservedConcurrentExecutions when that limit is configured. Omitted disables
+   * provisioned concurrency. Per-function only; AWS charges for this capacity.
+   */
+  readonly provisionedConcurrentExecutions?: number;
+  /**
    * Where this Lambda runs: "none" (outside the VPC), "private" or "isolated".
    * See {@link LambdaDefaults.subnet}.
    */
@@ -2048,6 +2061,8 @@ interface ResolvedLambdaBase {
   readonly memorySize: number;
   readonly timeoutSeconds: number;
   readonly logRetentionDays: number;
+  readonly reservedConcurrentExecutions?: number;
+  readonly provisionedConcurrentExecutions?: number;
   /**
    * Where it runs: its declared subnet, with `database: true` lifting an
    * inherited "none" to "private".
@@ -2179,13 +2194,13 @@ export interface FrameworkDefaults {
   /** Architecture and subnet for every task and service that does not declare its own. Fargate always runs in the VPC. */
   readonly container?: ContainerDefaults;
   /** Overrides applied to every Lambda in the `http` section. */
-  readonly http?: Omit<LambdaTargetDefinition, "vpc">;
+  readonly http?: Omit<LambdaTargetDefinition, "vpc" | "reservedConcurrentExecutions" | "provisionedConcurrentExecutions">;
   /** Overrides applied to every Lambda in the `webSocket` section. */
-  readonly webSocket?: Omit<LambdaTargetDefinition, "vpc">;
+  readonly webSocket?: Omit<LambdaTargetDefinition, "vpc" | "reservedConcurrentExecutions" | "provisionedConcurrentExecutions">;
   /** Overrides applied to every Lambda in the `events` section. */
-  readonly events?: Omit<LambdaTargetDefinition, "vpc">;
+  readonly events?: Omit<LambdaTargetDefinition, "vpc" | "reservedConcurrentExecutions" | "provisionedConcurrentExecutions">;
   /** Overrides applied to every Lambda in the `tools` section. */
-  readonly tools?: Omit<LambdaTargetDefinition, "vpc">;
+  readonly tools?: Omit<LambdaTargetDefinition, "vpc" | "reservedConcurrentExecutions" | "provisionedConcurrentExecutions">;
 }
 
 // ---------------------------------------------------------------------------
@@ -2654,10 +2669,21 @@ export function resolveLambdaTargetDefinition(
     memorySize: pick("memorySize") ?? defaults.memorySize,
     timeoutSeconds: pick("timeoutSeconds") ?? defaults.timeoutSeconds,
     logRetentionDays: pick("logRetentionDays") ?? defaults.logRetentionDays ?? 30,
+    ...(definition.reservedConcurrentExecutions !== undefined ? { reservedConcurrentExecutions: definition.reservedConcurrentExecutions } : {}),
+    ...(definition.provisionedConcurrentExecutions !== undefined ? { provisionedConcurrentExecutions: definition.provisionedConcurrentExecutions } : {}),
     ...(definition.vpc ? { vpc: resolveNetwork(config, definition.vpc) } : {}),
     subnet: resolveLambdaSubnet(definition, pick("subnet") ?? defaults.subnet ?? "none"),
     ...(definition.localReplay ? { localReplay: true as const } : {}),
   };
+  for (const [field, minimum] of [["reservedConcurrentExecutions", 0], ["provisionedConcurrentExecutions", 1]] as const) {
+    const value = base[field];
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < minimum)) {
+      throw new Error(`lambda:${id} ${field} must be a whole number of at least ${minimum}.`);
+    }
+  }
+  if (base.reservedConcurrentExecutions !== undefined && base.provisionedConcurrentExecutions !== undefined && base.provisionedConcurrentExecutions > base.reservedConcurrentExecutions) {
+    throw new Error(`lambda:${id} provisionedConcurrentExecutions cannot exceed reservedConcurrentExecutions.`);
+  }
   if (!(CLOUDWATCH_LOG_RETENTION_DAYS as readonly number[]).includes(base.logRetentionDays)) {
     throw new Error(
       `lambda:${id} keeps logs for ${base.logRetentionDays} days, which CloudWatch does not offer. Use one of ${CLOUDWATCH_LOG_RETENTION_DAYS.join(", ")}.`,

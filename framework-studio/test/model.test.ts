@@ -399,6 +399,40 @@ test("Lambda settings inherit section defaults and Python has no Node bundling c
   assert.ok(!model.fields[python.ref]!.some((fact) => fact.field.startsWith("lambda.bundling.")));
 });
 
+test("Lambda concurrency is per-function, disabled by default and source editable", () => {
+  const concurrencyFields = ["lambda.reservedConcurrentExecutions", "lambda.provisionedConcurrentExecutions"];
+  for (const model of Object.values(snapshot.models)) {
+    for (const target of model.targets) {
+      for (const field of concurrencyFields) {
+        const fact = model.fields[target.ref]?.find((candidate) => candidate.field === field);
+        assert.equal(!!fact, target.kind === "lambda", `${target.ref} ${field}`);
+        if (!fact) continue;
+        assert.equal(fact.authored, undefined);
+        assert.equal(fact.effective, false);
+        assert.deepEqual(fact.inherited, { value: false, from: "the framework's default" });
+        const editability = snapshot.source.editability[target.ref]?.[field];
+        assert.equal(editability?.kind, fact.blocked ? "unsupported" : "absent");
+      }
+    }
+    for (const group of model.defaults ?? []) {
+      assert.ok(!model.fields[group.ref]?.some((fact) => concurrencyFields.some((field) => fact.field.endsWith(field.slice("lambda".length)))), `${group.ref} has no concurrency defaults`);
+    }
+  }
+  const config = defineFrameworkConfig({ networks: [fixtureVpc], defaults, http: [], webSocket: [], services: [],
+    events: [{ paused: { reservedConcurrentExecutions: 0 }, warm: { reservedConcurrentExecutions: 3, provisionedConcurrentExecutions: 2 } }],
+  });
+  const model = projectModel(config, { mode: "dev" });
+  const fact = (ref: string, key: string) => model.fields[ref]!.find((candidate) => candidate.field === `lambda.${key}`)!;
+  assert.equal(fact("lambda:paused", "reservedConcurrentExecutions").effective, 0);
+  assert.equal(fact("lambda:paused", "reservedConcurrentExecutions").authored, 0);
+  assert.equal(fact("lambda:paused", "provisionedConcurrentExecutions").effective, false);
+  assert.equal(fact("lambda:warm", "provisionedConcurrentExecutions").effective, 2);
+  assert.equal(fact("lambda:warm", "provisionedConcurrentExecutions").provenance, "declared on the entry");
+  const compute = model.targets.find((target) => target.ref === "lambda:warm")!.compute;
+  assert.equal(compute.kind === "lambda" && compute.reservedConcurrentExecutions, 3);
+  assert.equal(compute.kind === "lambda" && compute.provisionedConcurrentExecutions, 2);
+});
+
 test("the projection follows the framework's rules on a config of its own", () => {
   // An isolated Lambda that runs a task reaches ECS only through its endpoint,
   // which the framework refuses to leave out.

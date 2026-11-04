@@ -5,6 +5,7 @@ import type { IFunction } from "aws-cdk-lib/aws-lambda";
 import type { TaskDefinition } from "aws-cdk-lib/aws-ecs";
 import type { IStateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import { markInfrastructure } from "./framework-inventory";
+import { frameworkLambdaInvocation } from "./framework-lambda";
 import {
   getLambdaTargetIds,
   getFrameworkTargets,
@@ -111,7 +112,7 @@ export class FrameworkTargetRegistry {
   public lambda<T extends IFunction>(id: string, fn: T): T {
     markInfrastructure(fn, `lambda:${id}`);
     markInfrastructure(fn.role, `lambda:${id}`, "supporting");
-    this.register(`lambda:${id}`, { kind: "lambda", function: fn });
+    this.register(`lambda:${id}`, { kind: "lambda", function: frameworkLambdaInvocation(fn) });
     return fn;
   }
 

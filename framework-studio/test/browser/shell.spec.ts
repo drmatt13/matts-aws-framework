@@ -13,7 +13,7 @@ const destinations = [
 test("primary destinations preserve shared navigation and source context", async ({ page, studio }) => {
   await studio.goto();
   const navigation = page.getByRole("navigation", { name: "Views", exact: true });
-  await expect(navigation.getByRole("link")).toHaveText(["Map", "Database", "Deploy", "GraphQL", "Cognito", "Domains", "WebSockets"]);
+  await expect(navigation.getByRole("link")).toHaveText(["Map", "Database", "Deploy", "GraphQL", "Cognito", "Domains", "WebSockets", "Agent test"]);
   for (const { name, path: pathname } of [...destinations, { name: "GraphQL", path: "/graphql" }]) {
     await navigation.getByRole("link", { name, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${pathname === "/" ? "/" : pathname}$`));

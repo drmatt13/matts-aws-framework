@@ -233,7 +233,7 @@ export function TargetView(props: { readonly target: ModelTarget }) {
     "lambda.bundling.minify",
     "lambda.bundling.sourceMap",
   ]);
-  const settingOrder = ["lambda.memorySize", "lambda.timeoutSeconds", "lambda.logRetentionDays"];
+  const settingOrder = ["lambda.memorySize", "lambda.timeoutSeconds", "lambda.logRetentionDays", "lambda.reservedConcurrentExecutions", "lambda.provisionedConcurrentExecutions"];
   const settings = facts
     .filter(
       (fact) =>

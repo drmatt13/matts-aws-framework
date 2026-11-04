@@ -65,3 +65,26 @@ test.describe("coarse input and DPR 2", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 });
+
+// Map and Database are edge-to-edge workbenches. Every other destination is a document page.
+const documentPages = ["/deploy", "/graphql", "/cognito/user-pools", "/domains", "/websockets", "/test"];
+for (const width of [1512, 1100, 390])
+  test(`document pages share one page column at ${width}px`, async ({ page, studio }) => {
+    studio.reply("GET", "/api/agent-lab/status", route => route.fulfill({ json: { providers: [], busy: false } }));
+    await page.setViewportSize({ width, height: 900 });
+    const left = Math.max(0, (width - 1280) / 2) + 16;
+    for (const path of documentPages) {
+      await studio.goto(path);
+      const title = page.locator("main h1:visible").first();
+      await expect(title, `${path} has a visible page title`).toBeVisible();
+      await studio.settle();
+      expect((await title.boundingBox())!.x, `${path} title`).toBeCloseTo(left, 0);
+      const surfaces = await page.evaluate(() => [...document.querySelectorAll("main *")].flatMap(element => {
+        const style = getComputedStyle(element), bounds = element.getBoundingClientRect();
+        return parseFloat(style.borderTopLeftRadius) >= 6 && parseFloat(style.borderLeftWidth) >= 1 && bounds.width > 200 ? [{ left: bounds.left, right: bounds.right }] : [];
+      }));
+      expect(surfaces.length, `${path} draws content surfaces`).toBeGreaterThan(0);
+      expect(Math.min(...surfaces.map(surface => surface.left)), `${path} content left`).toBeCloseTo(left, 0);
+      expect(Math.max(...surfaces.map(surface => surface.right)), `${path} content right`).toBeCloseTo(width - left, 0);
+    }
+  });

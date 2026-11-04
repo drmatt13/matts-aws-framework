@@ -87,13 +87,14 @@ function pythonAssetCode(directory: string, runtime: lambda.Runtime): lambda.Cod
 /** Native operational options; the manifest owns build settings. */
 export type FrameworkLambdaOptions = Omit<
   lambda.FunctionOptions,
-  "architecture" | "memorySize" | "timeout"
+  "architecture" | "memorySize" | "timeout" | "reservedConcurrentExecutions"
 >;
 
 const MANIFEST_OWNED_OPTIONS = [
   "architecture", "memorySize", "timeout", "timeoutSeconds", "packaging",
   "directory", "code", "entry", "handler", "runtime", "bundling",
   "logGroup", "logRetention", "logRetentionDays", "loggingFormat",
+  "reservedConcurrentExecutions", "provisionedConcurrentExecutions",
   // Placement follows `subnet` and `database: true`: see framework-network.ts.
   "vpc", "vpcSubnets", "securityGroups", "securityGroup", "allowPublicSubnet",
   "allowAllOutbound", "allowAllIpv6Outbound", "ipv6AllowedForDualStack",
@@ -186,6 +187,7 @@ export function frameworkLambda(
       resource.vpcConfig = { subnetIds: [], securityGroupIds: [], ipv6AllowedForDualStack: false };
     }
     if (cdkManagesLogGroup) applyLogRetention(fn, spec);
+    applyLambdaConcurrency(fn, spec);
     return fn;
   };
 
@@ -219,6 +221,41 @@ export function frameworkLambda(
     handler: spec.handler,
     code: pythonAssetCode(directory, runtime),
   }));
+}
+
+const LAMBDA_INVOCATIONS = new WeakMap<lambda.IFunction, lambda.Alias>();
+
+/**
+ * Keep the mutable function as the build/resource owner while integrations use
+ * a qualified alias when provisioned capacity is enabled. The original function
+ * scope and logical id remain unchanged, and disabled functions add no resources.
+ */
+export function frameworkLambdaInvocation(fn: lambda.IFunction): lambda.IFunction {
+  return LAMBDA_INVOCATIONS.get(fn) ?? fn;
+}
+
+/** Also used by native owners registering their application-built event Lambda. */
+export function applyLambdaConcurrency(fn: lambda.Function, spec: ResolvedLambdaTarget): void {
+  const resource = fn.node.defaultChild;
+  if (!(resource instanceof lambda.CfnFunction)) {
+    throw new Error(`Framework Lambda target "${spec.id}": CDK did not create the function's native resource.`);
+  }
+  resource.reservedConcurrentExecutions = spec.reservedConcurrentExecutions;
+  if (spec.provisionedConcurrentExecutions === undefined) return;
+  const existing = fn.node.tryFindChild("ProvisionedConcurrency");
+  if (existing) {
+    if (existing !== LAMBDA_INVOCATIONS.get(fn)) throw new Error(`Framework Lambda target "${spec.id}": provisioned-concurrency alias identity is occupied.`);
+    return;
+  }
+  const version = fn.currentVersion;
+  const alias = new lambda.Alias(fn, "ProvisionedConcurrency", {
+    aliasName: "provisioned",
+    version,
+    provisionedConcurrentExecutions: spec.provisionedConcurrentExecutions,
+  });
+  LAMBDA_INVOCATIONS.set(fn, alias);
+  markInfrastructure(version, `lambda:${spec.id}`, "supporting");
+  markInfrastructure(alias, `lambda:${spec.id}`, "supporting");
 }
 
 /**

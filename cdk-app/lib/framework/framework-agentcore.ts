@@ -31,6 +31,7 @@ import type { CognitoResources } from "./http-api-gateway-stack";
 import { deferResourceAttachment } from "./framework-resources";
 import { appInvocationRegistry } from "./framework-tasks";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
+import { frameworkLambdaInvocation } from "./framework-lambda";
 
 const ROOT = findRepositoryRoot(__dirname);
 const SERVE_MODULE = path.join(ROOT, "packages", "framework", "src", "runtime", "agentcore-serve.ts").replaceAll("\\", "/");
@@ -237,7 +238,7 @@ export class FrameworkAgentCore extends Construct {
       const entry = manifest[tool.id];
       gateway!.addLambdaTarget(`Target${tool.id}`, {
         gatewayTargetName: tool.id,
-        lambdaFunction: fn,
+        lambdaFunction: frameworkLambdaInvocation(fn),
         toolSchema: agentcore.ToolSchema.fromInline([
           {
             name: tool.id,

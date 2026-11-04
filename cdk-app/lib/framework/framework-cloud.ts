@@ -21,7 +21,7 @@ import {
   type ResolvedCloudValues,
   type SecretHandle,
 } from "@repo/framework/config";
-import { frameworkLambda } from "./framework-lambda";
+import { frameworkLambda, frameworkLambdaInvocation } from "./framework-lambda";
 import { lambdaNetworkEnvironment, lambdaPlacement } from "./framework-network";
 import { connectDatabase } from "./framework-database";
 import { appInvocationRegistry } from "./framework-tasks";
@@ -406,7 +406,7 @@ export function buildFrameworkLambdas(
   // functions, exactly as the hand-written tables produced them.
   for (const target of targets) {
     const fn = built.get(target.id);
-    if (fn) emitCloudOutputs(stack, target, { arn: fn.functionArn });
+    if (fn) emitCloudOutputs(stack, target, { arn: frameworkLambdaInvocation(fn).functionArn });
   }
 
   return built;

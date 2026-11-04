@@ -290,6 +290,44 @@ test("field errors and boolean help are associated with the controls they explai
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
+test("concurrency switches reveal validated counts and share source review and discard", async () => {
+  await mount();
+  const reserved = ui.screen.getByRole("switch", { name: "Reserved Concurrency" });
+  const provisioned = ui.screen.getByRole("switch", { name: "Provisioned Concurrency" });
+  const count = () => ui.screen.getByRole("spinbutton", { name: "Reserved Concurrency executions" }) as HTMLInputElement;
+  assert.equal(reserved.getAttribute("aria-checked"), "false");
+  assert.equal(provisioned.getAttribute("aria-checked"), "false");
+  assert.equal(ui.screen.queryByRole("spinbutton", { name: "Reserved Concurrency executions" }), null);
+  ui.fireEvent.click(reserved);
+  ui.fireEvent.change(count(), { target: { value: "0" } });
+  assert.equal(count().value, "0");
+  ui.fireEvent.click(provisioned);
+  assert.ok(ui.screen.getByRole("alert").textContent?.includes("cannot exceed"));
+  assert.ok(ui.screen.getByRole("button", { name: "Review Changes" }).hasAttribute("disabled"));
+  ui.fireEvent.change(count(), { target: { value: "4" } });
+  ui.fireEvent.click(reserved);
+  assert.equal(ui.screen.queryByRole("spinbutton", { name: "Reserved Concurrency executions" }), null);
+  ui.fireEvent.click(reserved);
+  assert.equal(count().value, "4");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 2 changes");
+  assert.deepEqual(planCalls[0], [
+    { kind: "field", intent: { target, field: "lambda.provisionedConcurrentExecutions", value: 1 } },
+    { kind: "field", intent: { target, field: "lambda.reservedConcurrentExecutions", value: 4 } },
+  ]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  assert.equal(reserved.getAttribute("aria-checked"), "false");
+  assert.equal(provisioned.getAttribute("aria-checked"), "false");
+  assert.equal(applyCalls, 0);
+  ui.fireEvent.click(reserved);
+  assert.equal(count().value, "1");
+  ui.fireEvent.change(count(), { target: { value: "" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  ui.fireEvent.click(reserved);
+  assert.equal(count().value, "1", "discarded invalid text is not restored by the switch");
+});
+
 test("route tag ownership guidance stays inside the shared Tags section", async () => {
   const route = baseline.models.dev.routes.find(route => route.kind === "service")!;
   await mount(route.id);

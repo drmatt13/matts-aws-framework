@@ -16,6 +16,11 @@ import { noticeClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
 import {
   DocumentCard,
+  documentTitleClasses,
+  documentProseClasses,
+  documentSupportClasses,
+  documentSummaryClasses,
+  documentDisclosureClasses,
   documentDataTableClasses,
   documentFieldsetClasses,
   documentLabelClasses,
@@ -225,17 +230,17 @@ export function IdentityPolicyEditor({
   };
   return (
     <DocumentCard className="mb-3">
-      <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+      <h3 className={documentTitleClasses}>
         Reader role policies and permission simulation
-      </h2>
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+      </h3>
+      <p className={documentProseClasses}>
         Edit the recognized generated stack's native helper options. The default authenticated role
         stays permissionless, pool trust and group-role mapping stay fixed, and source approval does
         not deploy IAM changes.
       </p>
       {query.error ? (
         <p
-          className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+          className={noticeClasses()}
           role="alert"
         >
           {query.error.message}
@@ -243,7 +248,7 @@ export function IdentityPolicyEditor({
       ) : null}
       {contextChanged ? (
         <p
-          className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+          className={noticeClasses()}
           role="alert"
         >
           Unsaved policy edits belong to {origin?.label}. Return to that context to review, or
@@ -252,7 +257,7 @@ export function IdentityPolicyEditor({
       ) : null}
       {sourceChanged ? (
         <p
-          className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+          className={noticeClasses()}
           role="alert"
         >
           Saved policy source changed while local edits were open. Local edits are retained; reload
@@ -269,7 +274,7 @@ export function IdentityPolicyEditor({
         </button>
       ) : null}
       {!query.data?.sources.length ? (
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <p className={documentProseClasses}>
           No editable generated identity-pool stack was found. Create identity pool source in
           Identity Pools, or review custom role source in your editor.
         </p>
@@ -295,14 +300,14 @@ export function IdentityPolicyEditor({
             </Select>
           </label>
           {source ? (
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption">
+            <p className={documentSupportClasses}>
               Source authority: <code>{source.file}</code>. Unrecognized custom shapes refuse edits;
               no separate policy config is created.
             </p>
           ) : null}
           {source?.problem ? (
             <p
-              className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+              className={noticeClasses()}
               role="alert"
             >
               {source.problem}
@@ -322,13 +327,13 @@ export function IdentityPolicyEditor({
                 />{" "}
                 Enable unauthenticated guest identities (explicit opt-in, no AWS API grants)
               </label>
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+              <p className={documentSupportClasses}>
                 Guests can obtain a separate pool-constrained unauthenticated identity role after
                 deployment. That role is permissionless; ReaderRole statements never grant guest
                 access. Classic auth stays disabled.
               </p>
               {!statements.length ? (
-                <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                <p className={documentProseClasses}>
                   No ReaderRole AWS API grants are declared.
                 </p>
               ) : null}
@@ -435,16 +440,16 @@ export function IdentityPolicyEditor({
                   Review reader policy source
                 </button>
               </div>
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+              <p className={documentSupportClasses}>
                 Allow supports concrete data operations only. Wildcard/admin/secret/credential
                 grants, custom conditions/principals and unbounded resources require deliberate
                 native source review. Explicit Deny wins over an Allow in the simulated document.
               </p>
-              <details className="mt-3">
-                <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+              <details className={documentDisclosureClasses}>
+                <summary className={documentSummaryClasses}>
                   Simulate saved policy (read-only AWS IAM)
                 </summary>
-                <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                <p className={documentProseClasses}>
                   Uses profile <strong>{profile}</strong> in {region}. Verify the expected account
                   below. These are the saved source statements, not deployed role policies.
                 </p>
@@ -501,18 +506,18 @@ export function IdentityPolicyEditor({
                   {busy ? "Simulating…" : "Simulate saved policy"}
                 </button>
                 {changed || draft.dirty ? (
-                  <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                  <p className={documentProseClasses}>
                     Apply or discard source changes before simulating the saved policy.
                   </p>
                 ) : null}
-                <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                <p className={documentProseClasses}>
                   Missing or conflicting group claims can prevent role selection before IAM
                   evaluation. This action does not sign in, issue credentials, mutate IAM, call the
                   target resource or infer application RBAC.
                 </p>
                 {result ? (
-                  <div role="status">
-                    <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                  <div className="grid gap-3" role="status">
+                    <p className={documentProseClasses}>
                       {result.engine} · {result.account} · {result.profile} · {result.observedAt}
                     </p>
                     <div
@@ -566,7 +571,7 @@ export function IdentityPolicyEditor({
                     </div>
                     {result.limitations.map((line) => (
                       <p
-                        className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"
+                        className={documentSupportClasses}
                         key={line}
                       >
                         {line}
@@ -581,7 +586,7 @@ export function IdentityPolicyEditor({
       )}
       {error ? (
         <p
-          className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+          className={noticeClasses()}
           role="alert"
         >
           {error}
@@ -609,7 +614,7 @@ export function IdentityPolicyEditor({
                 </>
               }
             >
-              <p className="text-label mt-0 mb-2 leading-[1.5] last:mb-0">
+              <p className={documentProseClasses}>
                 Your reader-policy edits have not been proposed for source review. Switching Cognito
                 sections keeps them. Leaving this workspace discards them.
               </p>

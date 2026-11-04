@@ -17,7 +17,7 @@ test.beforeEach(async ({ context, studio }) => {
 });
 
 for (const width of [1440, 320])
-  test(`Deploy shows only machine checks and Docker remediation above its deployment content at ${width}px`, async ({ page, studio }, testInfo) => {
+  test(`Deploy aligns machine readiness to the right with Docker remediation first at ${width}px`, async ({ page, studio }, testInfo) => {
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: {
       ...overview(), prerequisites: [
         ...Array.from({ length: 5 }, (_, index) => ({ id: `check-${index}`, label: `Tool ${index + 1}`, status: "ok", summary: "Available" })),
@@ -37,13 +37,23 @@ for (const width of [1440, 320])
     const before = await toolbar.boundingBox();
     const heading = page.getByRole("heading", { name: /^browser-dev/ });
     const headingBefore = await heading.boundingBox();
+    await expect(toolbar.getByRole("button")).toHaveText(["Start", "This machine · 5 checks passed"]);
+    expect(before!.x + before!.width).toBeCloseTo(width - Math.max(0, (width - 1280) / 2) - 16, 0);
+    if (width === 1440) {
+      expect(before!.x).toBeGreaterThan(headingBefore!.x + headingBefore!.width);
+      expect(before!.y + before!.height / 2).toBeCloseTo(headingBefore!.y + headingBefore!.height / 2, 0);
+    } else {
+      expect(before!.y).toBeGreaterThanOrEqual(headingBefore!.y + headingBefore!.height);
+    }
     await expect(page.getByRole("navigation", { name: "Deployments", exact: true })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Repository", exact: true })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "AWS", exact: true })).toHaveCount(0);
     await expect(page.getByText("Add a deployment stage", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Compare AWS templates/ })).toHaveCount(0);
     const popup = page.getByRole("dialog", { name: "This machine", exact: true });
-    await passed.focus();
+    await toolbar.getByRole("button", { name: "Start", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(passed).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(popup.getByRole("list", { name: "Passed machine checks", exact: true })).toBeVisible();
     await expect(passed).toHaveAttribute("aria-expanded", "true");

@@ -39,7 +39,7 @@ export function flagClasses(tone?: "bad" | "warn", inline = true) {
   );
 }
 export function statePanelClasses(tone?: string) {
-  return cx(cardClasses({ variant: "state" }), tone === "unreadable" && "border-dashed");
+  return cx(cardClasses({ variant: "document" }), tone === "unreadable" && "border-dashed");
 }
 export const factsClasses =
   "m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-2 text-step-minus1";

@@ -16,6 +16,12 @@ import { noticeClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
 import {
   DocumentCard,
+  documentTitleClasses,
+  documentSubheadingClasses,
+  documentProseClasses,
+  documentSupportClasses,
+  documentSummaryClasses,
+  documentDisclosureClasses,
   documentLabelClasses,
   documentToolbarClasses,
   documentToolbarActionClasses,
@@ -114,8 +120,8 @@ export function DomainOperationsPanel({
   return (
     <>
       <DocumentCard>
-        <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Live domain health and managed DNS</h2>
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+        <h2 className={documentTitleClasses}>Live domain health and managed DNS</h2>
+        <p className={documentProseClasses}>
           These explicit operations use only the saved production hostname and the selected
           account/deployment above. Source approval, TLS/HTTP inspection and DNS routing changes are
           separate actions.
@@ -134,7 +140,7 @@ export function DomainOperationsPanel({
           </Select>
         </label>
         {sourceBusy ? (
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" role="status">
+          <p className={documentProseClasses} role="status">
             Review/apply or discard source edits before inspecting or changing the saved domain.
           </p>
         ) : null}
@@ -155,35 +161,35 @@ export function DomainOperationsPanel({
           </button>
         </div>
         {busy ? (
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" role="status">
+          <p className={documentProseClasses} role="status">
             Reading/revalidating exact domain evidence…
           </p>
         ) : null}
         {error ? (
           <p
-            className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+            className={noticeClasses()}
             role="alert"
           >
             {error}
           </p>
         ) : null}
         {health ? (
-          <div>
-            <h3 className="mt-3 mb-2 text-label">Observed {health.hostname}</h3>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <div className="grid gap-3">
+            <h3 className={documentSubheadingClasses}>Observed {health.hostname}</h3>
+            <p className={documentProseClasses}>
               {health.observedAt} · account {health.context.account} · source hash{" "}
               <code>{health.sourceHash.slice(0, 12)}</code>
             </p>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               DNS: <strong>{health.dns.status}</strong> · {health.dns.addresses.join(", ")}{" "}
               {health.dns.pinnedAddress ? `· pinned ${health.dns.pinnedAddress}` : ""}.{" "}
               {health.dns.detail}
             </p>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               TLS: <strong>{health.tls.status}</strong>. {health.tls.detail}{" "}
               {health.tls.expires ? `Expires ${health.tls.expires}.` : ""}
             </p>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               HTTP routing: <strong>{health.http.status}</strong>
               {health.http.code ? ` · ${health.http.code}` : ""}
               {health.http.cloudFrontHeaders ? " · CloudFront headers observed" : ""}.{" "}
@@ -192,7 +198,7 @@ export function DomainOperationsPanel({
                 ? `Redirect origin ${health.http.redirectOrigin}; not followed.`
                 : ""}
             </p>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               Application response: <strong>{health.application.status}</strong>
               {health.application.title ? ` · title: ${health.application.title}` : ""}.{" "}
               {health.application.detail}
@@ -200,9 +206,9 @@ export function DomainOperationsPanel({
           </div>
         ) : null}
         {discovery ? (
-          <div>
-            <h3 className="mt-3 mb-2 text-label">Accessible public hosted zones</h3>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <div className="grid justify-items-start gap-3">
+            <h3 className={documentSubheadingClasses}>Accessible public hosted zones</h3>
+            <p className={documentProseClasses}>
               Observed account {discovery.context.account}. Choose the explicit containing zone;
               review verifies its public NS delegation and existing records before any mutation.
             </p>
@@ -226,7 +232,7 @@ export function DomainOperationsPanel({
               </Select>
             </label>
             {!discovery.zones.some((zone) => zone.matching.includes(purpose)) ? (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              <p className={documentProseClasses}>
                 No accessible public zone contains this configured non-apex hostname. Use the
                 external-DNS instructions or manage apex/alias records through a separately
                 supported process.
@@ -254,21 +260,21 @@ export function DomainOperationsPanel({
             </button>
           </div>
         ) : null}
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+        <p className={documentSupportClasses}>
           Public addresses are pinned for TLS/HTTP; local/private/reserved and mixed DNS answers are
           blocked. Redirects are not followed. A 200 response, HTML title or Route53 INSYNC does not
           establish application runtime or successful sign-in.
         </p>
         {receipt ? (
-          <div role="status">
-            <h3 className="mt-3 mb-2 text-label">DNS operation {receipt.status}</h3>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <div className="grid gap-3" role="status">
+            <h3 className={documentSubheadingClasses}>DNS operation {receipt.status}</h3>
+            <p className={documentProseClasses}>
               {receipt.hostname} · {receipt.zoneId} · account {receipt.context.account}
             </p>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">{receipt.message}</p>
+            <p className={documentProseClasses}>{receipt.message}</p>
             {receipt.changeId ? (
               <>
-                <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                <p className={documentProseClasses}>
                   Change ID <code>{receipt.changeId}</code>
                 </p>
                 <button
@@ -292,12 +298,12 @@ export function DomainOperationsPanel({
           </div>
         ) : null}
         {history.length ? (
-          <details className="mt-3">
-            <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+          <details className={documentDisclosureClasses}>
+            <summary className={documentSummaryClasses}>
               Saved DNS operation receipts
             </summary>
             {history.map((item) => (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={item.id}>
+              <p className={documentProseClasses} key={item.id}>
                 <button
                   className={buttonClasses({ variant: "link" })}
                   onClick={() => setReceipt(item)}
@@ -307,7 +313,7 @@ export function DomainOperationsPanel({
                 · zone {item.zoneId} · account {item.context.account} · {item.submittedAt}
               </p>
             ))}
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+            <p className={documentSupportClasses}>
               Receipts survive server restart. Interrupted/unconfirmed operations never replay
               automatically.
             </p>
@@ -317,6 +323,7 @@ export function DomainOperationsPanel({
       {review ? (
         <WorkbenchDialog
           title="Review production DNS routing"
+          titleClassName={documentTitleClasses}
           busy={busy}
           onClose={() => setReview(undefined)}
           footer={

@@ -375,7 +375,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         >
           {studio.model.stale ? (
             <p
-              className="sticky top-0 z-5 m-0 border-b border-[color-mix(in_srgb,var(--refuse)_35%,transparent)] bg-refuse-wash px-6 py-[10px]"
+              className="sticky top-0 z-5 m-0 border-b border-[color-mix(in_srgb,var(--refuse)_35%,transparent)] bg-refuse-wash px-4 py-[10px]"
               role="status"
             >
               The configuration does not load right now, so this is the last version that did.

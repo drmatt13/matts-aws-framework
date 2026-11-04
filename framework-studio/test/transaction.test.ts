@@ -293,6 +293,38 @@ test("five settings are reviewed together, persisted together as one exact sourc
   assert.equal(readFileSync(file, "utf8"), original, "comments, imports and formatting return byte for byte");
 });
 
+test("concurrency settings validate together, persist in both graphs and remove when disabled", async () => {
+  const target = "lambda:verify-session";
+  const file = path.join(fixture, builder.current!.snapshot.source.entities[target].value.file);
+  const original = readFileSync(file, "utf8");
+  const values = [["lambda.reservedConcurrentExecutions", 4], ["lambda.provisionedConcurrentExecutions", 2]] as const;
+  const plan = await edits.planBatch(values.map(([field, value]) => ({ kind: "field", intent: { target, field, value } })), revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal(readFileSync(file, "utf8"), original, "review does not write source");
+  assert.ok(plan.impact.some((line) => /zero stops invocations/.test(line)));
+  assert.ok(plan.impact.some((line) => /incurs AWS charges/.test(line)));
+  await assertApplied(edits.applyBatch(plan.planId));
+  for (const model of Object.values(builder.current!.snapshot.models)) {
+    for (const [field, value] of values) assert.equal(model.fields[target].find((fact) => fact.field === field)!.authored, value);
+  }
+  const configured = readFileSync(file, "utf8");
+  const invalid = await edits.planBatch([{ kind: "field", intent: { target, field: "lambda.provisionedConcurrentExecutions", value: 5 } }], revision());
+  assert.equal(invalid.ok, false, "provisioned capacity cannot exceed reserved capacity");
+  await rejects(edits.applyBatch(invalid.planId), 422, /rejected settings/);
+  assert.equal(readFileSync(file, "utf8"), configured);
+  const disabled = await edits.planBatch(values.map(([field]) => ({ kind: "field", intent: { target, field, inherit: true } })), revision());
+  assert.equal(disabled.ok, true, JSON.stringify(disabled.preflight));
+  await assertApplied(edits.applyBatch(disabled.planId));
+  assert.equal(readFileSync(file, "utf8"), original);
+  for (const model of Object.values(builder.current!.snapshot.models)) {
+    for (const [field] of values) {
+      const fact = model.fields[target].find((candidate) => candidate.field === field)!;
+      assert.equal(fact.authored, undefined);
+      assert.equal(fact.effective, false);
+    }
+  }
+});
+
 test("a route and nested settings compose across files without losing prior splices", async () => {
   const state = builder.current!.snapshot;
   const target = state.models.dev.routes.find((route) => route.path === "/worker")!.target;

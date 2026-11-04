@@ -128,8 +128,8 @@ attributes, never presentation classes or assertions about utility strings.
 
 | Concern | Shared convention |
 | --- | --- |
-| Spacing | `--space-1` through `--space-8`: 4–32px in 4px steps; workspace gutters: 16px; inspector gutters: 20px |
-| Type | 14px body, 13px labels, 12px supporting text; native controls inherit their context; existing display and monospace families |
+| Spacing | `--space-1` through `--space-8`: 4–32px in 4px steps; workspace gutters: 16px; document page column: `pageWidthClasses`; inspector gutters: 20px |
+| Type | Document pages: 18px page titles, 15px card/subsection titles, 13px nested titles and labels, 14px body, 12px supporting text; sans headings at 600 weight; native controls inherit their context |
 | Controls | 32px regular, 28px compact, 36px prominent; icon actions are square |
 | Surfaces | Existing theme colors; `rounded-sm` is 4px, `rounded-md` is the regular 6px, `rounded-lg` is 8px |
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
@@ -161,27 +161,44 @@ Cognito sections and Database workspaces. Native links and buttons retain their 
 behavior. Overflow scrolls within the strip; active items and keyboard focus are revealed
 without moving the surrounding page. Keep each name on one line.
 
-Workspaces generally start immediately below navigation with `WorkspaceToolbar`; Deploy
-uses inline machine readiness above its content without a separate toolbar surface or rule.
-`WorkspaceToolbar` owns
-`--workspace-gutter` (16px), `--toolbar-padding` (12px vertically), `--toolbar-height`
-(57px minimum including the rule), `--sheet` surface and `--rule` bottom border.
-Controls are 32px tall. Content follows the same horizontal gutter. Additional rows
-accommodate genuine controls, warnings or narrow widths; do not add a route-specific
-heading spacer or an inset rule above the first toolbar. Keep responsive utilities with their owning component; register shared query variants
-in the application entry.
+Studio has exactly two page layouts. **Workbenches** (Map and Database) are tools that need
+the whole window: their toolbars and content run edge to edge within 16px gutters, and
+Database's tabs keep that frame so its navigation stays still when moving to and from the
+Schema editor. **Document pages** (Deploy, GraphQL, Cognito, Domains, WebSockets and Agent
+test) share one column; a new page is a document page unless it needs the whole window.
+
+Document pages use the same toolbar surface; Deploy keeps machine readiness beside its
+deployment heading within that toolbar's column.
+`pageToolbarClasses` owns `--toolbar-padding` (12px vertically), `--toolbar-height` (57px
+minimum including the rule), the `--sheet` surface and the `--rule` bottom border.
+`WorkspaceToolbar` adds `--workspace-gutter` (16px) for workbenches. Controls are 32px tall.
+Additional rows accommodate genuine controls, warnings or narrow widths; do not add a
+route-specific heading spacer or an inset rule above the first toolbar. Keep responsive
+utilities with their owning component; register shared query variants in the application entry.
 
 Composition preserves each workspace's purpose. Isometric devotes its area
 to the map, without a redundant page heading. Database leads with its workspace tabs
-and editor controls. Deploy follows the global Source mode, with inline machine readiness
-and full-width deployment detail. Cognito and Domains use compact page identity and a shared reading width; Cognito's
-section navigation precedes variable inspection evidence so its position remains stable.
+and editor controls. Deploy follows the global Source mode, with machine readiness at the
+right of its deployment heading. Cognito's section navigation precedes variable
+inspection evidence so its position remains stable.
 
-Document workspaces (Cognito and Domains) use `pageWidthClasses` for their
-header, subsection navigation and content: one centered 1280px maximum including
-16px gutters. Their the shared page-title utilities is 18px. Shared `DocumentCard` and its native child controls
-own card headings, padding and 12px spacing between content groups; avoid per-route
-card overrides. Inspection/search rows align control bottoms, with no bottom margin
+Document pages compose three recipes from `DocumentUI`. `PageToolbar` draws the full-bleed
+toolbar surface and puts its contents in the column. `pageWidthClasses` is that column:
+centered, `--workspace-page-max` (1280px) wide including the 16px gutters; use it for
+subsection navigation or a full-bleed strip's contents. `pageBodyClasses` is the column plus
+the rhythm below a toolbar: 16px above (12px at 720px and below) and 24px below. Titles in a
+toolbar use the 18px `pageTitleClasses`; Deploy's deployment name is its page title.
+Page chrome stays outside the column: the navbar and Deploy's Activity tray span the window.
+Shared `DocumentCard` and its native child controls
+own 6px corners, 16px padding (12px at 720px and below) and 12px spacing between content
+groups. Page-level cards are 12px apart; avoid per-route card overrides.
+`documentTitleClasses`, `documentSubheadingClasses`, `documentProseClasses` and
+`documentSupportClasses` name the document type roles. Heading level follows the content
+hierarchy independently of visual size: cards below a subsection heading use `h3`.
+`documentSummaryClasses` gives native disclosures a 32px minimum target, 13px semibold
+sans text and immediate state changes; whole-card disclosure titles use the 15px title role.
+Deploy and Cognito select the document appearance of retention controls; Database keeps
+its workbench appearance. Inspection/search rows align control bottoms, with no bottom margin
 on toolbar labels. Source actions group their button and supporting explanation;
 on narrow screens the actions wrap within the card. Flow-spacing selectors exclude
 native dialogs so browser modal centering remains intact.
@@ -196,6 +213,8 @@ Load failures use a contained `Notice` in the same content column, with
 wrapping details and a nearby retry action. Keep independent source and deployment
 context failures independently recoverable, and show progress during retry. Alerts
 must remain visible without widening the document or separating them from their controls.
+Deploy keeps its title toolbar and column through loading, missing profiles, missing targets
+and read failures; background read failures retain the deployment and contextual retry.
 
 The Board is set aside and not routed; the rules below still describe its source.
 Board relationship toggles and Database workspace choices use the same restrained
@@ -216,7 +235,9 @@ actions. Search counts and reset actions must leave the input editable at every 
 The map footer gives resource/connection counts; tile counts and frame timing belong
 to the existing diagnostics API, not normal application chrome.
 
-Deploy's inline machine readiness aligns with the content gutters. AWS connection details
+Deploy keeps its name on the left and machine readiness on the right of the same heading
+row. Issues and remedies precede passed checks in both visual and keyboard order. Narrow
+layouts wrap the group below the name, retaining right alignment within the page column. AWS connection details
 remain in the global Source menu; the deployment heading retains account and effective
 region. A profile's
 default region never overrides a selected target's pinned region. Uninspected deployment
@@ -311,6 +332,12 @@ creation and unsaved-change dialogs, forced colors, and both themes. Deployment 
 and deletion can be exercised with mocked API responses while refusing all operation
 requests. These checks establish UI behavior; applying source, deployment, live database
 operations and infrastructure replacement retain their separate authorization boundaries.
+
+`document-style.spec.ts` checks the shared Deploy, GraphQL, Cognito and Domains type
+roles, card geometry, heading hierarchy and disclosure keyboard behavior at desktop and
+phone widths in both themes. It also covers Deploy loading, failed reads, missing profiles,
+missing targets and keyboard retry. `responsive.spec.ts` checks the shared document column
+at 1512px, 1100px and 390px. These are presentation fixtures, not live AWS observations.
 
 For control changes, exercise the complete stage → review → back/discard lifecycle,
 including a delayed review and stale source. Check the rendered disabled state and

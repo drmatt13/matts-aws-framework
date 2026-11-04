@@ -4,6 +4,7 @@ import { buttonClasses } from "../../ui/Button";
 import { TextInput, Select, Textarea } from "../../ui/FormControls";
 
 import { statePanelClasses, factsClasses } from "./DeployUI";
+import { documentTitleClasses, documentSubheadingClasses, documentProseClasses, documentSupportClasses, documentSummaryClasses } from "../DocumentUI";
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -18,7 +19,7 @@ import type {
 const releaseDisclosureClasses = "open:[&>:not(summary)]:mt-3 open:[&>:not(summary)]:mb-0";
 const releaseFieldClasses = "grid min-w-0 gap-1 text-label";
 const releasePreClasses =
-  "max-h-75 max-w-full overflow-auto bg-paper p-3 whitespace-pre-wrap wrap-anywhere";
+  "m-0 max-h-75 w-full max-w-full overflow-auto bg-paper p-3 font-mono text-caption leading-[1.5] whitespace-pre-wrap wrap-anywhere";
 
 export function FrontendRelease({
   deployment,
@@ -89,31 +90,31 @@ export function FrontendRelease({
     : "";
   return (
     <details className={cx(statePanelClasses(), releaseDisclosureClasses)}>
-      <summary className="-my-2 cursor-pointer py-2 font-semibold">
-        Client environment &amp; frontend release
+      <summary className={documentSummaryClasses}>
+        <h2 className={cx(documentTitleClasses, "inline")}>Client environment &amp; frontend release</h2>
       </summary>
-      <p className="m-0 [&+p]:mt-2">
+      <p className={documentProseClasses}>
         Generate public client settings from this deployment without starting Docker. A release then
         builds locally, reviews exact files and destination, publishes to S3, and requests
         CloudFront invalidation.
       </p>
-      <p className="m-0 [&+p]:mt-2 text-caption text-graphite">
+      <p className={documentSupportClasses}>
         Selected: <strong>{deployment}</strong> · {profile ?? "Choose an AWS profile"} ·{" "}
         {region ?? "Resolve the deployment region first"}. Infrastructure deployment is a separate
         operation.
       </p>
       {settingsQuery.error ? (
-        <p role="alert" className="m-0 [&+p]:mt-2">
+        <p role="alert" className={cx(documentProseClasses, "text-refuse")}>
           {settingsQuery.error.message}
         </p>
       ) : null}
       {historyQuery.error ? (
-        <p role="alert" className="m-0 [&+p]:mt-2">
+        <p role="alert" className={cx(documentProseClasses, "text-refuse")}>
           {historyQuery.error.message}
         </p>
       ) : null}
       {settingsChanged ? (
-        <p role="status" className="m-0 [&+p]:mt-2">
+        <p role="status" className={documentProseClasses}>
           Frontend settings have unapplied changes. Review and apply their source before generating
           client env or building.
         </p>
@@ -158,15 +159,15 @@ export function FrontendRelease({
       </div>
       {settings ? (
         <details className="min-w-0 [&[open]>:not(summary)]:mt-3 [&[open]>:not(summary)]:mb-0">
-          <summary className="cursor-pointer py-2 font-semibold">
+          <summary className={documentSummaryClasses}>
             Frontend project and publication settings
           </summary>
-          <p className="text-caption text-graphite">
+          <p className={documentSupportClasses}>
             Saved in framework-config/frontend-release.json. Choose an existing package.json script
             for Vite, Next static export, Astro, or another static frontend. Only its static output
             is published.
           </p>
-          <div className="my-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] items-start gap-3">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] items-start gap-3">
             <label className={releaseFieldClasses}>
               Project directory
               <TextInput
@@ -277,13 +278,17 @@ export function FrontendRelease({
           {settingsReview ? (
             <section
               aria-label="Frontend settings source review"
-              className="[&>*+*]:mt-3 [&>*+*]:mb-0"
+              className="grid min-w-0 justify-items-start gap-3"
             >
-              <h4>{settingsReview.file}</h4>
-              <p>Before</p>
-              <pre className={releasePreClasses}>{settingsReview.before}</pre>
-              <p>After</p>
-              <pre className={releasePreClasses}>{settingsReview.after}</pre>
+              <h3 className={documentSubheadingClasses}>{settingsReview.file}</h3>
+              <div className="grid w-full min-w-0 gap-1">
+                <p className={documentSupportClasses}>Before</p>
+                <pre className={releasePreClasses}>{settingsReview.before}</pre>
+              </div>
+              <div className="grid w-full min-w-0 gap-1">
+                <p className={documentSupportClasses}>After</p>
+                <pre className={releasePreClasses}>{settingsReview.after}</pre>
+              </div>
               <button
                 className={buttonClasses({ variant: "quiet", size: "regular" })}
                 disabled={!!busy}
@@ -306,24 +311,24 @@ export function FrontendRelease({
         </details>
       ) : null}
       {busy ? (
-        <p role="status" className="m-0 [&+p]:mt-2">
+        <p role="status" className={documentProseClasses}>
           {busy}
         </p>
       ) : null}
       {message ? (
-        <p role="status" className="m-0 [&+p]:mt-2">
+        <p role="status" className={documentProseClasses}>
           {message}
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="m-0 [&+p]:mt-2">
+        <p role="alert" className={cx(documentProseClasses, "text-refuse")}>
           {error}
         </p>
       ) : null}
       {review ? (
-        <section aria-label="Frontend publication review" className="[&>*+*]:mt-3 [&>*+*]:mb-0">
-          <h4>Review frontend publication</h4>
-          <dl className={factsClasses}>
+        <section aria-label="Frontend publication review" className="grid min-w-0 justify-items-start gap-3">
+          <h3 className={documentSubheadingClasses}>Review frontend publication</h3>
+          <dl className={cx(factsClasses, "w-full")}>
             <dt className="text-graphite">Destination</dt>
             <dd className="m-0 wrap-anywhere">
               {review.destination.account} · {review.destination.region} · {review.destination.mode}{" "}
@@ -339,15 +344,15 @@ export function FrontendRelease({
             <dd className="m-0 wrap-anywhere">{new Date(review.expiresAt).toLocaleTimeString()}</dd>
           </dl>
           {review.warnings.map((warning) => (
-            <p className="text-caption" key={warning}>
+            <p className={documentSupportClasses} key={warning}>
               {warning}
             </p>
           ))}
           <details className="min-w-0 [&[open]>:not(summary)]:mt-3 [&[open]>:not(summary)]:mb-0">
-            <summary className="cursor-pointer py-2 font-semibold">
+            <summary className={documentSummaryClasses}>
               Artifact manifest ({review.files.length} files)
             </summary>
-            <ul>
+            <ul className="m-0 grid gap-1 pl-5 text-label">
               {review.files.map((file) => (
                 <li key={file.path}>
                   <code className="wrap-anywhere">{file.path}</code> · {file.bytes} bytes ·{" "}
@@ -358,7 +363,7 @@ export function FrontendRelease({
           </details>
           {review.deleteKeys.length ? (
             <details className="min-w-0 [&[open]>:not(summary)]:mt-3 [&[open]>:not(summary)]:mb-0">
-              <summary className="cursor-pointer py-2 font-semibold">
+              <summary className={documentSummaryClasses}>
                 Delete {review.deleteKeys.length} remote objects
               </summary>
               <pre className={releasePreClasses}>{review.deleteKeys.join("\n")}</pre>
@@ -400,7 +405,7 @@ export function FrontendRelease({
               : "Publish assets & request invalidation"}
           </button>
           {result ? (
-            <p role="status">
+            <p className={documentProseClasses} role="status">
               {result.phase}: {result.message} Confirmed uploads: {result.uploaded.length};
               deletions: {result.deleted.length}.
             </p>
@@ -409,10 +414,10 @@ export function FrontendRelease({
       ) : null}
       {history.some((entry) => entry.review.destination.deployment === deployment) ? (
         <details className="min-w-0 [&[open]>:not(summary)]:mt-3 [&[open]>:not(summary)]:mb-0">
-          <summary className="cursor-pointer py-2 font-semibold">
+          <summary className={documentSummaryClasses}>
             Recent frontend release outcomes
           </summary>
-          <p className="text-caption text-graphite">
+          <p className={documentSupportClasses}>
             Saved results survive Studio restarts. An uploading/deleting/invalidating phase from an
             earlier process has an uncertain outcome; inspect AWS before creating a new review. Old
             session reviews cannot be resumed automatically.
@@ -420,7 +425,7 @@ export function FrontendRelease({
           {history
             .filter((entry) => entry.review.destination.deployment === deployment)
             .map((entry) => (
-              <p className="text-caption" key={entry.review.id}>
+              <p className={documentSupportClasses} key={entry.review.id}>
                 {entry.review.createdAt} · {entry.result.phase} · {entry.result.message} Confirmed
                 uploads: {entry.result.uploaded.length}; deletions: {entry.result.deleted.length}.
               </p>

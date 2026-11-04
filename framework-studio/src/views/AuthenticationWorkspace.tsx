@@ -26,18 +26,26 @@ import { useStudio } from "../studio";
 import { AwsConnectionSummary } from "./AwsConnectionSummary";
 import { buttonClasses } from "../ui/Button";
 import { Select, TextInput } from "../ui/FormControls";
-import { noticeClasses, workspaceToolbarClasses } from "../ui/Surface";
+import { noticeClasses, pageToolbarClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
 import { CognitoManagement } from "./CognitoManagement";
 import { CreationWizard } from "./CreationWizard";
 import { DataRetention } from "./DataRetention";
 import {
   DocumentCard,
+  documentTitleClasses,
+  documentProseClasses,
+  documentSupportClasses,
+  documentSummaryClasses,
+  documentDisclosureClasses,
   documentCardClasses,
   documentDataTableClasses,
   documentTableRegionClasses,
   documentToolbarClasses,
   inspectionControlClasses,
+  PageToolbar,
+  pageBodyClasses,
+  pageTitleClasses,
   pageWidthClasses,
   inspectionFieldClasses,
   inspectionRegionFieldClasses,
@@ -229,7 +237,7 @@ export function AuthenticationWorkspace() {
   );
   return (
     <div className="h-full w-full min-w-0 overflow-auto text-ink">
-      <div className={cx(workspaceToolbarClasses, "px-0!")}>
+      <div className={pageToolbarClasses}>
         <NavigationStrip className={pageWidthClasses} label="Cognito sections" activeKey={section}>
           {sections.map((entry) => (
             <Link
@@ -244,204 +252,197 @@ export function AuthenticationWorkspace() {
           ))}
         </NavigationStrip>
       </div>
-      <header
-        className={cx(
-          workspaceToolbarClasses,
-          "px-0! [&_p]:m-0 [&_p]:text-caption [&_p]:leading-[1.5] [&_p]:wrap-anywhere",
-        )}
-      >
-        <div className={cx(pageWidthClasses, "flex flex-col items-stretch gap-3")}>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="m-0 font-sans text-step1 font-semibold leading-[1.3]">Cognito</h1>
-          </div>
-          <div className={inspectionControlClasses}>
-            <AwsConnectionSummary />
-            <label className={inspectionFieldClasses}>
-              Deployment
-              <Select
-                className="h-8 w-full"
-                aria-label="Identity deployment"
-                disabled={overview.isPending || !!overview.error}
-                value={selection.deployment}
-                onChange={(event) => {
-                  const target = overview.data?.targets.find(
-                    (target) => target.name === event.target.value,
-                  );
-                  updateSelection({
-                    deployment: event.target.value,
-                    region: target?.region ?? selection.region,
-                  });
-                }}
-              >
-                <option value="">Select a deployment</option>
-                {overview.data?.targets
-                  .filter((target) => target.mode === mode)
-                  .map((target) => (
-                    <option key={target.name} value={target.name}>
-                      {target.name}
-                    </option>
-                  ))}
-              </Select>
-            </label>
-            <label className={inspectionRegionFieldClasses}>
-              Region
-              <TextInput
-                className="h-8 w-full"
-                aria-label="Identity AWS region"
-                disabled={overview.isPending || !!overview.error}
-                value={selection.region}
-                readOnly={!!selectedTarget?.region}
-                title={selectedTarget?.region ? "Pinned by the deployment target" : undefined}
-                onChange={(event) => updateSelection({ region: event.target.value })}
-              />
-            </label>
-            <button
-              className={cx(inspectionActionClasses, buttonClasses({ variant: "primary" }))}
-              disabled={
-                busy ||
-                overview.isPending ||
-                !!overview.error ||
-                !selectedTarget ||
-                !selection.profile ||
-                !selection.deployment ||
-                !selection.region ||
-                source.isPending
-              }
-              onClick={() => void inspect()}
+      <PageToolbar className="flex flex-col items-stretch gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className={pageTitleClasses}>Cognito</h1>
+        </div>
+        <div className={inspectionControlClasses}>
+          <AwsConnectionSummary />
+          <label className={inspectionFieldClasses}>
+            Deployment
+            <Select
+              className="h-8 w-full"
+              aria-label="Identity deployment"
+              disabled={overview.isPending || !!overview.error}
+              value={selection.deployment}
+              onChange={(event) => {
+                const target = overview.data?.targets.find(
+                  (target) => target.name === event.target.value,
+                );
+                updateSelection({
+                  deployment: event.target.value,
+                  region: target?.region ?? selection.region,
+                });
+              }}
             >
-              {busy ? "Inspecting…" : "Inspect authentication"}
-            </button>
-          </div>
-          <div
-            className="flex flex-wrap gap-x-5 gap-y-[6px] text-caption leading-[1.5] wrap-anywhere"
-            role="status"
+              <option value="">Select a deployment</option>
+              {overview.data?.targets
+                .filter((target) => target.mode === mode)
+                .map((target) => (
+                  <option key={target.name} value={target.name}>
+                    {target.name}
+                  </option>
+                ))}
+            </Select>
+          </label>
+          <label className={inspectionRegionFieldClasses}>
+            Region
+            <TextInput
+              className="h-8 w-full"
+              aria-label="Identity AWS region"
+              disabled={overview.isPending || !!overview.error}
+              value={selection.region}
+              readOnly={!!selectedTarget?.region}
+              title={selectedTarget?.region ? "Pinned by the deployment target" : undefined}
+              onChange={(event) => updateSelection({ region: event.target.value })}
+            />
+          </label>
+          <button
+            className={cx(inspectionActionClasses, buttonClasses({ variant: "primary" }))}
+            disabled={
+              busy ||
+              overview.isPending ||
+              !!overview.error ||
+              !selectedTarget ||
+              !selection.profile ||
+              !selection.deployment ||
+              !selection.region ||
+              source.isPending
+            }
+            onClick={() => void inspect()}
           >
-            <span>
-              <strong className="mr-1 font-semibold">Source</strong>{" "}
-              {source.isPending
-                ? "Loading…"
-                : source.error
-                  ? "Unavailable"
-                  : `${mode === "dev" ? "Development" : "Production"} declarations`}
-            </span>
-            <span>
-              <strong className="mr-1 font-semibold">AWS metadata</strong>{" "}
-              {evidence
-                ? `${sourceStale || timeStale ? "Stale · " : "Observed · "}${new Date(evidence.data.context.observedAt).toLocaleString()} · account ${evidence.data.context.account}`
-                : "Unverified for this context"}
-            </span>
-            <span>
-              <strong className="mr-1 font-semibold">Sign-in / effective access</strong> Unverified
-            </span>
-          </div>
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2 [&>details[open]]:basis-full">
-            <p>
-              <strong>Source inputs</strong> <code>{sourceInputsFile}</code>
-              {targetInputsMismatch ? (
-                <>
-                  {" "}
-                  · Deployment inputs <code>{selectedTarget?.inputs}</code>
-                </>
-              ) : null}
+            {busy ? "Inspecting…" : "Inspect authentication"}
+          </button>
+        </div>
+        <div
+          className={cx(documentSupportClasses, "flex flex-wrap gap-x-4 gap-y-2 wrap-anywhere")}
+          role="status"
+        >
+          <span>
+            <strong className="mr-1 font-semibold">Source</strong>{" "}
+            {source.isPending
+              ? "Loading…"
+              : source.error
+                ? "Unavailable"
+                : `${mode === "dev" ? "Development" : "Production"} declarations`}
+          </span>
+          <span>
+            <strong className="mr-1 font-semibold">AWS metadata</strong>{" "}
+            {evidence
+              ? `${sourceStale || timeStale ? "Stale · " : "Observed · "}${new Date(evidence.data.context.observedAt).toLocaleString()} · account ${evidence.data.context.account}`
+              : "Unverified for this context"}
+          </span>
+          <span>
+            <strong className="mr-1 font-semibold">Sign-in / effective access</strong> Unverified
+          </span>
+        </div>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 [&>details[open]]:basis-full">
+          <p className={documentSupportClasses}>
+            <strong>Source inputs</strong> <code>{sourceInputsFile}</code>
+            {targetInputsMismatch ? (
+              <>
+                {" "}
+                · Deployment inputs <code>{selectedTarget?.inputs}</code>
+              </>
+            ) : null}
+          </p>
+          <details className="min-w-0 [&_p]:max-w-250 [&[open]>:not(summary)]:mt-3">
+            <summary className={documentSummaryClasses}>Evidence and action boundaries</summary>
+            <p className={documentSupportClasses}>
+              Inspect reads verified deployment-owned AWS resources. Source actions propose
+              TypeScript for review; Apply source never deploys infrastructure. User/group
+              operations require their own exact live-operation review. IAM simulation evaluates
+              saved source policy and does not establish issued credentials, deployed IAM or
+              application RBAC.
             </p>
-            <details className="text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250">
-              <summary>Evidence and action boundaries</summary>
-              <p>
-                Inspect reads verified deployment-owned AWS resources. Source actions propose
-                TypeScript for review; Apply source never deploys infrastructure. User/group
-                operations require their own exact live-operation review. IAM simulation evaluates
-                saved source policy and does not establish issued credentials, deployed IAM or
-                application RBAC.
-              </p>
-              <p>
-                Profile/deployment defaults reuse Deploy preferences. Evidence is isolated by
-                environment, profile, deployment and region. Changing context never transfers an AWS
-                observation or an operation approval.
-              </p>
-            </details>
-          </div>
-          {targetInputsMismatch ? (
-            <p className="border-l-2 border-local bg-wash px-[10px] py-2" role="status">
-              This deployment uses different inputs. Sign-in provider input-presence evidence and retention
-              settings here refer to <code>{sourceInputsFile}</code>; the deployment’s input
-              presence and freshness are unverified. Review <code>{selectedTarget?.inputs}</code> in
-              Deploy. Provider declarations still follow the selected environment.
+            <p className={documentSupportClasses}>
+              Profile/deployment defaults reuse Deploy preferences. Evidence is isolated by
+              environment, profile, deployment and region. Changing context never transfers an AWS
+              observation or an operation approval.
             </p>
-          ) : null}
-          {sourceStale || timeStale ? (
-            <p className="border-l-2 border-local bg-wash px-[10px] py-2" role="status">
-              {sourceStale
-                ? "Source changed since inspection."
-                : "Inspection is more than five minutes old."}{" "}
-              Previous metadata is retained; inspect again before relying on it.
-            </p>
-          ) : null}
-          {overview.error ? (
-            <RetryNotice
-              message={<>Deployment context could not load: {overview.error.message}</>}
-              retryLabel="Retry context"
-              retrying={overview.isFetching}
-              onRetry={() => void overview.refetch()}
-            />
-          ) : null}
-          {!overview.isPending && !selectedTarget ? (
-            <p className="border-l-2 border-local bg-wash px-[10px] py-2">
-              No {mode === "dev" ? "development" : "production"} deployment is declared. Source
-              proposals are still available; configure a target in Deploy before AWS inspection.
-            </p>
-          ) : null}
-          {source.error ? (
-            <RetryNotice
-              message={source.error.message}
-              retryLabel="Retry source"
-              retrying={source.isFetching}
-              onRetry={() => void source.refetch()}
-            />
-          ) : null}
-          {source.data?.problems.map((problem) => (
+          </details>
+        </div>
+        {targetInputsMismatch ? (
+          <p className={noticeClasses({ tone: "warning" })} role="status">
+            This deployment uses different inputs. Sign-in provider input-presence evidence and retention
+            settings here refer to <code>{sourceInputsFile}</code>; the deployment’s input
+            presence and freshness are unverified. Review <code>{selectedTarget?.inputs}</code> in
+            Deploy. Provider declarations still follow the selected environment.
+          </p>
+        ) : null}
+        {sourceStale || timeStale ? (
+          <p className={noticeClasses({ tone: "warning" })} role="status">
+            {sourceStale
+              ? "Source changed since inspection."
+              : "Inspection is more than five minutes old."}{" "}
+            Previous metadata is retained; inspect again before relying on it.
+          </p>
+        ) : null}
+        {overview.error ? (
+          <RetryNotice
+            message={<>Deployment context could not load: {overview.error.message}</>}
+            retryLabel="Retry context"
+            retrying={overview.isFetching}
+            onRetry={() => void overview.refetch()}
+          />
+        ) : null}
+        {!overview.isPending && !selectedTarget ? (
+          <p className={noticeClasses({ tone: "warning" })}>
+            No {mode === "dev" ? "development" : "production"} deployment is declared. Source
+            proposals are still available; configure a target in Deploy before AWS inspection.
+          </p>
+        ) : null}
+        {source.error ? (
+          <RetryNotice
+            message={source.error.message}
+            retryLabel="Retry source"
+            retrying={source.isFetching}
+            onRetry={() => void source.refetch()}
+          />
+        ) : null}
+        {source.data?.problems.map((problem) => (
+          <p
+            className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2")}
+            role="alert"
+            key={problem}
+          >
+            {problem}
+          </p>
+        ))}
+        {Object.entries(observation?.errors ?? {}).map(([kind, error]) =>
+          error ? (
             <p
               className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2")}
               role="alert"
-              key={problem}
+              key={kind}
             >
-              {problem}
+              {kind === "cognito" ? "User-pool" : "Identity-pool"} inspection failed: {error}{" "}
+              {observation?.[kind as "cognito" | "pools"]
+                ? "Previous metadata remains visible."
+                : "No metadata verified."}
             </p>
-          ))}
-          {Object.entries(observation?.errors ?? {}).map(([kind, error]) =>
-            error ? (
-              <p
-                className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2")}
-                role="alert"
-                key={kind}
-              >
-                {kind === "cognito" ? "User-pool" : "Identity-pool"} inspection failed: {error}{" "}
-                {observation?.[kind as "cognito" | "pools"]
-                  ? "Previous metadata remains visible."
-                  : "No metadata verified."}
-              </p>
-            ) : null,
-          )}
-          {cog?.warnings.length ? (
-            <details className="text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250">
-              <summary>User-pool inspection notes ({cog.warnings.length})</summary>
-              {cog.warnings.map((warning) => (
-                <p key={warning}>{warning}</p>
-              ))}
-            </details>
-          ) : null}
-          {pools?.warnings.length ? (
-            <details className="text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250">
-              <summary>Identity-pool inspection notes ({pools.warnings.length})</summary>
-              {pools.warnings.map((warning) => (
-                <p key={warning}>{warning}</p>
-              ))}
-            </details>
-          ) : null}
-        </div>
-      </header>
-      <div className={cx(pageWidthClasses, "pt-4 pb-6 vp-720:pt-3")}>
+          ) : null,
+        )}
+        {cog?.warnings.length ? (
+          <details className="min-w-0 [&_p]:max-w-250 [&[open]>:not(summary)]:mt-3">
+            <summary className={documentSummaryClasses}>User-pool inspection notes ({cog.warnings.length})</summary>
+            {cog.warnings.map((warning) => (
+              <p className={documentSupportClasses} key={warning}>{warning}</p>
+            ))}
+          </details>
+        ) : null}
+        {pools?.warnings.length ? (
+          <details className="min-w-0 [&_p]:max-w-250 [&[open]>:not(summary)]:mt-3">
+            <summary className={documentSummaryClasses}>Identity-pool inspection notes ({pools.warnings.length})</summary>
+            {pools.warnings.map((warning) => (
+              <p className={documentSupportClasses} key={warning}>{warning}</p>
+            ))}
+          </details>
+        ) : null}
+      </PageToolbar>
+      <div className={pageBodyClasses}>
         <h2
-          className="mt-0 mb-3 text-[16px] font-semibold focus:outline-none"
+          className={cx(documentTitleClasses, "mb-3 focus:outline-none")}
           ref={panelHeading}
           tabIndex={-1}
         >
@@ -450,11 +451,11 @@ export function AuthenticationWorkspace() {
         <div className="min-w-0" hidden={section !== "user-pools"}>
           <DocumentCard className="mb-3">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 vp-720:flex-col vp-720:items-stretch">
-              <div className="min-w-0 flex-[1_1_360px] vp-720:basis-auto">
-                <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+              <div className="grid min-w-0 flex-[1_1_360px] gap-3 vp-720:basis-auto">
+                <h3 className={documentTitleClasses}>
                   {cog?.pool.name ?? "Application user pool"}
-                </h2>
-                <p className="m-0 mt-0 mb-2 text-label leading-[1.5] last:mb-0 flex flex-wrap items-baseline gap-2">
+                </h3>
+                <p className={cx(documentProseClasses, "flex flex-wrap items-baseline gap-2")}>
                   <span className="inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]">
                     {cog ? "AWS metadata observed" : "Deployment unverified"}
                   </span>
@@ -496,13 +497,13 @@ export function AuthenticationWorkspace() {
                 </div>
               </dl>
             ) : (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+              <p className={documentSupportClasses}>
                 Select a deployment and inspect authentication to load its pool, app clients, users
                 and groups.
               </p>
             )}
             {cog?.management ? (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              <p className={documentProseClasses}>
                 <strong>Management:</strong>{" "}
                 {cog.management === "external-reference"
                   ? `Externally referenced from ${cog.originalDeployment}; pool and client configuration remain externally managed.`
@@ -531,13 +532,13 @@ export function AuthenticationWorkspace() {
             </div>
           </DocumentCard>
           <DocumentCard className="mb-3">
-            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+            <h3 className={documentTitleClasses}>
               App clients{" "}
               <span className="text-graphite">{cog ? `(${cog.clients.length})` : ""}</span>
-            </h2>
+            </h3>
             {cog?.clients.map((client) => (
-              <details className="mt-3" key={client.id} open>
-                <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+              <details className={documentDisclosureClasses} key={client.id} open>
+                <summary className={documentSummaryClasses}>
                   {client.name ?? client.id}
                 </summary>
                 <dl className={evidenceFactsClasses}>
@@ -567,7 +568,7 @@ export function AuthenticationWorkspace() {
               </details>
             ))}
             {!cog?.clients.length ? (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              <p className={documentProseClasses}>
                 {cog
                   ? "No app clients returned."
                   : "Inspect authentication to observe app-client configuration."}
@@ -575,7 +576,7 @@ export function AuthenticationWorkspace() {
             ) : null}
           </DocumentCard>
           <DocumentCard className="mb-3">
-            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Users</h2>
+            <h3 className={documentTitleClasses}>Users</h3>
             <form
               className={documentToolbarClasses}
               onSubmit={(event) => {
@@ -655,7 +656,7 @@ export function AuthenticationWorkspace() {
                   </table>
                 </div>
                 {!cog.users.length ? (
-                  <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                  <p className={documentProseClasses}>
                     No users returned for this page and search.
                   </p>
                 ) : null}
@@ -668,7 +669,7 @@ export function AuthenticationWorkspace() {
                 </button>
               </>
             ) : (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              <p className={documentProseClasses}>
                 Users are unverified until an explicit AWS inspection.
               </p>
             )}
@@ -686,11 +687,11 @@ export function AuthenticationWorkspace() {
             }
           />
           <details className={cx(documentCardClasses(), "mt-3 mb-3")}>
-            <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
-              Retention and retained pool reuse
+            <summary className={documentSummaryClasses}>
+              <span className={documentTitleClasses}>Retention and retained pool reuse</span>
             </summary>
             {targetInputsMismatch ? (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              <p className={documentProseClasses}>
                 Retention editing is unavailable for this deployment’s custom inputs. Review{" "}
                 <code>{selectedTarget?.inputs}</code> in Deploy; the retention editor supports the
                 standard <code>{sourceInputsFile}</code> inputs only.
@@ -698,6 +699,7 @@ export function AuthenticationWorkspace() {
             ) : (
               <DataRetention
                 appearance="document"
+                headingLevel={3}
                 kind="cognito"
                 selection={{ ...selection, mode }}
               />
@@ -706,29 +708,29 @@ export function AuthenticationWorkspace() {
         </div>
         <div className="min-w-0" hidden={section !== "identity-pools"}>
           <DocumentCard className="mb-3">
-            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Scoped AWS access</h2>
+            <h3 className={documentTitleClasses}>Scoped AWS access</h3>
             <ol
-              className="my-3 grid list-none grid-cols-3 gap-3 p-0 vp-720:grid-cols-1 vp-720:gap-1.5"
+              className="my-3 grid list-none grid-cols-3 gap-3 p-0 vp-720:grid-cols-1 vp-720:gap-2"
               aria-label="AWS access relationship"
             >
-              <li className="border-l-2 border-rule bg-wash px-3 py-2.5 text-label">
+              <li className="border-l-2 border-rule bg-wash px-3 py-3 text-label">
                 User Pool
                 <span className="mt-1 block text-caption text-graphite">
                   Identity and authentication claims
                 </span>
               </li>
-              <li className="border-l-2 border-rule bg-wash px-3 py-2.5 text-label">
+              <li className="border-l-2 border-rule bg-wash px-3 py-3 text-label">
                 Identity Pool
                 <span className="mt-1 block text-caption text-graphite">Claims select a role</span>
               </li>
-              <li className="border-l-2 border-rule bg-wash px-3 py-2.5 text-label">
+              <li className="border-l-2 border-rule bg-wash px-3 py-3 text-label">
                 IAM role
                 <span className="mt-1 block text-caption text-graphite">
                   Policies authorize AWS calls
                 </span>
               </li>
             </ol>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               Keep application RBAC in your application. An identity pool exchanges trusted tokens
               for scoped AWS credentials.
             </p>
@@ -743,7 +745,7 @@ export function AuthenticationWorkspace() {
               </button>
               <p
                 id="identity-pool-source-help"
-                className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption text-graphite"
+                className={documentSupportClasses}
               >
                 Reviewed native source connects the application pool/client. Default roles have no
                 AWS API grants; guest access and classic flows start disabled.
@@ -751,9 +753,9 @@ export function AuthenticationWorkspace() {
             </div>
           </DocumentCard>
           <DocumentCard className="mb-3">
-            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Declared identity pools</h2>
+            <h3 className={documentTitleClasses}>Declared identity pools</h3>
             {declaredPools.map((resource) => (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={resource.id}>
+              <p className={documentProseClasses} key={resource.id}>
                 <button
                   className={buttonClasses({ variant: "link" })}
                   onClick={() => select(resource.id)}
@@ -767,12 +769,12 @@ export function AuthenticationWorkspace() {
               </p>
             ))}
             {!declaredPools.length ? (
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              <p className={documentProseClasses}>
                 No typed identity-pool declarations recognized. Create reviewed source above, or
                 inspect custom native resources in your editor.
               </p>
             ) : null}
-            <Link to="/cognito/permissions" search={(previous: { select?: string }) => previous}>
+            <Link className="block w-fit" to="/cognito/permissions" search={(previous: { select?: string }) => previous}>
               Review reader policies and simulate permissions
             </Link>
           </DocumentCard>
@@ -781,9 +783,9 @@ export function AuthenticationWorkspace() {
         <div className="min-w-0" hidden={section !== "providers"}>
           <DocumentCard className="mb-3">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 vp-720:flex-col vp-720:items-stretch">
-              <div className="min-w-0 flex-[1_1_360px] vp-720:basis-auto">
-                <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Add federation</h2>
-                <p className="m-0 mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              <div className="grid min-w-0 flex-[1_1_360px] gap-3 vp-720:basis-auto">
+                <h3 className={documentTitleClasses}>Add federation</h3>
+                <p className={documentProseClasses}>
                   Propose an OIDC or SAML provider on the existing user pool and app client. Secret
                   references are declared in source; their values stay out of Studio.
                 </p>
@@ -801,7 +803,7 @@ export function AuthenticationWorkspace() {
         </div>
         <div className="min-w-0" hidden={section !== "permissions"}>
           <DocumentCard className="mb-3">
-            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Permission layers</h2>
+            <h3 className={documentTitleClasses}>Permission layers</h3>
             <dl className={evidenceFactsClasses}>
               <div className="min-w-0">
                 <dt className={evidenceLabelClasses}>Application RBAC</dt>

@@ -99,6 +99,30 @@ test("Lambda architecture, packaging and typed build options produce ordinary so
   }
 });
 
+test("Lambda concurrency writes numeric literals and disabling removes them", () => {
+  for (const [field, key, value] of [
+    ["lambda.reservedConcurrentExecutions", "reservedConcurrentExecutions", 0],
+    ["lambda.provisionedConcurrentExecutions", "provisionedConcurrentExecutions", 2],
+  ] as const) {
+    const edit = planned(plan({ target: "lambda:graphql-api", field, value }));
+    assert.match(edit.after, new RegExp(`${key}: ${value}`));
+    assert.deepEqual(edit.forward.path, [key]);
+    assert.equal(edit.forward.value, value);
+    const removed = planned(plan({ target: "lambda:graphql-api", field, inherit: true }, new SourceFiles(new Map([[edit.file, edit.after]]))));
+    assert.equal(removed.after, edit.before, "off restores absence without persisting a separate boolean");
+  }
+  for (const [field, value] of [
+    ["lambda.reservedConcurrentExecutions", -1],
+    ["lambda.reservedConcurrentExecutions", 1.5],
+    ["lambda.reservedConcurrentExecutions", false],
+    ["lambda.provisionedConcurrentExecutions", 0],
+    ["lambda.provisionedConcurrentExecutions", "2"],
+    ["lambda.provisionedConcurrentExecutions", Number.MAX_SAFE_INTEGER + 1],
+  ] as const) {
+    assert.ok("refused" in plan({ target: "lambda:graphql-api", field, value }), `${field} rejects ${JSON.stringify(value)}`);
+  }
+});
+
 test("a workflow's fields are its options object", () => {
   const root = path.join(repositoryRoot, ".cache/framework-studio", `workflow-plan-${randomUUID()}`);
   mkdirSync(root, { recursive: true });

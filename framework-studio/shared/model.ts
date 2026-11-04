@@ -144,6 +144,8 @@ export type Compute =
       readonly memorySize: number;
       readonly timeoutSeconds: number;
       readonly logRetentionDays: number;
+      readonly reservedConcurrentExecutions?: number;
+      readonly provisionedConcurrentExecutions?: number;
       readonly subnet: "none" | "private" | "isolated";
       readonly localReplay?: true;
     }

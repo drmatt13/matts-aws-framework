@@ -136,6 +136,8 @@ function compute(config: FrameworkConfig, target: NormalizedTarget): Compute {
       memorySize: spec.memorySize,
       timeoutSeconds: spec.timeoutSeconds,
       logRetentionDays: spec.logRetentionDays,
+      ...(spec.reservedConcurrentExecutions === undefined ? {} : { reservedConcurrentExecutions: spec.reservedConcurrentExecutions }),
+      ...(spec.provisionedConcurrentExecutions === undefined ? {} : { provisionedConcurrentExecutions: spec.provisionedConcurrentExecutions }),
       subnet: spec.subnet,
       ...(spec.localReplay ? { localReplay: true as const } : {}),
     };

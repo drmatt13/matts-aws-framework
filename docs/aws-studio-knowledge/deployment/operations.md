@@ -23,7 +23,9 @@ Start with the [operational lifecycle](lifecycle.md) for the complete source-to-
 flow and the separate database, identity and frontend effect boundaries. This page owns
 Deploy's jobs, observation and local process supervision.
 
-Deploy shows machine checks and their local remedies inline above its content. The page
+Deploy uses the shared document toolbar and content column in loaded, loading and empty/error
+states. It shows machine checks on the right of the deployment heading, with local issues
+and remedies before passed checks. On narrow screens the group wraps below the name. The page
 has no subnav bar, deployment rail, Repository/AWS cards, stage-creation form or direct
 template-comparison/change-set controls; their underlying services remain intact. Machine
 overview polls every 30 seconds; idle AWS discovery

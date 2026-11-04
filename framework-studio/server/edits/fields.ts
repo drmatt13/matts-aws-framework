@@ -28,6 +28,8 @@ import { makeDefaultFields } from "./defaults";
 export interface FieldDefinition {
   /** Required baseline defaults cannot be removed. */
   readonly required?: boolean;
+  /** Per-function settings must not acquire application or section defaults. */
+  readonly perTargetOnly?: boolean;
   readonly id: string;
   readonly label: string;
   /** Property path inside the declaration object. */
@@ -115,6 +117,20 @@ function bundlingSetting(key: "minify" | "sourceMap", label: string): FieldDefin
   };
 }
 
+function concurrencySetting(key: "reservedConcurrentExecutions" | "provisionedConcurrentExecutions", label: string, min: number): FieldDefinition {
+  return {
+    id: `lambda.${key}`, label, path: [key], perTargetOnly: true,
+    domain: { kind: "number", min, max: Number.MAX_SAFE_INTEGER, unit: "executions" },
+    ...LAMBDA_BUILD_ANCHORS,
+    applies: (target) => target.kind === "lambda",
+    resolve: (config, target, declaration) => ({
+      effective: lambdaSpec(config, target.id)[key] ?? false,
+      provenance: readPath(declaration, [key]) !== undefined ? DECLARED : "the framework's default",
+      inherited: { value: false, from: "the framework's default" },
+    }),
+  };
+}
+
 export const FIELDS: readonly FieldDefinition[] = [
   {
     id: "events.localReplay", label: "Local replay", path: ["localReplay"],
@@ -145,6 +161,8 @@ export const FIELDS: readonly FieldDefinition[] = [
   lambdaSetting("logRetentionDays", "Log retention", CLOUDWATCH_LOG_RETENTION_DAYS, 30),
   bundlingSetting("minify", "Minify"),
   bundlingSetting("sourceMap", "Source maps"),
+  concurrencySetting("reservedConcurrentExecutions", "Reserved Concurrency", 0),
+  concurrencySetting("provisionedConcurrentExecutions", "Provisioned Concurrency", 1),
   {
     id: "deploy",
     label: "Deploy",

@@ -21,7 +21,7 @@ import { registerServiceTriggerAdapters } from "./framework-trigger-services";
 export interface TriggerAttachmentContext {
   readonly binding: NormalizedTrigger;
   readonly resource: IConstruct;
-  readonly fn: lambda.Function;
+  readonly fn: lambda.IFunction;
 }
 
 export function triggerOptionResource(context: TriggerAttachmentContext, name: string): IConstruct | undefined {

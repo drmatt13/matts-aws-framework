@@ -85,6 +85,32 @@ test("staging a toggle never opens a review or calls the preview API", () => {
   assert.equal(requests.length, 0);
 });
 
+test("concurrency drafts distinguish off, reserved zero and an empty enabled count", async () => {
+  const { draft, fact, requests } = fixture();
+  const reserved = fact("lambda.reservedConcurrentExecutions");
+  const provisioned = fact("lambda.provisionedConcurrentExecutions");
+  draft.setField(target, reserved, "");
+  assert.equal(draft.invalid, true);
+  draft.setField(target, reserved, 0);
+  assert.equal(draft.invalid, false);
+  draft.setField(target, provisioned, 1);
+  assert.equal(draft.invalid, true);
+  assert.match(draft.concurrencyError(target)!, /cannot exceed/);
+  await draft.review();
+  assert.equal(requests.length, 0);
+  draft.setField(target, reserved, 2);
+  assert.equal(draft.invalid, false);
+  draft.setField(target, provisioned, 0);
+  assert.equal(draft.invalid, true);
+  draft.setField(target, provisioned, undefined);
+  assert.equal(draft.invalid, false);
+  await draft.review();
+  assert.deepEqual(requests[0], [{ kind: "field", intent: { target, field: reserved.field, value: 2 } }]);
+  draft.backToEditing();
+  draft.setField(target, reserved, undefined);
+  assert.equal(draft.dirty, false);
+});
+
 test("client mapping drafts preserve untouched fields, clear reverted edits and guard navigation", async () => {
   const { draft, requests } = fixture();
   const baseline = draft.clientMappings();

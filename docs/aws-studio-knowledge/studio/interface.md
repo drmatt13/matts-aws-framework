@@ -75,8 +75,10 @@ explicit deployment/region controls and approvals. In Deploy, the global Source 
 chooses a matching Development/Production target through the unsaved-source guard. Entry honors the current mode and only reuses a saved
 target from that mode; the page has no deployment rail. Profile names and legacy per-target
 profile preferences never choose a mode or override its association. Deploy shows machine
-checks and their remedies inline above the deployment content,
-without a separate subnav bar. The Repository/AWS cards, stage-origin labels, template
+checks and their remedies on the right of the deployment heading, with issues and remedies
+before passed checks. The heading uses the shared document toolbar and 18px sans title;
+its content cards share the document column, type roles and spacing. Narrow layouts wrap the group below the name and keep it aligned right;
+there is no separate subnav bar. The Repository/AWS cards, stage-origin labels, template
 comparison/change-set entry points and stage-creation form are removed from this page;
 the underlying deployment, observation and source-edit services remain available.
 Existing saved-plan reviews, local operations, frontend releases and retention controls remain.

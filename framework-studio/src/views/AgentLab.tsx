@@ -4,8 +4,8 @@ import { agentLabApi, type AgentLabPlan, type AgentLabProvider } from "../agent-
 import { agentLabMessage } from "../agent-lab-message";
 import { Button } from "../ui/Button";
 import { Select, Textarea } from "../ui/FormControls";
-import { Card, Notice, WorkspaceToolbar } from "../ui/Surface";
-import { pageWidthClasses } from "./DocumentUI";
+import { Card, Notice } from "../ui/Surface";
+import { PageToolbar, pageBodyClasses, pageTitleClasses } from "./DocumentUI";
 
 export function AgentLab() {
   const status = useQuery({
@@ -88,11 +88,11 @@ export function AgentLab() {
 
   return (
     <div className="min-h-0 overflow-auto">
-      <WorkspaceToolbar className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="m-0 font-condensed text-step1 font-semibold">Local agent test</h1>
+      <PageToolbar className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className={pageTitleClasses}>Local agent test</h1>
         <span className="text-caption text-graphite">Plan → review diff → apply</span>
-      </WorkspaceToolbar>
-      <div className={`${pageWidthClasses} grid gap-4 py-4`}>
+      </PageToolbar>
+      <div className={`${pageBodyClasses} grid gap-3`}>
         <Notice tone="neutral">
           This experiment can change one demo message in Studio source. The local CLI proposes a
           plan; Apply saves the reviewed change without another model call. Planning uses your

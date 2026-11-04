@@ -14,7 +14,7 @@ import {
   inspectorFullWidthHelpClasses,
   inspectorNoteClasses,
 } from "../inspector-ui";
-import { useId } from "react";
+import { useId, useRef } from "react";
 import type { Editability, FieldFact, ModelTarget } from "../../shared/model";
 import { describeValue } from "../lookup";
 import { useStudio } from "../studio";
@@ -52,12 +52,84 @@ interface Props {
 const INHERIT = "\u0000inherit";
 
 export function FieldRow(props: Props) {
+  if (props.fact.field === "lambda.reservedConcurrentExecutions" || props.fact.field === "lambda.provisionedConcurrentExecutions")
+    return <ConcurrencyField {...props} />;
   return props.fact.domain.kind === "enum" &&
     props.fact.domain.values.includes(true) &&
     props.fact.domain.values.includes(false) ? (
     <BooleanField {...props} />
   ) : (
     <ValueField {...props} />
+  );
+}
+
+/** Optional concurrency counts use one source field: removing the count turns it off. */
+function ConcurrencyField({ target, fact, editability }: Props) {
+  const id = useId();
+  const { draft, draftState, live, model } = useStudio();
+  const locked = model.stale
+    ? "Editing is paused until the configuration loads again."
+    : lockedReason(editability, fact);
+  const value = draft.value(target.ref, fact);
+  const enabled = value !== undefined || (!draft.field(target.ref, fact) && typeof fact.effective === "number");
+  const initialCount = typeof fact.authored === "number" ? fact.authored : 1;
+  const previous = useRef({ baseline: draftState.baseline, reset: draft.resetVersion, value: initialCount as string | number });
+  if (previous.current.baseline !== draftState.baseline || previous.current.reset !== draft.resetVersion)
+    previous.current = { baseline: draftState.baseline, reset: draft.resetVersion, value: initialCount };
+  const entry = draft.field(target.ref, fact);
+  const provisioned = fact.field === "lambda.provisionedConcurrentExecutions";
+  const error = entry?.error ?? (provisioned ? draft.concurrencyError(target.ref) : undefined);
+  const help = provisioned
+    ? "Keeps execution environments warm. Additional AWS charges apply."
+    : "Reserves capacity and caps simultaneous executions. A value of 0 pauses invocations.";
+  const disabled = !!locked || !!draftState.busy || live.evaluating;
+  const describedBy = [`${id}-help`, error ? `${id}-error` : undefined, locked ? `${id}-locked` : undefined].filter(Boolean).join(" ");
+  return (
+    <div className={inspectorFieldRowClasses({ switch: true })} data-slot="field">
+      <label className={inspectorFieldLabelClasses({ modified: !!entry })} htmlFor={id} data-slot="field-label">
+        {fact.label}
+      </label>
+      <InspectorSwitch
+        id={id}
+        label={fact.label}
+        checked={enabled}
+        disabled={disabled}
+        describedBy={describedBy}
+        invalid={!!error}
+        onChange={(next) => {
+          if (!next && (typeof value === "string" || typeof value === "number")) previous.current.value = value;
+          draft.setField(target.ref, fact, next ? previous.current.value : undefined);
+        }}
+      />
+      {enabled && fact.domain.kind === "number" ? (
+        <div className="col-span-full grid min-w-0 gap-1">
+          <label className="text-caption text-graphite" htmlFor={`${id}-count`}>Concurrent executions</label>
+          <UnitInput
+            id={`${id}-count`}
+            controlSize="panel"
+            type="number"
+            unit={fact.domain.unit}
+            min={fact.domain.min}
+            max={fact.domain.max}
+            step={1}
+            required
+            value={String(value ?? (typeof fact.effective === "number" ? fact.effective : ""))}
+            aria-label={`${fact.label} executions`}
+            aria-invalid={!!error}
+            aria-describedby={describedBy}
+            disabled={disabled}
+            onChange={(event) => {
+              const next = event.target.validity.badInput ? "Invalid number" : event.target.value;
+              previous.current.value = next;
+              draft.setField(target.ref, fact, next);
+            }}
+          />
+        </div>
+      ) : null}
+      <span className={inspectorFullWidthHelpClasses} id={`${id}-help`}>{help}</span>
+      {error ? <span className={inspectorFullWidthLockedClasses} role="alert" id={`${id}-error`}>{error}</span> : null}
+      {locked ? <span className={inspectorFullWidthLockedClasses} id={`${id}-locked`}>{locked}</span> : null}
+    </div>
   );
 }
 

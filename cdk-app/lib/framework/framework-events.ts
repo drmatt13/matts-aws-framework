@@ -22,6 +22,8 @@ import {
 } from "@repo/framework/config";
 import {
   frameworkLambdaById,
+  applyLambdaConcurrency,
+  frameworkLambdaInvocation,
   type FrameworkLambdaOptions,
 } from "./framework-lambda";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
@@ -269,7 +271,8 @@ export function buildEventLambdas<C extends FrameworkConfig>(
  * Register an application-built mutable function, preserving its subtype.
  * Build overrides must already have been applied by its native constructor.
  * Registration applies declared environment, permissions, outputs and replay;
- * it cannot apply build settings retroactively.
+ * it also applies declared concurrency and its invocation alias. Packaging and
+ * build settings cannot be applied retroactively.
  */
 export function registerEventLambda<
   C extends FrameworkConfig,
@@ -329,7 +332,8 @@ function registerPreparedEvent<
   // bindings inject. Both are checked against Lambda's environment budget
   // together, because AWS charges the function for the total.
   attachLambdaResources(fn, fn, target, { config: context.config, mode: context.cloud.mode });
-  emitCloudOutputs(Stack.of(fn), target, { arn: fn.functionArn });
+  applyLambdaConcurrency(fn, resolveLambdaTarget(context.config, targetId));
+  emitCloudOutputs(Stack.of(fn), target, { arn: frameworkLambdaInvocation(fn).functionArn });
   // Recorded app-wide before the owner's own registry, so two owners claiming
   // one id fail here rather than at the merge in the composition root.
   appEventRegistry(fn).lambda(targetId, fn);
@@ -363,7 +367,10 @@ export function appEventRegistry(scope: IConstruct): FrameworkTargetRegistry {
 }
 
 /**
- * The event Lambda `id` names, ready to hand to any AWS construct.
+ * The event Lambda `id` names, ready to hand to any AWS construct. With
+ * provisioned concurrency this is the qualified alias, so native triggers use
+ * its warm execution environments too; mutable build settings stay with the
+ * function's owner.
  *
  * This is the whole path from a declaration under `framework-config/workloads/events.ts` to
  * a native trigger: the stack creating the trigger asks for the function where
@@ -376,13 +383,13 @@ export function appEventRegistry(scope: IConstruct): FrameworkTargetRegistry {
  * stack, so that stack depends on the source's, and a forced edge back would
  * close the cycle.
  */
-export function eventFunction(scope: IConstruct, id: SuggestedEventId, options: { readonly optional: true }): lambda.Function | undefined;
-export function eventFunction(scope: IConstruct, id: SuggestedEventId): lambda.Function;
+export function eventFunction(scope: IConstruct, id: SuggestedEventId, options: { readonly optional: true }): lambda.IFunction | undefined;
+export function eventFunction(scope: IConstruct, id: SuggestedEventId): lambda.IFunction;
 export function eventFunction(
   scope: IConstruct,
   id: SuggestedEventId,
   options?: { readonly optional: true },
-): lambda.Function | undefined {
+): lambda.IFunction | undefined {
   if (disabledEvents(scope).has(id)) {
     if (options?.optional) return undefined;
     throw new Error(`Event Lambda "${id}" is disabled. Omit its native trigger with eventFunction(scope, id, { optional: true }), or enable its deployment.`);
@@ -402,9 +409,9 @@ export function eventFunction(
     );
   }
   const fn = registered.kind === "lambda" ? registered.function : undefined;
-  if (!(fn instanceof lambda.Function)) {
+  if (!(fn instanceof lambda.Function) && !(fn instanceof lambda.Alias)) {
     throw new Error(
-      `Event Lambda "${id}" is registered as an imported function; a native trigger needs the mutable construct.`,
+      `Event Lambda "${id}" is registered as an imported function; a native trigger needs an owned function or its invocation alias.`,
     );
   }
   return fn;

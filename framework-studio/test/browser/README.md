@@ -20,9 +20,13 @@ navigation smoke check. Screenshots are platform-specific; the checked-in origin
 were captured with Playwright 1.64.1 Chromium on macOS arm64. Other platforms need
 an explicitly reviewed baseline instead of comparing different font rasterizers.
 Reference changes require visual review; do not automatically accept them to make
-a migration green. A missing baseline fails a normal verification run. The current
+a migration green. A missing baseline fails a normal verification run. The original
 references were captured from the protected October 30 working tree before structural
 refactoring, reviewed, then compared against the refactored app with no visual diffs.
+The November 4 document-page audit refreshed Deploy, Cognito, Domains and WebSockets
+desktop references and the Cognito/deployment operational references in both themes
+after visual review of the shared column, typography, card and disclosure spacing.
+Map, Database, Board and resource-inspector references were preserved.
 The [campaign record](../../../docs/framework-studio/maintainability-campaign-2026-10-30.md)
 records the pre-existing reference drift, source baseline and verification limits.
 The browser configuration keeps the Chromium sandbox enabled.

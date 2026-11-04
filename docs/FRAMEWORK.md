@@ -214,6 +214,22 @@ Every framework Lambda's log group (`/aws/lambda/<function>`, which CDK creates 
 keeps logs for `defaults.lambda.logRetentionDays` (30 by default, overridable per target)
 rather than CDK's two-year default, and each line is a JSON object carrying the request id.
 
+Each Lambda may declare `reservedConcurrentExecutions` and
+`provisionedConcurrentExecutions`; both are off when omitted and are per-function,
+not shared defaults. Reserved concurrency is a whole number of 0 or more: it
+reserves capacity and caps simultaneous executions; 0 pauses invocations.
+Provisioned concurrency is a whole number of 1 or more and cannot exceed reserved
+concurrency when both are configured. AWS account/region quotas still apply.
+Provisioned capacity incurs AWS charges and creates a published version with a
+`provisioned` alias. Framework callers and native `eventFunction` bindings target
+that alias to use the warm capacity. These settings configure deployed AWS Lambdas;
+local execution does not emulate concurrency reservations or warm capacity.
+
+Studio exposes both in each function's **Resources → Settings** panel. Enabling
+a switch reveals its execution count; disabling removes that optional declaration.
+Changes use the normal source review and apply flow. AWS changes take effect on
+the next authorized deployment.
+
 ## Resources, inputs, and permissions
 
 [framework-config/resources.ts](../framework-config/resources.ts) declares typed resource

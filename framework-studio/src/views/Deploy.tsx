@@ -5,10 +5,12 @@ import {
   deploymentPlansQuery,
 } from "../deploy/queries";
 import { cx } from "../ui/classes";
+import { PageToolbar, pageBodyClasses, pageTitleClasses, documentProseClasses } from "./DocumentUI";
 import { buttonClasses } from "../ui/Button";
+import { Notice } from "../ui/Surface";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   JobView,
   OperationKind,
@@ -31,6 +33,22 @@ import { FrontendRelease } from "./deploy/FrontendRelease";
 import { LifecycleDisclosure } from "./DataRetention";
 import { useStudio } from "../studio";
 import { openAwsProfileConfiguration } from "../aws-profile-queries";
+
+function DeployState({ title, machine, children }: {
+  readonly title: string;
+  readonly machine?: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <>
+      <PageToolbar className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className={pageTitleClasses}>{title}</h1>
+        {machine ? <div className="ml-auto min-w-0 max-w-full">{machine}</div> : null}
+      </PageToolbar>
+      <div className={cx(pageBodyClasses, "grid auto-rows-max gap-3")}>{children}</div>
+    </>
+  );
+}
 
 /**
  * Deploy & Run follows the global source mode and its associated AWS profile.
@@ -391,104 +409,112 @@ export function Deploy() {
     : undefined;
   if (overviewQuery.error && !overview)
     return (
-      <div className="max-w-[640px] px-6 py-8" role="alert">
-        <h1 className="mt-0 mb-2.5 font-condensed text-[26px] font-semibold">
-          Deploy & Run could not be read
-        </h1>
-        <p className="border-l-[3px] border-refuse py-0.5 pl-[10px]">
-          {overviewQuery.error instanceof Error
-            ? overviewQuery.error.message
-            : String(overviewQuery.error)}
-        </p>
-        <button
-          className={buttonClasses({ variant: "quiet", size: "regular" })}
-          onClick={() => void overviewQuery.refetch()}
-        >
-          Try again
-        </button>
-      </div>
+      <DeployState title="Deploy & Run could not be read">
+        <Notice className="flex flex-wrap items-center justify-between gap-3" role="alert">
+          <p className={documentProseClasses}>
+            {overviewQuery.error instanceof Error
+              ? overviewQuery.error.message
+              : String(overviewQuery.error)}
+          </p>
+          <button
+            className={buttonClasses({ variant: "quiet", size: "regular" })}
+            disabled={overviewQuery.isFetching}
+            onClick={() => void overviewQuery.refetch()}
+          >
+            {overviewQuery.isFetching ? "Retrying…" : "Try again"}
+          </button>
+        </Notice>
+      </DeployState>
     );
   if (!overview)
     return (
-      <p className="px-6 py-20 text-center text-graphite" role="status">
-        Reading this machine and its AWS profiles…
-      </p>
+      <DeployState title="Deploy & Run">
+        <Notice tone="neutral" role="status">Reading this machine and its AWS profiles…</Notice>
+      </DeployState>
     );
 
-  return (
-    <div className={cx("grid h-full min-h-0 grid-cols-[minmax(0,1fr)] vp-900:h-auto",
-      readError || readNotice ? "grid-rows-[auto_auto_minmax(0,1fr)_auto]" : "grid-rows-[auto_minmax(0,1fr)_auto]")}>
-      <AccountBar
-        prerequisites={overview.prerequisites}
-        onRemedy={remedy}
-      />
-      {readError || readNotice ? (
-        <div className="flex flex-wrap items-center gap-3 border-b border-rule px-6 py-2 text-caption text-refuse" role="alert">
-          <span>{readError ? `Some information could not be refreshed. ${readError.message}` : readNotice}</span>
-          {readError ? <button className={buttonClasses({ variant: "link", size: "compact" })}
-            disabled={overviewQuery.isFetching || discoveryQuery.isFetching || statusQuery.isFetching}
-            onClick={() => void refreshAll()}>Try again</button> : null}
-        </div>
+  const machine = <AccountBar prerequisites={overview.prerequisites} onRemedy={remedy} />;
+  const readFeedback = readError || readNotice ? (
+    <Notice className="flex flex-wrap items-center justify-between gap-3" role="alert">
+      <span>{readError ? `Some information could not be refreshed. ${readError.message}` : readNotice}</span>
+      {readError ? (
+        <button className={buttonClasses({ variant: "quiet", size: "regular" })}
+          disabled={overviewQuery.isFetching || discoveryQuery.isFetching || statusQuery.isFetching}
+          onClick={() => void refreshAll()}>
+          {overviewQuery.isFetching || discoveryQuery.isFetching || statusQuery.isFetching ? "Retrying…" : "Try again"}
+        </button>
       ) : null}
-      {overview.profiles.length === 0 ? (
-        <div className="max-w-[640px] px-6 py-8">
-          <h1 className="mt-0 mb-2.5 font-condensed text-[26px] font-semibold">
-            No AWS profiles on this machine
-          </h1>
-          <p>
-            Studio reads AWS through named profiles in ~/.aws/config. Create one with{" "}
-            <code>aws configure sso</code> (or <code>aws configure</code>). Studio checks for changes in the background.
-          </p>
-        </div>
-      ) : (
-        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)]">
-          {row ? (
-            <Detail
-              row={row}
-              context={selectedContext}
-              status={status}
-              record={discovery?.records[row.name]}
-              findings={visibleFindings}
-              awsKnown={awsKnown}
-              connectionMissing={!profile}
-              onChooseConnection={openAwsProfileConfiguration}
-              next={next}
-              local={overview.local}
-              events={events}
-              drift={driftQuery.data}
-              onAction={act}
-              onServiceLogs={setServiceLogs}
-              frontend={
-                <>
-                  <FrontendRelease
-                    key={[row.name, connectionKey, selectedRegion ?? selectedContext?.region].join("|")}
-                    deployment={row.name}
-                    profile={profile}
-                    region={selectedRegion ?? selectedContext?.region}
-                  />
-                  {row.target &&
-                  row.mode &&
-                  profile &&
-                  (selectedRegion ?? selectedContext?.region) ? (
-                    <LifecycleDisclosure
-                      selection={{
-                        deployment: row.name,
-                        mode: row.mode,
-                        profile,
-                        region: (selectedRegion ?? selectedContext?.region)!,
-                      }}
+    </Notice>
+  ) : null;
+
+  return (
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] vp-900:h-auto">
+      <div className="min-h-0 min-w-0 overflow-auto">
+        {overview.profiles.length === 0 ? (
+          <DeployState title="No AWS profiles on this machine" machine={machine}>
+            {readFeedback}
+            <Notice tone="neutral">
+              <p className={documentProseClasses}>
+                Studio reads AWS through named profiles in ~/.aws/config. Create one with{" "}
+                <code>aws configure sso</code> (or <code>aws configure</code>). Studio checks for changes in the background.
+              </p>
+            </Notice>
+          </DeployState>
+        ) : (
+          <>
+            {row ? (
+              <Detail
+                row={row}
+                context={selectedContext}
+                status={status}
+                record={discovery?.records[row.name]}
+                findings={visibleFindings}
+                awsKnown={awsKnown}
+                connectionMissing={!profile}
+                onChooseConnection={openAwsProfileConfiguration}
+                next={next}
+                local={overview.local}
+                events={events}
+                drift={driftQuery.data}
+                onAction={act}
+                onServiceLogs={setServiceLogs}
+                machine={machine}
+                notice={readFeedback}
+                frontend={
+                  <>
+                    <FrontendRelease
+                      key={[row.name, connectionKey, selectedRegion ?? selectedContext?.region].join("|")}
+                      deployment={row.name}
+                      profile={profile}
+                      region={selectedRegion ?? selectedContext?.region}
                     />
-                  ) : null}
-                </>
-              }
-            />
-          ) : (
-            <p className="px-6 py-20 text-center text-graphite">
-              No {declarationMode === "dev" ? "development" : "production"} deployment is declared in this repository.
-            </p>
-          )}
-        </div>
-      )}
+                    {row.target &&
+                    row.mode &&
+                    profile &&
+                    (selectedRegion ?? selectedContext?.region) ? (
+                      <LifecycleDisclosure
+                        selection={{
+                          deployment: row.name,
+                          mode: row.mode,
+                          profile,
+                          region: (selectedRegion ?? selectedContext?.region)!,
+                        }}
+                      />
+                    ) : null}
+                  </>
+                }
+              />
+            ) : (
+              <DeployState title="Deploy & Run" machine={machine}>
+                {readFeedback}
+                <Notice tone="neutral">
+                  No {declarationMode === "dev" ? "development" : "production"} deployment is declared in this repository.
+                </Notice>
+              </DeployState>
+            )}
+          </>
+        )}
+      </div>
       <Activity
         jobs={jobs}
         selected={activityJob}

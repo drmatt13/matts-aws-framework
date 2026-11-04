@@ -13,7 +13,16 @@ import { buttonClasses } from "../ui/Button";
 import { Select, TextInput } from "../ui/FormControls";
 import { noticeClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
-import { DocumentCard, documentFieldsetClasses, documentLabelClasses } from "./DocumentUI";
+import {
+  DocumentCard,
+  documentFieldsetClasses,
+  documentLabelClasses,
+  documentTitleClasses,
+  documentProseClasses,
+  documentSupportClasses,
+  documentSummaryClasses,
+  documentDisclosureClasses,
+} from "./DocumentUI";
 import { WorkbenchDialog } from "./WorkbenchUI";
 
 export const cognitoManagementApi = {
@@ -154,13 +163,13 @@ export function CognitoManagement({
   );
   return (
     <DocumentCard className="mb-3" aria-label="Cognito user and group management">
-      <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">User and group operations</h2>
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+      <h3 className={documentTitleClasses}>User and group operations</h3>
+      <p className={documentProseClasses}>
         Review one action against the verified deployment-owned pool, then explicitly approve its
         exact user/group, pool and account. Creating users sends no invitation. Password, reset and
         user-deletion operations are unavailable.
       </p>
-      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+      <p className={documentSupportClasses}>
         Profile <code>{selection.profile}</code>{" · deployment "}
         <code>{selection.deployment || "not selected"}</code> · {selection.region}. Review reads
         AWS; it does not write. Production requires separate operation-specific authorization.
@@ -169,7 +178,7 @@ export function CognitoManagement({
         <p
           className={cx(
             noticeClasses(),
-            "mt-0 mb-2 text-label leading-[1.5] last:mb-0 flex flex-wrap items-center gap-x-3 gap-y-2",
+            "flex flex-wrap items-center gap-x-3 gap-y-2",
           )}
           role="alert"
         >
@@ -178,7 +187,7 @@ export function CognitoManagement({
       ) : null}
       <fieldset className={documentFieldsetClasses} disabled={busy}>
         <legend className="px-1 text-label">Requested action</legend>
-        <label className={cx("max-w-160", documentLabelClasses, "max-w-[640px]")}>
+        <label className={cx("max-w-160", documentLabelClasses)}>
           Action
           <Select
             className="w-full"
@@ -242,10 +251,12 @@ export function CognitoManagement({
                 onChange={(event) => setFamilyName(event.target.value)}
               />
             </label>
-            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
-              Cognito generates a temporary credential server-side. It is never retrieved or
-              delivered here; this tool does not complete sign-in or assert email verification.
-            </p>
+            <div className="mb-2">
+              <p className={documentSupportClasses}>
+                Cognito generates a temporary credential server-side. It is never retrieved or
+                delivered here; this tool does not complete sign-in or assert email verification.
+              </p>
+            </div>
           </>
         ) : null}
         {action === "create-group" ||
@@ -282,28 +293,28 @@ export function CognitoManagement({
         </button>
       </fieldset>
       {applying ? (
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" role="status">
+        <p className={documentProseClasses} role="status">
           Applying the reviewed operation. Switching views or losing the response does not undo a
           request Cognito already accepted.
         </p>
       ) : null}
       {result ? (
-        <div role="status">
+        <div className="grid gap-3" role="status">
           <strong>
             {result.action} · {result.status}
           </strong>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">{result.message}</p>
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>{result.message}</p>
+          <p className={documentProseClasses}>
             Account {result.account} · {result.region} · pool <code>{result.poolId}</code> ·
             follow-up {result.verification}. Operation <code>{result.id}</code>.
           </p>
         </div>
       ) : null}
-      <details className="mt-3">
-        <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+      <details className={documentDisclosureClasses}>
+        <summary className={documentSummaryClasses}>
           Operation history ({currentHistory.length})
         </summary>
-        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+        <p className={documentSupportClasses}>
           History excludes entered user/email/group values and raw AWS responses. Match the subject
           digest with your review, and correlate CloudTrail using action, pool, account, time and
           caller ARN before another write. Digests are correlation references, not anonymous
@@ -321,7 +332,7 @@ export function CognitoManagement({
           Refresh Cognito operation history
         </button>
         {currentHistory.map((record) => (
-          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={record.id}>
+          <p className={documentProseClasses} key={record.id}>
             {record.startedAt} · {record.action} · {record.status} · {record.poolId}
             <br />
             Caller <code>{record.actorArn ?? "unknown"}</code> · subject{" "}
@@ -334,7 +345,7 @@ export function CognitoManagement({
       </details>
       {review && active ? (
         <WorkbenchDialog
-          titleClassName="mt-0 mb-2 font-sans text-[15px] font-semibold leading-[1.4]"
+          titleClassName={documentTitleClasses}
           title="Approve Cognito operation"
           busy={busy}
           onClose={() => setReview(undefined)}
@@ -365,32 +376,32 @@ export function CognitoManagement({
             </>
           }
         >
-          <p className="text-label mt-0 mb-2 leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             <strong>{review.target.mode === "prod" ? "PRODUCTION" : "Development"}</strong> ·
             account <code>{review.target.account}</code> · {review.target.region} · profile{" "}
             {review.target.profile}
           </p>
-          <p className="text-label mt-0 mb-2 leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             Pool <code>{review.target.poolId}</code>
             <br />
             <code>{review.target.poolArn}</code>
           </p>
           {review.target.actorArn ? (
-            <p className="text-label mt-0 mb-2 leading-[1.5] last:mb-0">
+            <p className={documentProseClasses}>
               Caller <code>{review.target.actorArn}</code>
             </p>
           ) : null}
-          <p className="text-label mt-0 mb-2 leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             <strong>{labels[review.operation.action]}</strong>
           </p>
           <pre className="min-w-0 max-w-full overflow-auto max-h-[350px] text-caption">
             {JSON.stringify(review.operation, null, 2)}
           </pre>
-          <p className="text-label mt-0 mb-2 leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             Subject correlation digest <code>{review.subjectDigest}</code>. Save this review
             reference if you need to correlate a later uncertain outcome.
           </p>
-          <p className="text-label mt-0 mb-2 leading-[1.5] last:mb-0">
+          <p className={documentProseClasses}>
             Current user:{" "}
             {review.before.user
               ? `${review.before.user.username} · ${review.before.user.enabled ? "enabled" : "disabled"} · ${review.before.user.status ?? "status unknown"}`
@@ -414,8 +425,8 @@ export function CognitoManagement({
             />
           </label>
           {review.productionConfirmation ? (
-            <div className="text-refuse wrap-anywhere">
-              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <div className="grid gap-3 text-refuse wrap-anywhere">
+              <p className={documentProseClasses}>
                 This changes a real production user pool. User access and future role claims can
                 change. This approval is separate from source, deployment and prior operations.
               </p>

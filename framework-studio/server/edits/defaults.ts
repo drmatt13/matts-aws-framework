@@ -22,7 +22,7 @@ export interface DefaultFieldDefinition extends FieldDefinition {
 export function makeDefaultFields(base: readonly FieldDefinition[]): readonly DefaultFieldDefinition[] {
   const definitions: DefaultFieldDefinition[] = [];
   for (const group of ["lambda", "http", "webSocket", "events", "tools"]) {
-    for (const field of base.filter((field) => field.id.startsWith("lambda."))) {
+    for (const field of base.filter((field) => field.id.startsWith("lambda.") && !field.perTargetOnly)) {
       definitions.push({
         ...field, id: `defaults.${group}.${field.path.join(".")}`, group, path: [group, ...field.path], targetPath: field.path, targetField: field,
         required: group === "lambda" && REQUIRED.has(field.path.join(".")),

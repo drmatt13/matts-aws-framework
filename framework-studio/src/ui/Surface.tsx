@@ -18,7 +18,9 @@ export function noticeClasses({ tone = "error", className }: { tone?: "error" | 
 export function Notice({ tone, className, ...props }: ComponentPropsWithRef<"div"> & { tone?: "error" | "warning" | "success" | "neutral" }) {
   return <div {...props} className={noticeClasses({ tone, className })} />;
 }
-export const workspaceToolbarClasses = "min-h-[57px] border-b border-rule bg-sheet px-4 py-3 text-label text-ink";
+/** The full-bleed toolbar surface. `PageToolbar` puts its contents in the page column. */
+export const pageToolbarClasses = "min-h-(--toolbar-height) border-b border-rule bg-sheet py-(--toolbar-padding) text-label text-ink";
+export const workspaceToolbarClasses = cx(pageToolbarClasses, "px-(--workspace-gutter)");
 export function WorkspaceToolbar({ className, ...props }: ComponentPropsWithRef<"header">) {
   return <header {...props} className={cx(workspaceToolbarClasses, className)} />;
 }
