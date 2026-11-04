@@ -21,7 +21,7 @@ related:
 
 Start with the [operational lifecycle](lifecycle.md) for the complete source-to-runtime
 flow and the separate database, identity and frontend effect boundaries. This page owns
-Deploy's jobs, observation and local process supervision.
+Studio's jobs, observation and local process supervision.
 
 Deploy uses a plain document header and the shared content column in loaded, loading and empty/error
 states. It shows machine checks on the right of the deployment heading, with local issues
@@ -32,7 +32,8 @@ it with a red **AWS sign-in required** link that opens profile configuration. Lo
 do not add a separate action button or findings card. Narrow layouts keep machine readiness
 on its own row so target-name length does not change the header height. The page
 has no subnav bar, deployment rail, Repository/AWS cards, stage-creation form or direct
-template-comparison/change-set controls; their underlying services remain intact. Machine
+template-comparison/change-set controls. The full-width This machine, frontend-release and
+stateful-retention cards are also absent; their underlying services remain intact. Machine
 overview polls every 30 seconds; idle AWS discovery
 and target status poll every two minutes, while in-progress jobs retain four-second status
 reads and immediate event updates. Failed background reads keep last-good evidence and
@@ -40,6 +41,14 @@ offer a contextual retry. Profile/configuration-session changes use fresh query 
 invalidate pending reviews; running jobs keep their captured actor. Entering Deploy or
 changing Source mode chooses a matching target through the unsaved-source guard. It never starts a deployment or restores an older
 per-target profile.
+
+Activity is a persistent shell tray on every route. `GlobalActivity` owns its job-query
+observer and presentation state; it is memoized independently of route/source context.
+The shared deployment-event observer updates job/log caches once globally, while Deploy
+subscribes separately for its route-specific plan-review and CloudFormation callbacks.
+Navigation preserves the selected job, open state, mounted log and scroll position.
+The overview read is local and profile-metadata-only; global Activity does not enable AWS
+discovery or selected-target status reads outside their owning workspaces.
 
 `DeployService` in [service.ts](../../../framework-studio/server/deploy/service.ts) coordinates targets/preferences, prerequisites, plans, jobs, cloud observer and local environment state. `buildOperation` in [registry.ts](../../../framework-studio/server/deploy/registry.ts) maps recognized actions to fixed repository commands/argv: plan/apply/discard, export, destroy, drift, local start/stop, dependencies, Docker and AWS login. It is not an arbitrary terminal API.
 

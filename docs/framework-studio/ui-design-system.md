@@ -135,7 +135,7 @@ attributes, never presentation classes or assertions about utility strings.
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
 | Actions | `Button`, `IconButton` and their recipes; destructive actions use `tone="danger"` |
 | Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors; entity problems through `IssueNotice`, `IssueChips` and `HoverIssues` |
-| Motion | State changes are instant. The one exception is the map's Local runtime switch (`views/map/ComposePreview.tsx`): interruptible transitions on the `--spring` and `--spring-bounce` curves plus its `compose-*` keyframes in `styles/theme.css`, all off under reduced motion and the map's Motion toggle |
+| Motion | State changes are instant. Loading and busy indicators may pulse with `animate-deploy-pulse`, off under reduced motion. The one transition exception is the map's Local runtime switch (`views/map/ComposePreview.tsx`): interruptible transitions on the `--spring` and `--spring-bounce` curves plus its `compose-*` keyframes in `styles/theme.css`, all off under reduced motion and the map's Motion toggle |
 | Density | 4px within a group (label, control, support; identifier and source), 8px action-to-note, 12px heading-to-content, 16px sections; use container gaps rather than stacked paragraph margins |
 
 ## Navigation and workspace rhythm
@@ -169,7 +169,9 @@ test) share one column; a new page is a document page unless it needs the whole 
 
 Document pages share header geometry; Deploy uses a plain page header that blends into
 the page, keeping machine readiness beside its deployment heading in the same column.
-It has no toolbar surface or visible bottom rule. Other document pages retain their toolbar surface.
+It has no toolbar surface or visible bottom rule. Deploy omits the full-width This machine,
+frontend-release and stateful-retention cards; header readiness, findings and operational
+evidence retain their existing controls. Other document pages retain their toolbar surface.
 Deploy reserves the account/region caption line even during reads. Login errors use that
 same caption line as a red text action with an underline on hover/focus, opening AWS profile
 configuration instead of adding a button or error card. On narrow screens, machine readiness
@@ -193,7 +195,10 @@ centered, `--workspace-page-max` (1280px) wide including the 16px gutters; use i
 subsection navigation or a full-bleed strip's contents. `pageBodyClasses` is the column plus
 the rhythm below a toolbar: 16px above (12px at 720px and below) and 24px below. Titles in a
 toolbar use the 18px `pageTitleClasses`; Deploy's deployment name is its page title.
-Page chrome stays outside the column: the navbar and Deploy's Activity tray span the window.
+Page chrome stays outside the column: the navbar and global Activity tray span the window.
+Activity occupies the final shell row on every route; its memoized owner stays mounted
+through navigation. Opening the bounded tray reduces workspace height instead of covering
+content, including on narrow screens.
 Shared `DocumentCard` and its native child controls
 own 6px corners, 16px padding (12px at 720px and below) and 12px spacing between content
 groups. Page-level cards are 12px apart; avoid per-route card overrides.

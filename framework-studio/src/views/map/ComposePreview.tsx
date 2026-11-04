@@ -1,5 +1,6 @@
-import { useId, useState, type CSSProperties } from "react";
+import { useCallback, useId, useRef, useState, type CSSProperties } from "react";
 import { cx } from "../../ui/classes";
+import { DockerStartPopover } from "./DockerStartPopover";
 
 /*
  * Motion. Every state change is a CSS transition with per-part delays, so a second
@@ -30,34 +31,50 @@ const PIVOT = "[transform-box:view-box] origin-[22px_30px]";
 
 const timing = (on: boolean, whenOn: string, whenOff: string): CSSProperties => ({ transition: on ? whenOn : whenOff });
 
-/** A visual prototype only. It deliberately has no runtime API or persisted state. */
+/** Visual runtime prototype, gated by the real Docker prerequisite. It does not launch Compose. */
 export function ComposePreview({ motion }: { readonly motion: boolean }) {
   const [on, setOn] = useState(false);
+  const [dockerHelp, setDockerHelp] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   // Remounts the one-shot accents so each turn-on plays them once.
   const [launches, setLaunches] = useState(0);
   // The hover spout waits until the pointer has left after a turn-on, so the click itself never plays it.
   const [armed, setArmed] = useState(false);
   const descriptionId = useId();
+  const dockerHelpId = useId();
   const loops = motion && cx(!on && "[animation-play-state:paused]");
+  const enablePreview = useCallback(() => {
+    setLaunches((count) => count + 1);
+    setArmed(false);
+    setOn(true);
+    setDockerHelp(false);
+    trigger.current?.focus({ preventScroll: true });
+  }, []);
+  const closeHelp = useCallback(() => {
+    setDockerHelp(false);
+    // Light dismissal keeps focus on the clicked control; Escape and Close return to the switch.
+    if (document.activeElement === document.body || document.activeElement?.closest('[data-ui="compose-docker-help"]')) trigger.current?.focus({ preventScroll: true });
+  }, []);
 
   return (
     <div className="pointer-events-auto max-w-full">
       <button
+        ref={trigger}
         type="button"
         role="switch"
         aria-checked={on}
         aria-label="Local runtime"
         aria-describedby={descriptionId}
-        title="Visual preview only · no containers are started or stopped"
+        aria-haspopup="dialog"
+        aria-expanded={dockerHelp}
+        aria-controls={dockerHelp ? dockerHelpId : undefined}
+        title="Local runtime preview · Docker must be running; app containers are not started or stopped"
         data-ui="compose-preview"
         data-state={on ? "on" : "off"}
         data-motion={motion ? "on" : "off"}
         onClick={() => {
-          if (!on) {
-            setLaunches((count) => count + 1);
-            setArmed(false);
-          }
-          setOn(!on);
+          if (on) setOn(false);
+          else setDockerHelp((current) => !current);
         }}
         onPointerLeave={() => setArmed(true)}
         className={cx(
@@ -257,7 +274,8 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
           />
         </span>
       </button>
-      <span id={descriptionId} className="sr-only">Visual preview only. No containers are started or stopped.</span>
+      <span id={descriptionId} className="sr-only">Checks Docker before enabling the visual preview. No app containers are started or stopped.</span>
+      {dockerHelp ? <DockerStartPopover id={dockerHelpId} anchor={trigger} onEnablePreview={enablePreview} onClose={closeHelp} /> : null}
     </div>
   );
 }

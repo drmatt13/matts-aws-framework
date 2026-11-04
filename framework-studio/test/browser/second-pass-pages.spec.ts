@@ -2,7 +2,7 @@ import type { Locator, Page, TestInfo } from "@playwright/test";
 import type { CognitoOperation } from "../../shared/identity-operations";
 import { test, expect } from "./support/test";
 import { discovery, identity } from "./support/scenarios";
-import { cognito, context, deployment, dnsDiscovery, dnsReview, domainHealth, domains, expandedOverview, frontendReview, inventory, lifecyclePlan, longArn, operationReview, policySources, pools, simulation, teardown } from "./support/deep-scenarios";
+import { cognito, context, deployment, dnsDiscovery, dnsReview, domainHealth, domains, expandedOverview, inventory, lifecyclePlan, longArn, operationReview, policySources, pools, simulation, teardown } from "./support/deep-scenarios";
 
 async function expandAll(page: Page, scope: Locator = page.locator("main")) {
   for (let count = 0; count < 60; count++) {
@@ -248,34 +248,17 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     expect(studio.requests.filter(request => /apply$/.test(request.path))).toHaveLength(0);
   });
 
-  test("Deploy expanded publication settings, service logs and activity remain bounded", async ({ page, studio }, info) => {
+  test("Deploy activity remains bounded without configuration cards", async ({ page, studio }, info) => {
     const observed = { ...discovery(), deployments: [deployment], targets: discovery().targets.map(target => ({ ...target, status: target.name === "browser-dev" ? "deployed" as const : target.status })) };
     studio.reply("GET", "/api/deploy/discover", route => route.fulfill({ json: { ok: true, value: observed } }));
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: expandedOverview() }));
     studio.reply("GET", "/api/deploy/status", (route, url) => route.fulfill({ json: { ok: true, value: { ...observed, deployment: url.searchParams.get("deployment"), detail: { ...deployment, events: [], changeSets: [] } } } }));
-    studio.reply("GET", "/api/deploy/teardown", route => route.fulfill({ json: { ok: true, value: teardown } }));
-    studio.reply("GET", "/api/deploy/local/logs", route => route.fulfill({ json: { text: "Fixture service ready\nA long fixture log line remains internally scrollable: " + "fixture ".repeat(80) } }));
     studio.reply("GET", "/api/deploy/jobs/fixture-completed-job/log", route => route.fulfill({ json: { job: expandedOverview().jobs[0], lines: [{ seq: 1, at: context.observedAt, stream: "info", text: "Fixture template comparison finished without mutations." }] } }));
-    studio.reply("POST", "/api/frontend-release/build", route => route.fulfill({ json: frontendReview }));
-    studio.reply("POST", "/api/frontend-release/settings/review", route => route.fulfill({ json: { id: "fixture-settings-review", file: "framework-config/frontend-release.json", before: "{}", after: JSON.stringify({ buildScript: "fixture-build" }, null, 2) } }));
     await studio.goto("/deploy");
     await expect(page.getByRole("heading", { name: /browser-dev/ }).first()).toBeVisible();
-    await expandAll(page);
-    await page.getByTitle("Logs of fixture-service", { exact: true }).click();
-    const logs = page.getByRole("dialog", { name: /fixture-service/ });
-    await expect(logs).toBeVisible();
-    await capture(page, info, "deploy-local-service-logs");
-    await logs.getByRole("button", { name: "Close", exact: true }).click();
-    await page.getByRole("button", { name: "Build & review release", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Frontend publication review", exact: true })).toBeVisible();
-    await expandAll(page);
-    await page.getByRole("textbox", { name: "Frontend publication approval", exact: true }).fill("Publish browser-dev to fixture-public-client-assets");
-    await expect(page.getByRole("button", { name: "Publish assets & request invalidation", exact: true })).toBeEnabled();
-    await capture(page, info, "deploy-frontend-publication-review", page.getByRole("heading", { name: "Review frontend publication", exact: true }));
-    await capture(page, info, "deploy-frontend-publication-approval", page.getByRole("textbox", { name: "Frontend publication approval", exact: true }));
-    await page.getByLabel("Build script", { exact: true }).fill("fixture-build");
-    await page.getByRole("button", { name: "Review settings source", exact: true }).click();
-    await capture(page, info, "deploy-frontend-settings-source", page.getByRole("region", { name: "Frontend settings source review", exact: true }));
+    await expect(page.getByRole("region", { name: "This machine", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Client environment & frontend release", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Stateful retention and retained-resource references", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: /^Activity/ }).click();
     await expect(page.getByLabel("Log", { exact: true })).toContainText("Fixture template comparison");
     await capture(page, info, "deploy-activity-log");

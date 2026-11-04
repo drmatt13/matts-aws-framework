@@ -57,9 +57,14 @@ export function Activity(props: {
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onCancel: (id: string) => void;
+  readonly loading?: boolean;
+  readonly problem?: string;
+  readonly retrying?: boolean;
+  readonly onRetry?: () => void;
+  readonly cancelError?: string;
 }) {
   const job = props.jobs.find((entry) => entry.id === props.selected) ?? props.jobs[0];
-  const lines = useJobLog(props.open ? job?.id : undefined);
+  const lines = useJobLog(props.open ? job?.id : undefined, job?.lastSeq);
   const log = useRef<HTMLPreElement>(null);
   const pinned = useRef(true);
   useEffect(() => {
@@ -110,7 +115,7 @@ export function Activity(props: {
             ) : null}
           </span>
         ) : (
-          <span className="text-graphite">Nothing has run yet.</span>
+          <span className="text-graphite">{props.problem ? "Activity unavailable" : props.loading ? "Reading activity…" : "Nothing has run yet."}</span>
         )}
         <span className="flex-1" />
         {props.open ? (
@@ -119,8 +124,18 @@ export function Activity(props: {
           <ChevronUp size={15} className="flex-none" aria-hidden />
         )}
       </button>
+      {props.open && props.problem ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-4 py-2" role="alert">
+          <span>{props.problem}</span>
+          <button className={buttonClasses({ variant: "quiet", size: "compact" })}
+            disabled={props.retrying} onClick={props.onRetry}>Retry activity</button>
+        </div>
+      ) : null}
+      {props.open && props.cancelError ? (
+        <p className="m-0 border-t border-rule px-4 py-2 text-refuse" role="alert">{props.cancelError}</p>
+      ) : null}
       {props.open ? (
-        <div className="grid h-[min(340px,42vh)] grid-cols-[260px_minmax(0,1fr)] border-t border-rule vp-900:h-auto vp-900:grid-cols-1">
+        <div className="grid h-[min(340px,42dvh)] grid-cols-[260px_minmax(0,1fr)] border-t border-rule vp-900:grid-cols-1 vp-900:grid-rows-[minmax(0,1fr)_minmax(0,2fr)]">
           <ul
             className="m-0 grid list-none content-start gap-1 overflow-auto border-r border-rule p-2 vp-900:max-h-40 vp-900:border-r-0 vp-900:border-b"
             aria-label="Operations"
@@ -137,7 +152,7 @@ export function Activity(props: {
                   onClick={() => props.onSelect(entry.id)}
                 >
                   <span className="truncate text-step-minus1 font-medium">{entry.title}</span>
-                  <span className="text-meta text-graphite group-data-[status=running]/job:text-local group-data-[status=failed]/job:text-refuse">
+                  <span className="text-meta text-[color-mix(in_srgb,var(--graphite)_85%,var(--ink))] group-data-[status=running]/job:text-[color-mix(in_srgb,var(--local)_60%,var(--ink))] group-data-[status=failed]/job:text-refuse">
                     {STATUS_LABEL[entry.status]} · {relativeTime(entry.endedAt ?? entry.startedAt)}
                   </span>
                 </button>
@@ -153,7 +168,7 @@ export function Activity(props: {
                     className={cx(
                       "ml-2 text-meta tracking-[0.06em] uppercase",
                       job.status === "running"
-                        ? "text-local"
+                        ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
                         : job.status === "succeeded"
                           ? "text-accept"
                           : job.status === "failed"
@@ -194,7 +209,7 @@ export function Activity(props: {
                       className={cx(
                         "inline-flex items-center gap-1",
                         step.status === "running"
-                          ? "text-local"
+                          ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
                           : step.status === "done"
                             ? "text-accept"
                             : step.status === "failed"
@@ -238,8 +253,8 @@ export function Activity(props: {
               </pre>
             </div>
           ) : (
-            <p className="text-graphite p-4">
-              Operations you start here appear with their steps and log.
+            <p className="text-graphite p-4" role={props.loading ? "status" : undefined}>
+              {props.loading ? "Reading activity…" : props.problem ? "Restore the connection to read recorded operations." : "Operations you start in Studio appear with their steps and log."}
             </p>
           )}
         </div>

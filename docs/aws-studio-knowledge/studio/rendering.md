@@ -170,6 +170,13 @@ Isometric, Studio's home view at `/` (`/isometric` redirects there), uses the sh
 navbar's `SourceEnvironment` selector. `Shell` keeps that selector and source validation
 available on every route, including empty/error maps. The map toolbar contains search,
 tag filters and camera controls. Named AWS targets remain in operational workspaces.
+The Development map's **Local runtime** switch remains a visual preview, but checks
+the live Docker engine before turning on. Its native popover explains the Docker
+prerequisite, offers the existing `docker-start` operation when the Desktop CLI is
+available, follows that job until the engine is ready, and provides manual setup and
+retry guidance otherwise. Starting Docker or checking again only shows readiness;
+the switch stays off until a separate click on **Local runtime**. Dismissing the popover stops observing, not an explicitly
+requested Docker start. It does not start or stop application containers.
 See the [UI design system](../../framework-studio/ui-design-system.md) for route gutters,
 surface and responsive ownership. Board uses a labeled creation action and a themed
 chooser; its trailing legend and action wrap together.

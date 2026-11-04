@@ -13,6 +13,8 @@ source:
   - framework-studio/src/snapshot.ts
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
+  - framework-studio/src/views/GlobalActivity.tsx
+  - framework-studio/src/activity.ts
   - framework-studio/src/views/AgentLab.tsx
   - framework-studio/server/agent-lab.ts
   - framework-studio/src/views/CreationWizard.tsx
@@ -77,11 +79,13 @@ target from that mode; the page has no deployment rail. Profile names and legacy
 profile preferences never choose a mode or override its association. Deploy shows machine
 checks and their remedies on the right of the deployment heading, with issues and remedies
 before passed checks. The heading uses a plain document header and 18px sans title;
-its content cards share the document column, type roles and spacing. Narrow layouts wrap the group below the name and keep it aligned right;
+its findings and operational evidence share the document column, type roles and spacing. Narrow layouts wrap the group below the name and keep it aligned right;
 there is no separate subnav bar. The Repository/AWS cards, stage-origin labels, template
 comparison/change-set entry points and stage-creation form are removed from this page;
 the underlying deployment, observation and source-edit services remain available.
-Existing saved-plan reviews, local operations, frontend releases and retention controls remain.
+The full-width This machine, Client environment & frontend release, and Stateful retention
+and retained-resource references cards are absent from Deploy. Their components and backend
+services remain available; saved-plan reviews, local operation findings, events and Activity remain.
 The account/region line shows a caption-sized loading skeleton while the selected profile
 is first read, preserving the same line height. Expired or missing
 credentials replace that line with a red **AWS sign-in required** text action in the same
@@ -100,7 +104,7 @@ inspection actions. See [AWS connections](../../framework-studio/aws-connections
 | --- | --- | --- |
 | Map | `/` | Isometric declaration graph, search, tag emphasis, connection visibility, camera, resource navigation, creation and Inspector |
 | Database | `/database` | Authored Prisma contract, diagram, validation, migration history and artifact review; separate explicit database target and application controls |
-| Deploy | `/deploy` | Active source-mode deployment, machine checks, saved-plan reviews, frontend releases, retained resources and local development lifecycle |
+| Deploy | `/deploy` | Active source-mode deployment, header machine checks, findings, saved-plan reviews, events and Activity |
 | GraphQL | `/graphql` | Placeholder for the GraphQL workspace |
 | Authentication | `/cognito` | User pools, identity pools, providers and permissions, each with separate source and deployed evidence |
 | DNS / Domains | `/domains` | Production domain input settings, selected-deployment observations and separately approved domain operations |
@@ -127,6 +131,7 @@ own exact-text session and navigation protection.
 | Latest snapshot and source-read evidence | TanStack Query; [snapshot.ts](../../../framework-studio/src/snapshot.ts) and feature query definitions retain existing keys and refresh policies |
 | Inspector return trail | In-memory accepted visits, with presentation retained separately per source mode; see [rendering](rendering.md) |
 | Prisma text, validation and diagram | Independent `DatabaseSession`, preserving editor identity/undo |
+| Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and job reads; shared log storage and one global deployment-event observer continue on every route |
 | Deployment target and observations | Owning operational workspace; separate from source mode and source-save approval |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
 | Camera, hover, filters and disclosures | Local view state; never persisted as framework configuration |
@@ -136,6 +141,18 @@ Query definitions share read identity without selecting a deployment or performi
 an explicit AWS inspection. Page components keep observation/error state and action
 approval flows. Use the [source ownership map](../REPOSITORY-MAP.md#where-to-change-studio)
 to locate the rendering, state, transport and tests for a change.
+
+## Shared Activity
+
+The bottom **Activity** tray belongs to `Shell` and is mounted once for every route.
+`GlobalActivity` is memoized and consumes no route or Studio context, so navigation does
+not render it again. Open state, selected job, log DOM, and the reader's scroll position
+survive navigation. Job/log changes and tray interactions still update it normally.
+The tray observes jobs from the shared deployment overview and owns the global deployment
+event subscription. Deploy's event observer handles only its plan-review/CloudFormation
+callbacks. Operations started from Deploy call `openActivity(job.id)` to reveal their job
+in the same tray. Cancellation retains the existing command semantics; failed reads and
+cancellation errors stay in the tray, with read retry available there.
 
 ## Reading the map
 

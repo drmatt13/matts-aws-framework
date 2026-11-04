@@ -15,16 +15,17 @@ export function AccountBar(props: {
   const titleId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: 0, left: 12 });
+  const [position, setPosition] = useState({ top: 0, left: 12, width: 340 });
   const ready = props.prerequisites.filter((item) => item.status === "ok");
   const attention = props.prerequisites.filter((item) => item.status !== "ok");
   const positionPanel = useCallback(() => {
     const anchor = trigger.current?.getBoundingClientRect();
     if (!anchor) return;
-    const width = Math.min(340, window.innerWidth - 24);
+    const width = Math.min(340, window.innerWidth - 24, anchor.right - 12);
     setPosition({
       top: anchor.bottom + 8,
-      left: Math.max(12, Math.min(anchor.left, window.innerWidth - width - 12)),
+      left: Math.max(12, Math.min(anchor.right - width, window.innerWidth - width - 12)),
+      width,
     });
   }, []);
   useEffect(() => {
@@ -121,7 +122,7 @@ export function AccountBar(props: {
             aria-labelledby={titleId}
             onToggle={(event) => setShowReady(event.newState === "open")}
             style={{ ...position, maxHeight: `calc(100dvh - ${position.top + 12}px)` }}
-            className="fixed right-auto bottom-auto z-30 m-0 w-[340px] max-w-[calc(100vw-24px)] overflow-y-auto overscroll-contain rounded-lg border border-rule-strong bg-sheet p-0 text-ink shadow-popover"
+            className="fixed right-auto bottom-auto z-30 m-0 max-w-[calc(100vw-24px)] overflow-y-auto overscroll-contain rounded-lg border border-rule-strong bg-sheet p-0 text-ink shadow-popover"
           >
             <header className="flex items-center justify-between gap-4 border-b border-rule px-4 py-3">
               <h2 id={titleId} className="m-0 text-body font-semibold">

@@ -2,21 +2,16 @@ import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
 import { Notice } from "../../ui/Surface";
 
-import { StatusDot, statePanelClasses, factsClasses } from "./DeployUI";
-
 import {
   AlertOctagon,
   AlertTriangle,
-  ExternalLink,
   Info,
-  ScrollText,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type {
   AccountContext,
   DeploymentRecordView,
   DriftView,
-  LocalRunView,
   StackEventView,
   StatusView,
 } from "../../../shared/deploy";
@@ -28,21 +23,6 @@ import {
 } from "../DocumentUI";
 import { callerName, eventTone, relativeTime, shortStack } from "./format";
 import type { RailRow } from "./Rail";
-
-function Panel(props: {
-  readonly title: string;
-  readonly tone?: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <section className={cx(statePanelClasses(props.tone), "grid gap-3")} aria-label={props.title}>
-      <h2 className={documentTitleClasses}>
-        {props.title}
-      </h2>
-      {props.children}
-    </section>
-  );
-}
 
 const SEVERITY_ICON = {
   blocking: <AlertOctagon size={16} aria-hidden />,
@@ -79,7 +59,7 @@ function ActionButton(props: {
 }
 
 /**
- * The active mode's deployment, its findings, and local development status.
+ * The active mode's deployment, its findings, and operational evidence.
  */
 export function Detail(props: {
   readonly row: RailRow;
@@ -92,16 +72,13 @@ export function Detail(props: {
   readonly connectionMissing?: boolean;
   readonly onChooseConnection?: () => void;
   readonly next?: Action;
-  readonly local?: LocalRunView;
   readonly events: readonly StackEventView[];
   readonly drift?: DriftView | null;
   readonly onAction: (action: Action) => void;
-  readonly onServiceLogs: (service: string) => void;
   readonly machine?: ReactNode;
   readonly notice?: ReactNode;
-  readonly frontend?: ReactNode;
 }) {
-  const { row, context, status, record, local } = props;
+  const { row, context, status, record } = props;
   const authenticationFinding = props.findings.find((finding) => finding.code === "SIGNED_OUT");
   const findings = props.findings.filter((finding) => finding !== authenticationFinding);
   const next = authenticationFinding ? undefined : props.next;
@@ -148,7 +125,7 @@ export function Detail(props: {
                 aria-label="Loading AWS profile"
                 className="inline-flex h-[1.5em] w-[24ch] max-w-full items-center"
               >
-                <span aria-hidden="true" className="h-[1em] w-full rounded-sm bg-rule-strong" />
+                <span aria-hidden="true" className="h-[1em] w-full animate-deploy-pulse rounded-sm bg-rule-strong motion-reduce:animate-none" />
               </span>
             ) : null}
             {!authenticationFinding && contracts ? <span>{contracts}</span> : null}
@@ -236,143 +213,6 @@ export function Detail(props: {
           </section>
         ) : null}
 
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-3">
-          <Panel title="This machine" tone="machine">
-            {row.mode === "dev" ? (
-              <p className={documentSupportClasses}>
-                Starting checks storage. Migrations, orphan cleanup and test identity setup are
-                separate actions. <a href="/database">Review local database</a>
-              </p>
-            ) : null}
-            {row.mode === "dev" && local?.readiness ? (
-              <p
-                className={cx(
-                  documentSupportClasses,
-                  local.readiness.state === "blocked"
-                    ? "border-l-[3px] border-refuse py-0.5 pl-[10px]"
-                    : undefined,
-                )}
-              >
-                {local.readiness.message} · checked {relativeTime(local.readiness.observedAt)}
-              </p>
-            ) : null}
-            {row.mode === "prod" ? (
-              <p className={documentProseClasses}>
-                Local development runs against a development deployment.
-              </p>
-            ) : !local ? (
-              <p className={documentSupportClasses} role="status">Reading Docker…</p>
-            ) : (
-              <>
-                <dl className={factsClasses}>
-                  <dt className="text-graphite">Local AWS profile</dt>
-                  <dd className="m-0 wrap-anywhere">{local.profile ? <>{local.startedBy !== "none" || local.watch.running || local.client.running ? "Running with" : "Last launched with"} <strong>{local.profile}</strong></> : "Not started by Studio"}</dd>
-                  <dt className="text-graphite">Docker</dt>
-                  <dd className="m-0 wrap-anywhere">
-                    {local.docker.engine === "running"
-                      ? `running${local.docker.context ? ` (${local.docker.context})` : ""}`
-                      : local.docker.engine === "missing"
-                        ? "not installed"
-                        : "not running"}
-                  </dd>
-                  <dt className="text-graphite">Settings</dt>
-                  <dd className="m-0 wrap-anywhere">
-                    {local.exported.deployment ? (
-                      <>
-                        for <strong>{local.exported.deployment}</strong>
-                        {status?.detail?.local && local.exported.deployment === row.name
-                          ? status.detail.local.exported.fresh
-                            ? " · current"
-                            : " · out of date"
-                          : ""}
-                      </>
-                    ) : (
-                      <span className="text-graphite">none exported</span>
-                    )}
-                  </dd>
-                  <dt className="text-graphite">Watch</dt>
-                  <dd className="m-0 wrap-anywhere">
-                    {local.watch.running ? (
-                      "syncing source"
-                    ) : (
-                      <span className="text-graphite">off</span>
-                    )}
-                  </dd>
-                  <dt className="text-graphite">Web client</dt>
-                  <dd className="m-0 wrap-anywhere">
-                    {local.client.running ? (
-                      local.appUrl ? (
-                        <a
-                          href={local.appUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex max-w-full items-center gap-1"
-                        >
-                          {local.appUrl} <ExternalLink size={12} aria-hidden className="flex-none" />
-                        </a>
-                      ) : (
-                        "running"
-                      )
-                    ) : (
-                      <span className="text-graphite">off</span>
-                    )}
-                  </dd>
-                </dl>
-                <p className={documentSupportClasses}>Local containers use native SDK credentials and a read-only AWS configuration mount. Browser sign-in does not establish container refresh or external-provider compatibility.</p>
-                {local.services.length ? (
-                  <ul
-                    className="m-0 grid list-none gap-1 border-t border-rule p-0 pt-3 text-label"
-                    aria-label="Containers"
-                  >
-                    {local.services.map((service) => {
-                      const stopped = local.startedBy === "none";
-                      const tone =
-                        service.state === "running"
-                          ? service.health === "unhealthy"
-                            ? "bad"
-                            : service.health === "starting"
-                              ? "busy"
-                              : "ok"
-                          : service.oneShot && service.exitCode === 0
-                            ? "done"
-                            : stopped
-                              ? "none"
-                              : service.state === "exited" && service.exitCode !== 0
-                                ? "bad"
-                                : "none";
-                      const label = service.disabledByDeploy
-                        ? "Disabled by Deploy"
-                        : service.oneShot && service.exitCode === 0
-                          ? "completed"
-                          : service.state === "running"
-                            ? (service.health ?? "running")
-                            : stopped
-                              ? "stopped"
-                              : service.exitCode
-                                ? `exited ${service.exitCode}`
-                                : service.state;
-                      return (
-                        <li key={service.container}>
-                          <button
-                            className="grid min-h-8 w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-sm border-0 bg-transparent p-1 text-left text-inherit hover:bg-wash"
-                            onClick={() => props.onServiceLogs(service.name)}
-                            title={`Logs of ${service.name}`}
-                          >
-                            <StatusDot tone={tone} />
-                            <span className="truncate">{service.name}</span>
-                            <span className="text-graphite">{label}</span>
-                            <ScrollText size={12} className="text-faint" aria-hidden />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : null}
-              </>
-            )}
-          </Panel>
-        </div>
-
         {props.drift ? (
           <section className="grid gap-3" aria-label="Drift">
             <h2 className={documentTitleClasses}>
@@ -425,7 +265,6 @@ export function Detail(props: {
             </ol>
           </section>
         ) : null}
-        {props.frontend}
       </section>
     </div>
   );

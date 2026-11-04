@@ -42,6 +42,12 @@ for (const width of [1440, 390])
     await expect(skeleton).toBeVisible();
     expect((await skeleton.boundingBox())!.height).toBe(before.metadata!.height);
     expect((await header.boundingBox())!.height).toBe(before.header!.height);
+    const bar = skeleton.locator("span");
+    await expect(bar).toHaveCSS("animation-name", "none");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(bar).toHaveCSS("animation-name", "deploy-pulse");
+    expect(await bar.evaluate(element => element.getAnimations().map(animation => animation.playState))).toEqual(["running"]);
+    await page.emulateMedia({ reducedMotion: "reduce" });
     release();
     const error = metadata.getByRole("button", { name: "AWS sign-in required. Open AWS profile configuration", exact: true });
     await expect(error).toBeVisible();
@@ -106,6 +112,9 @@ for (const width of [1440, 320])
     await expect(page.getByRole("navigation", { name: "Deployments", exact: true })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Repository", exact: true })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "AWS", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "This machine", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Client environment & frontend release", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Stateful retention and retained-resource references", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Add a deployment stage", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Compare AWS templates/ })).toHaveCount(0);
     const popup = page.getByRole("dialog", { name: "This machine", exact: true });

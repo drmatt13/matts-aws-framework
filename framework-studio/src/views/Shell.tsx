@@ -16,6 +16,7 @@ import { SourceRecoveryPanel } from "./SourceRecovery";
 import { navigationItemClasses, NavigationStrip } from "./NavigationStrip";
 import { AppNameMenu } from "./AppName";
 import { SourceEnvironment } from "./SourceContext";
+import { GlobalActivity } from "./GlobalActivity";
 
 function Drawer(props: {
   readonly title: string;
@@ -234,8 +235,8 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
       className={cx(
         "grid h-full vp-760:[--bar:89px] vp-560:[--bar:129px]",
         props.notice || watchProblem
-          ? "grid-rows-[var(--bar)_auto_minmax(0,1fr)]"
-          : "grid-rows-[var(--bar)_minmax(0,1fr)]",
+          ? "grid-rows-[var(--bar)_auto_minmax(0,1fr)_auto]"
+          : "grid-rows-[var(--bar)_minmax(0,1fr)_auto]",
       )}
     >
       <header
@@ -392,6 +393,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         </main>
         {showInspector ? <Inspector /> : null}
       </div>
+      <GlobalActivity />
       {studio.draftState.reviewOpen ? <EditDialog review={studio.draftState.review} /> : null}
       <UnsavedChangesDialog />
       {drawer === "health" ? (

@@ -17,6 +17,7 @@ let ui: typeof import("@testing-library/react");
 let query: typeof import("@tanstack/react-query");
 let page: typeof import("../src/views/Deploy");
 let dialogs: typeof import("../src/views/deploy/Teardown");
+let activity: typeof import("../src/views/GlobalActivity");
 let studio: typeof import("../src/studio");
 let router: typeof import("@tanstack/react-router");
 let activeStudio: ReturnType<typeof import("../src/studio").useStudio>;
@@ -98,6 +99,7 @@ before(async () => {
   studio = await import("../src/studio");
   page = await import("../src/views/Deploy");
   dialogs = await import("../src/views/deploy/Teardown");
+  activity = await import("../src/views/GlobalActivity");
 });
 after(() => dom.window.close());
 afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); dom.window.localStorage.clear(); });
@@ -114,7 +116,7 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
   clients.push(client);
   const response = snapshotFixture();
   dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify(associations));
-  function Workbench() { activeStudio = studio.useStudio(); return content ?? h(page.Deploy); }
+  function Workbench() { activeStudio = studio.useStudio(); return content ?? h("div", null, h(page.Deploy), h(activity.GlobalActivity)); }
   const root = router.createRootRoute({ component: () => h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(Workbench) }) });
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
   return ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
@@ -123,12 +125,12 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
 const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => entry.body);
 
 test("unapplied frontend settings block env generation and builds with a source-review explanation", async () => {
-  render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } });
+  const { FrontendRelease } = await import("../src/views/deploy/FrontendRelease");
+  render({}, h(FrontendRelease, { deployment: "my-aws-app", profile: "dev", region: context.region }));
   ui.fireEvent.click(await ui.screen.findByText("Client environment & frontend release", { exact: true }));
   ui.fireEvent.click(await ui.screen.findByText("Frontend project and publication settings", { exact: true }));
   const build = () => ui.screen.getByRole("button", { name: "Build & review release" }) as HTMLButtonElement;
   const generate = () => ui.screen.getByRole("button", { name: "Generate / refresh client env" }) as HTMLButtonElement;
-  // Destination resolution deliberately remounts this panel to clear old approvals.
   await ui.waitFor(() => assert.equal(build().disabled, false));
   ui.fireEvent.change(ui.screen.getByLabelText("Bucket prefix (blank or ending in /)"), { target: { value: "unapplied/" } });
   assert.equal(build().disabled, true); assert.equal(generate().disabled, true);
@@ -155,6 +157,8 @@ test("machine issues keep their explicit remedies beside the checks summary", as
   assert.equal(operations().length, 0, "reading tool checks starts no operation");
   ui.fireEvent.click(ui.within(issues).getByRole("button", { name: "Start" }));
   await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "docker-start", params: {} }));
+  assert.equal(ui.within(ui.screen.getByRole("region", { name: "Activity" }))
+    .getByRole("button", { name: /^Activity/ }).getAttribute("aria-expanded"), "true");
 });
 
 test("the empty profile state discovers a newly configured profile in the background", async () => {
@@ -197,6 +201,10 @@ test("an absent development deployment omits the removed panels and planning ent
   assert.equal(ui.screen.queryByRole("navigation", { name: "Deployments" }), null);
   assert.equal(ui.screen.queryByRole("region", { name: "Repository" }), null);
   assert.equal(ui.screen.queryByRole("region", { name: "AWS" }), null);
+  assert.equal(ui.screen.queryByRole("region", { name: "This machine" }), null);
+  assert.equal(ui.screen.queryByText("Client environment & frontend release"), null);
+  assert.equal(ui.screen.queryByText("Stateful retention and retained-resource references"), null);
+  assert.equal(requested.some(path => path.startsWith("/frontend-release/")), false);
   assert.equal(ui.screen.queryByRole("button", { name: /Compare AWS templates/ }), null);
   assert.equal(ui.screen.queryByLabelText("More actions"), null);
   assert.equal(ui.screen.queryByText("Default development stage"), null);

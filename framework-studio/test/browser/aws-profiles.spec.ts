@@ -87,7 +87,7 @@ for (const width of [1440, 320])
       ),
     ).toEqual([]);
     expect(
-      studio.requests.some((request) => /deploy\/(discover|status|overview)/.test(request.path)),
+      studio.requests.some((request) => /deploy\/(discover|status)/.test(request.path)),
     ).toBe(false);
   });
 

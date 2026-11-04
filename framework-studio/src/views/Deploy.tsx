@@ -21,16 +21,14 @@ import type {
 import { deploymentFindings, nextAction, type Action } from "../../shared/deploy-findings";
 import { ApiError } from "../http";
 import { deployApi } from "../deploy/api";
-import { useDeployLive } from "../deploy/live";
+import { useDeployEvents } from "../deploy/live";
+import { openActivity } from "../activity";
 import { AccountBar } from "./deploy/AccountBar";
-import { Activity } from "./deploy/Activity";
 import { Detail } from "./deploy/Detail";
 import { PlanReview } from "./deploy/PlanReview";
 import type { RailRow } from "./deploy/Rail";
-import { ServiceLogs, Teardown } from "./deploy/Teardown";
+import { Teardown } from "./deploy/Teardown";
 import { KeepDeployedName } from "./deploy/KeepDeployedName";
-import { FrontendRelease } from "./deploy/FrontendRelease";
-import { LifecycleDisclosure } from "./DataRetention";
 import { useStudio } from "../studio";
 import { openAwsProfileConfiguration } from "../aws-profile-queries";
 
@@ -62,18 +60,15 @@ export function Deploy() {
   const currentConnection = useRef(connectionKey);
   currentConnection.current = connectionKey;
   const queryClient = useQueryClient();
-  const overviewQuery = useQuery({ ...deploymentOverviewQuery(), refetchInterval: 30_000 });
+  const overviewQuery = useQuery({ ...deploymentOverviewQuery(), staleTime: 30_000 });
   const overview = overviewQuery.data;
   const refreshInFlight = useRef(false);
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [activityJob, setActivityJob] = useState<string>();
   const [reviewKey, setReviewKey] = useState<string>();
   const [teardown, setTeardown] = useState<{
     deployment: string;
     mode: "dev" | "prod";
     region?: string;
   }>();
-  const [serviceLogs, setServiceLogs] = useState<string>();
   const [keepName, setKeepName] = useState<{ stage: string; mode: "dev" | "prod"; deployAs: string }>();
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "refuse" | "info" }[]>([]);
   const [liveEvents, setLiveEvents] = useState<Record<string, StackEventView[]>>({});
@@ -191,7 +186,7 @@ export function Deploy() {
     enabled: Boolean(row && selectedContext),
   });
 
-  useDeployLive({
+  useDeployEvents({
     onConnectionChange: () => {
       setReviewKey(undefined);
       setTeardown(undefined);
@@ -249,8 +244,7 @@ export function Deploy() {
         const job = await deployApi.operate(kind, params);
         startedHere.current.add(job.id);
         startedConnections.current.set(job.id, capturedConnection);
-        setActivityJob(job.id);
-        setActivityOpen(true);
+        openActivity(job.id);
         // The live stream may already have reported this job further along: keep that.
         queryClient.setQueryData(
           deploymentOverviewQuery().queryKey,
@@ -448,7 +442,7 @@ export function Deploy() {
   ) : null;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] vp-900:h-auto">
+    <div className="h-full min-h-0 vp-900:h-auto">
       <div className="min-h-0 min-w-0 overflow-auto">
         {overview.profiles.length === 0 ? (
           <DeployState title="No AWS profiles on this machine" machine={machine}>
@@ -473,36 +467,11 @@ export function Deploy() {
                 connectionMissing={!profile}
                 onChooseConnection={openAwsProfileConfiguration}
                 next={next}
-                local={overview.local}
                 events={events}
                 drift={driftQuery.data}
                 onAction={act}
-                onServiceLogs={setServiceLogs}
                 machine={machine}
                 notice={readFeedback}
-                frontend={
-                  <>
-                    <FrontendRelease
-                      key={[row.name, connectionKey, selectedRegion ?? selectedContext?.region].join("|")}
-                      deployment={row.name}
-                      profile={profile}
-                      region={selectedRegion ?? selectedContext?.region}
-                    />
-                    {row.target &&
-                    row.mode &&
-                    profile &&
-                    (selectedRegion ?? selectedContext?.region) ? (
-                      <LifecycleDisclosure
-                        selection={{
-                          deployment: row.name,
-                          mode: row.mode,
-                          profile,
-                          region: (selectedRegion ?? selectedContext?.region)!,
-                        }}
-                      />
-                    ) : null}
-                  </>
-                }
               />
             ) : (
               <DeployState title="Deploy & Run" machine={machine}>
@@ -515,18 +484,6 @@ export function Deploy() {
           </>
         )}
       </div>
-      <Activity
-        jobs={jobs}
-        selected={activityJob}
-        onSelect={setActivityJob}
-        open={activityOpen}
-        onToggle={() => setActivityOpen(!activityOpen)}
-        onCancel={(id) =>
-          void deployApi
-            .cancel(id)
-            .catch((error) => toast(error instanceof Error ? error.message : String(error)))
-        }
-      />
       {reviewKey ? (
         <PlanReview
           key={reviewKey}
@@ -604,9 +561,6 @@ export function Deploy() {
             });
           }}
         />
-      ) : null}
-      {serviceLogs ? (
-        <ServiceLogs service={serviceLogs} onClose={() => setServiceLogs(undefined)} />
       ) : null}
       <div
         className="fixed bottom-4 left-4 z-30 grid max-w-[min(460px,calc(100vw-32px))] gap-2"
