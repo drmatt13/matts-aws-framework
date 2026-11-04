@@ -71,13 +71,17 @@ unconfigured setup action; it becomes selectable for operations only after confi
 Closing the modal returns focus to the navbar chevron.
 
 Operational workspaces consume the active declaration mode's profile association and retain
-explicit deployment/region controls and approvals. In Deploy, selecting a target also accepts
-its declared Development/Production mode through the unsaved-source guard; changing Source
-mode selects a matching target. Entry honors the current mode and only reuses a saved target
-from that mode. Profile names and legacy per-target profile preferences never choose a mode
-or override its association. The Deploy subnav shows only machine checks and their remedies.
+explicit deployment/region controls and approvals. In Deploy, the global Source selector
+chooses a matching Development/Production target through the unsaved-source guard. Entry honors the current mode and only reuses a saved
+target from that mode; the page has no deployment rail. Profile names and legacy per-target
+profile preferences never choose a mode or override its association. Deploy shows machine
+checks and their remedies inline above the deployment content,
+without a separate subnav bar. The Repository/AWS cards, stage-origin labels, template
+comparison/change-set entry points and stage-creation form are removed from this page;
+the underlying deployment, observation and source-edit services remain available.
+Existing saved-plan reviews, local operations, frontend releases and retention controls remain.
 **This machine · N checks passed** opens a compact, viewport-bounded popover without
-expanding the toolbar; it follows the profile menu's native Escape, outside-click dismissal
+expanding the readiness strip; it follows the profile menu's native Escape, outside-click dismissal
 and focus-return behavior. AWS connection details live in the global chevron. Domains still edits Production intent while the global source selector
 may display Development: its operational connection is explicitly the active association.
 Changing that association or its authentication/configuration invalidates evidence and
@@ -89,7 +93,7 @@ inspection actions. See [AWS connections](../../framework-studio/aws-connections
 | --- | --- | --- |
 | Map | `/` | Isometric declaration graph, search, tag emphasis, connection visibility, camera, resource navigation, creation and Inspector |
 | Database | `/database` | Authored Prisma contract, diagram, validation, migration history and artifact review; separate explicit database target and application controls |
-| Deploy | `/deploy` | Named target discovery, reviewed infrastructure plans and authorized operations, frontend releases, retained resources and local development lifecycle |
+| Deploy | `/deploy` | Active source-mode deployment, machine checks, saved-plan reviews, frontend releases, retained resources and local development lifecycle |
 | GraphQL | `/graphql` | Placeholder for the GraphQL workspace |
 | Authentication | `/cognito` | User pools, identity pools, providers and permissions, each with separate source and deployed evidence |
 | DNS / Domains | `/domains` | Production domain input settings, selected-deployment observations and separately approved domain operations |

@@ -22,33 +22,30 @@ import { deployApi } from "../deploy/api";
 import { useDeployLive } from "../deploy/live";
 import { AccountBar } from "./deploy/AccountBar";
 import { Activity } from "./deploy/Activity";
-import { Detail, type MoreAction } from "./deploy/Detail";
+import { Detail } from "./deploy/Detail";
 import { PlanReview } from "./deploy/PlanReview";
-import { Rail, type RailRow } from "./deploy/Rail";
+import type { RailRow } from "./deploy/Rail";
 import { ServiceLogs, Teardown } from "./deploy/Teardown";
 import { KeepDeployedName } from "./deploy/KeepDeployedName";
-import { DeploymentIdentities, FrontendRelease } from "./deploy/FrontendRelease";
+import { FrontendRelease } from "./deploy/FrontendRelease";
 import { LifecycleDisclosure } from "./DataRetention";
 import { useStudio } from "../studio";
 import { openAwsProfileConfiguration } from "../aws-profile-queries";
-import type { Mode } from "../../shared/model";
 
 /**
- * Deploy & Run: what this repository intends, what the chosen account holds,
- * and what this machine runs, side by side, with the next step offered.
+ * Deploy & Run follows the global source mode and its associated AWS profile.
  *
  * Every read goes through the repository's own deploy:status; every change is
  * an operation the studio server runs as a job, whose progress streams below.
  */
 export function Deploy() {
-  const { awsProfile: profile, mode: declarationMode, setMode, live } = useStudio();
+  const { awsProfile: profile, mode: declarationMode, live } = useStudio();
   const connectionKey = `${declarationMode}|${profile ?? ""}|${live.awsConnectionRevision}`;
   const currentConnection = useRef(connectionKey);
   currentConnection.current = connectionKey;
   const queryClient = useQueryClient();
   const overviewQuery = useQuery({ ...deploymentOverviewQuery(), refetchInterval: 30_000 });
   const overview = overviewQuery.data;
-  const [selected, setSelected] = useState<Partial<Record<Mode, string>>>({});
   const refreshInFlight = useRef(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityJob, setActivityJob] = useState<string>();
@@ -73,19 +70,6 @@ export function Deploy() {
     setTimeout(() => setToasts((current) => current.filter((entry) => entry.id !== id)), 7000);
   }, []);
 
-  const select = (name: string, mode?: Mode) => {
-    const targetMode = mode ?? overview?.targets.find(target => target.name === name)?.mode
-      ?? rows.find(entry => entry.name === name)?.mode;
-    if (!targetMode) return;
-    setMode(targetMode, () => {
-      setSelected(current => ({ ...current, [targetMode]: name }));
-      setReviewKey(undefined);
-      setTeardown(undefined);
-      afterSuccess.current.clear();
-      void deployApi.preferences({ deployment: name }).catch(() => {});
-    });
-  };
-
   useEffect(() => {
     setReviewKey(undefined);
     setTeardown(undefined);
@@ -108,7 +92,7 @@ export function Deploy() {
   // page shows whichever answers first.
   const preferredTarget = overview?.targets.find(target =>
     target.name === overview.preferences.deployment && target.mode === declarationMode);
-  const selectedName = selected[declarationMode] ?? preferredTarget?.name
+  const selectedName = preferredTarget?.name
     ?? overview?.targets.find(target => target.mode === declarationMode)?.name;
   // A target pinned to a region is read from that region, as deploying it would use.
   const selectedRegion = overview?.targets.find((target) => target.name === selectedName)?.region;
@@ -326,7 +310,11 @@ export function Deploy() {
       jobs,
     ],
   );
-  const next = nextAction(findings);
+  const visibleFindings = findings.map(finding => ({
+    ...finding,
+    actions: finding.actions.filter(action => action.id !== "deploy" && action.id !== "plan"),
+  }));
+  const next = nextAction(visibleFindings);
 
   const act = (action: Action) => {
     if (!row || !profile) return;
@@ -378,18 +366,6 @@ export function Deploy() {
         if (row.target?.stage && action.deployAs) setKeepName({ stage: row.target.stage, mode: row.mode, deployAs: action.deployAs });
         break;
     }
-  };
-
-  const more = (action: MoreAction) => {
-    if (!row || !profile) return;
-    if (action === "plan")
-      void operate("deploy-plan", { deployment: row.name, profile, review: "template" });
-    if (action === "change-sets")
-      void operate("deploy-plan", { deployment: row.name, profile, review: "change-set" });
-    if (action === "export") void operate("export", { deployment: row.name, profile });
-    if (action === "drift") void operate("drift", { deployment: row.name, profile });
-    if (action === "delete")
-      setTeardown({ deployment: row.name, mode: row.mode, region: row.target?.region });
   };
 
   const remedy = (request: OperationRequest) => void operate(request.kind, { ...request.params });
@@ -465,25 +441,14 @@ export function Deploy() {
           </p>
         </div>
       ) : (
-        <div className="grid min-h-0 grid-cols-[280px_minmax(0,1fr)] vp-900:grid-cols-1">
-          <Rail
-            rows={rows}
-            unrecognized={discovery?.unrecognized ?? []}
-            selected={row?.name}
-            onSelect={select}
-            known={Boolean(discovery)}
-            local={overview.local}
-            targetsProblem={overview.targetsProblem}
-          />
+        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)]">
           {row ? (
             <Detail
               row={row}
               context={selectedContext}
-              problem={problem}
               status={status}
-              statusLoading={statusQuery.isFetching}
               record={discovery?.records[row.name]}
-              findings={findings}
+              findings={visibleFindings}
               awsKnown={awsKnown}
               connectionMissing={!profile}
               onChooseConnection={openAwsProfileConfiguration}
@@ -491,17 +456,10 @@ export function Deploy() {
               local={overview.local}
               events={events}
               drift={driftQuery.data}
-              busy={Boolean(runningFor(row.name))}
               onAction={act}
-              onMore={more}
               onServiceLogs={setServiceLogs}
               frontend={
                 <>
-                  <DeploymentIdentities
-                    account={selectedContext?.account}
-                    region={selectedRegion ?? selectedContext?.region}
-                    onCreated={select}
-                  />
                   <FrontendRelease
                     key={[row.name, connectionKey, selectedRegion ?? selectedContext?.region].join("|")}
                     deployment={row.name}

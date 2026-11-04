@@ -158,7 +158,7 @@
   --shadow-compose-glow: 0 0 14px #3b9bff47;
   --animate-deploy-pulse: deploy-pulse 1.4s ease-in-out infinite;
   --animate-ws-pulse: ws-pulse 1.6s ease-in-out infinite;
-  /* Docker Compose switch (views/map/ComposePreview.tsx). State changes are
+  /* Local runtime switch (views/map/ComposePreview.tsx). State changes are
    * transitions there; these are only its idle loops and one-shot accents. */
   --animate-compose-bob: compose-bob 4.2s ease-in-out 1s infinite;
   --animate-compose-drift: compose-drift 2.6s linear infinite;
@@ -191,7 +191,7 @@
   @keyframes ws-pulse { 50% { opacity: 0.5; } }
 }
 
-/* Registered so the Docker Compose switch's border light can rotate its conic gradient. */
+/* Registered so the Local runtime switch's border light can rotate its conic gradient. */
 @property --compose-sweep {
   syntax: "<angle>";
   inherits: false;

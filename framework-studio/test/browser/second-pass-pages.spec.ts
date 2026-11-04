@@ -248,7 +248,7 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     expect(studio.requests.filter(request => /apply$/.test(request.path))).toHaveLength(0);
   });
 
-  test("Deploy expanded publication settings, stage review, actions and deletion review remain bounded", async ({ page, studio }, info) => {
+  test("Deploy expanded publication settings, service logs and activity remain bounded", async ({ page, studio }, info) => {
     const observed = { ...discovery(), deployments: [deployment], targets: discovery().targets.map(target => ({ ...target, status: target.name === "browser-dev" ? "deployed" as const : target.status })) };
     studio.reply("GET", "/api/deploy/discover", route => route.fulfill({ json: { ok: true, value: observed } }));
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: expandedOverview() }));
@@ -258,7 +258,6 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     studio.reply("GET", "/api/deploy/jobs/fixture-completed-job/log", route => route.fulfill({ json: { job: expandedOverview().jobs[0], lines: [{ seq: 1, at: context.observedAt, stream: "info", text: "Fixture template comparison finished without mutations." }] } }));
     studio.reply("POST", "/api/frontend-release/build", route => route.fulfill({ json: frontendReview }));
     studio.reply("POST", "/api/frontend-release/settings/review", route => route.fulfill({ json: { id: "fixture-settings-review", file: "framework-config/frontend-release.json", before: "{}", after: JSON.stringify({ buildScript: "fixture-build" }, null, 2) } }));
-    studio.reply("POST", "/api/frontend-release/identities/review", route => route.fulfill({ json: { id: "fixture-stage-review", stage: "staging", mode: "prod", name: "studio-fixture-staging", warnings: ["Existing stages keep their names."], changes: [{ file: "cdk-app/cdk.json", before: "{}", after: '{"framework:targets":{"staging":{"mode":"prod","account":"111122223333"}}}' }] } }));
     await studio.goto("/deploy");
     await expect(page.getByRole("heading", { name: /browser-dev/ }).first()).toBeVisible();
     await expandAll(page);
@@ -267,15 +266,6 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     await expect(logs).toBeVisible();
     await capture(page, info, "deploy-local-service-logs");
     await logs.getByRole("button", { name: "Close", exact: true }).click();
-    await capture(page, info, "deploy-expanded-stages", page.getByText("Add a deployment stage", { exact: true }));
-    const stages = page.locator("details").filter({ has: page.locator("summary", { hasText: /^Add a deployment stage$/ }) }).first();
-    await stages.getByRole("textbox", { name: "Stage", exact: true }).fill("staging");
-    await stages.getByRole("combobox", { name: "Mode", exact: true }).selectOption("prod");
-    await stages.getByRole("textbox", { name: "Account", exact: true }).fill("111122223333");
-    await expect(stages).toContainText("Deploys as studio-fixture-staging.");
-    await stages.getByRole("button", { name: "Review new stage", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Deployment stage source review" })).toBeVisible();
-    await capture(page, info, "deploy-new-stage-review", page.getByRole("region", { name: "Deployment stage source review" }));
     await page.getByRole("button", { name: "Build & review release", exact: true }).click();
     await expect(page.getByRole("region", { name: "Frontend publication review", exact: true })).toBeVisible();
     await expandAll(page);
@@ -286,24 +276,6 @@ for (const width of [1440, 390]) test.describe(`expanded pages ${width}px`, () =
     await page.getByLabel("Build script", { exact: true }).fill("fixture-build");
     await page.getByRole("button", { name: "Review settings source", exact: true }).click();
     await capture(page, info, "deploy-frontend-settings-source", page.getByRole("region", { name: "Frontend settings source review", exact: true }));
-    const more = page.locator('summary[aria-label="More actions"]');
-    await more.click();
-    await capture(page, info, "deploy-more-actions");
-    await more.press("ArrowDown");
-    await page.keyboard.press("End");
-    await expect(page.getByRole("menuitem", { name: "Delete deployment…", exact: true })).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(more).toBeFocused();
-    await more.click();
-    await page.getByRole("menuitem", { name: "Delete deployment…", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: /^Delete browser-dev/ });
-    await expect(dialog).toBeVisible();
-    await expandAll(page, dialog);
-    await dialog.getByRole("textbox", { name: "Type browser-dev to delete it", exact: true }).fill("browser-dev");
-    await expect(dialog.getByRole("button", { name: "Delete browser-dev", exact: true })).toBeEnabled();
-    await primaryFooter(page, dialog.getByRole("button", { name: "Delete browser-dev", exact: true }));
-    await capture(page, info, "deploy-deletion-review");
-    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("button", { name: /^Activity/ }).click();
     await expect(page.getByLabel("Log", { exact: true })).toContainText("Fixture template comparison");
     await capture(page, info, "deploy-activity-log");

@@ -30,9 +30,8 @@ test("a production stage deployed under another name offers to keep that name, t
   });
 
   await studio.goto("/deploy");
-  const prod = page.getByRole("navigation", { name: "Deployments", exact: true }).getByRole("button", { name: /^browser-prod/ });
-  await prod.click();
-  await expect(prod).toContainText("Deployed as first-name-prod");
+  await page.getByRole("group", { name: "Source environment", exact: true }).getByRole("button", { name: "Production", exact: true }).click();
+  await expect(page.getByText("Deployed as first-name-prod", { exact: true })).toBeVisible();
   await expect(page.getByText("This app's prod stage is already deployed here under that name", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Compare AWS templates", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Keep deploying to first-name-prod", exact: true }).first().click();

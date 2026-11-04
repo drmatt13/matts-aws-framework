@@ -108,7 +108,6 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
   answers = { "/deploy/plans": [], "/deploy/drift": null,
     "/frontend-release/settings": { settings: DEFAULT_FRONTEND_RELEASE, hash: "settings-review-hash" },
     "/frontend-release/history": [],
-    "/frontend-release/identities": { hash: "target-review-hash", authority: "Names are source-owned deployment selections.", targets: overview().targets },
     ...scripted };
   if (Array.isArray(answers["/deploy/plans"])) answers["/deploy/plans"] = (answers["/deploy/plans"] as PlanSummaryView[]).map((plan) => ({ account: context.account, region: context.region, ...plan }));
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -192,13 +191,18 @@ test("a failed refresh keeps deployment evidence visible, reports the error and 
   assert.equal(operations().length, 0);
 });
 
-test("an absent development deployment prepares a review without automatic application", async () => {
+test("an absent development deployment omits the removed panels and planning entry points", async () => {
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } });
-  const primary = await ui.screen.findByRole("button", { name: "Compare AWS templates" }, { timeout: 3000 });
   assert.ok(await ui.screen.findByText("Not deployed here"));
-  ui.fireEvent.click(primary);
-  await ui.waitFor(() => assert.equal(operations().length, 1));
-  assert.deepEqual(operations()[0], { kind: "deploy-plan", params: { deployment: "my-aws-app", profile: "dev", review: "template" } });
+  assert.equal(ui.screen.queryByRole("navigation", { name: "Deployments" }), null);
+  assert.equal(ui.screen.queryByRole("region", { name: "Repository" }), null);
+  assert.equal(ui.screen.queryByRole("region", { name: "AWS" }), null);
+  assert.equal(ui.screen.queryByRole("button", { name: /Compare AWS templates/ }), null);
+  assert.equal(ui.screen.queryByLabelText("More actions"), null);
+  assert.equal(ui.screen.queryByText("Default development stage"), null);
+  assert.equal(ui.screen.queryByText("Add a deployment stage"), null);
+  assert.equal(requested.some(path => path.startsWith("/frontend-release/identities")), false);
+  assert.equal(operations().length, 0);
 });
 
 test("an expired session opens connection management without starting a raw-output login job", async () => {
@@ -228,8 +232,8 @@ test("a production plan is applied only with its name typed", async () => {
     "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app-prod" } },
     "/deploy/plans": [waiting], [`/deploy/plans/${waiting.key}`]: plan,
   });
-  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
-  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  ui.act(() => activeStudio.setMode("prod"));
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }, { timeout: 3000 }));
   const apply = await ui.screen.findByRole("button", { name: `Apply to ${context.account}` });
   assert.equal((apply as HTMLButtonElement).disabled, true, "no name, no apply");
@@ -257,10 +261,10 @@ test("deleting shows what AWS holds and what stays, and needs the typed name", a
   };
   render({
     "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery([deployed("my-aws-app", "dev")]) },
-    "/deploy/status": { ok: true, value: { ...discovery([deployed("my-aws-app", "dev")]), deployment: "my-aws-app", detail: { ...deployed("my-aws-app", "dev"), events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } } },
+    "/deploy/status": { ok: true, value: { ...discovery([deployed("my-aws-app", "dev")]), deployment: "my-aws-app", detail: { ...deployed("my-aws-app", "dev"), state: { kind: "failed", deployable: false, stacks: [{ ...stack("my-aws-app-CognitoStack", "my-aws-app", "dev"), status: "UPDATE_ROLLBACK_FAILED", health: "failed" }] }, events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } } },
     "/deploy/teardown": { ok: true, value: teardown },
   });
-  ui.fireEvent.click(await ui.screen.findByRole("menuitem", { name: "Delete deployment…" }, { timeout: 3000 }));
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Delete…" }, { timeout: 3000 }));
   assert.ok(await ui.screen.findByText("Kept after deletion"));
   assert.ok(ui.screen.getByText("Pool"));
   const remove = ui.screen.getByRole("button", { name: "Delete my-aws-app" });
@@ -282,19 +286,18 @@ test("a plan job finishing while another plan is under review does not replace i
     "/deploy/overview": overview({ preferences: { profiles: {}, profile: "dev", deployment: "my-aws-app-prod" } }),
     "/deploy/discover": { ok: true, value: discovery([deployed("my-aws-app-prod", "prod")]) },
     "/deploy/status": { ok: true, value: { ...discovery([deployed("my-aws-app-prod", "prod")]), deployment: "my-aws-app-prod" } },
-    "/deploy/plans": [reviewed],
+    "/deploy/plans": [reviewed, { ...reviewed, key: "my-aws-app-prod-replan", status: "blocked" }],
+    "/deploy/plans/my-aws-app-prod-replan": { ...plan("my-aws-app-prod-replan", "OtherStack"), result: { status: "failed", deferred: [], verification: { verified: false, stacks: [] } } },
     [`/deploy/plans/${reviewed.key}`]: plan(reviewed.key, "CognitoStack"),
     "/deploy/plans/my-aws-app-prod-xxxxxx": plan("my-aws-app-prod-xxxxxx", "RdsStack"),
   });
-  // A second plan is started from this page; then the waiting one is opened for review.
-  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
-  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
-  const planItem = await ui.screen.findByRole("menuitem", { name: "Compare AWS templates (read-only)…" }, { timeout: 3000 });
-  await ui.waitFor(() => assert.equal((planItem as HTMLButtonElement).disabled, false), { timeout: 3000 });
-  ui.fireEvent.click(planItem);
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  ui.act(() => activeStudio.setMode("prod"));
+  ui.fireEvent.click((await ui.screen.findAllByRole("button", { name: "Review plan" }))[1]!);
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Plan current source" }));
   await ui.waitFor(() => assert.equal(operations().length, 1));
   const started = `job-${posted.findIndex((entry) => entry.path === "/deploy/operations") + 1}`;
-  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
+  ui.fireEvent.click(ui.screen.getAllByRole("button", { name: "Review plan" })[0]!);
   const review = () => ui.within(document.querySelector('dialog[data-ui="plan-review"]') as HTMLElement);
   await ui.waitFor(() => assert.ok(review().queryByText("CognitoStack")));
   // The second plan finishes while the first is under review.
@@ -327,12 +330,9 @@ test("named staging remains a production-mode destination with its own resolved 
     "/deploy/discover": { ok: true, value: discovery() },
     "/deploy/status": { ok: true, value: { ...discovery(), context: west, deployment: staging.name, targets: targets.map(target => ({ ...target, status: "absent" })) } },
   });
-  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
-  for (const target of targets) assert.ok(ui.within(rail).getByTitle(target.name).closest("button"));
-  const selected = ui.within(rail).getByTitle(staging.name).closest("button")!;
-  ui.fireEvent.click(selected);
-  await ui.waitFor(() => assert.equal(selected.getAttribute("aria-current"), "true"));
-  assert.ok(selected.textContent?.includes("Prod"));
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  ui.act(() => activeStudio.setMode("prod"));
+  await ui.screen.findByRole("heading", { name: /my-aws-app-staging Prod/ });
   const header = document.getElementById("deployment-heading")!.parentElement!;
   await ui.waitFor(() => assert.ok(header.textContent?.includes(staging.region)));
   assert.equal(header.textContent?.includes(context.region), false, "profile defaults are not presented as the selected deployment region");
@@ -342,28 +342,6 @@ test("named staging remains a production-mode destination with its own resolved 
   assert.equal(operations().length, 0);
 });
 
-test("the deployment actions menu supports arrow navigation, Escape and outside dismissal", async () => {
-  const value = { ...discovery([deployed("my-aws-app", "dev")]), deployment: "my-aws-app", detail: { ...deployed("my-aws-app", "dev"), events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } };
-  render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: value }, "/deploy/status": { ok: true, value } });
-  const first = await ui.screen.findByRole("menuitem", { name: "Compare AWS templates (read-only)…" });
-  await ui.waitFor(() => assert.equal((first as HTMLButtonElement).disabled, false));
-  const trigger = ui.screen.getByLabelText("More actions");
-  trigger.focus();
-  ui.fireEvent.keyDown(trigger, { key: "ArrowDown" });
-  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "true"));
-  assert.equal(document.activeElement, first);
-  ui.fireEvent.keyDown(first, { key: "End" });
-  assert.equal(document.activeElement, ui.screen.getByRole("menuitem", { name: "Delete deployment…" }));
-  ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "false"));
-  assert.equal(document.activeElement, trigger);
-  ui.fireEvent.keyDown(trigger, { key: "ArrowDown" });
-  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "true"));
-  ui.fireEvent.pointerDown(document.body);
-  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "false"));
-  assert.equal(operations().length, 0, "menu navigation never starts an operation");
-});
-
 test("a failed plan read offers retry without keeping its loading message", async () => {
   const waiting: PlanSummaryView = { key: "my-aws-app-prod-abc123", deployment: "my-aws-app-prod", mode: "prod", status: "ready", createdAt: "2026-10-17T12:00:00Z", expired: false };
   render({
@@ -371,8 +349,8 @@ test("a failed plan read offers retry without keeping its loading message", asyn
     "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app-prod" } },
     "/deploy/plans": [waiting],
   });
-  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
-  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  ui.act(() => activeStudio.setMode("prod"));
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
   assert.ok(await ui.screen.findByRole("alert"));
   assert.equal(ui.screen.queryByText("Reading the plan…"), null);
@@ -425,15 +403,14 @@ test("incomplete security analysis stays inside review and cannot be applied", a
   assert.equal(operations().length, 0);
 });
 
-test("switching targets follows declaration mode and its association without restoring legacy profiles", async () => {
+test("global mode switches the deployment and its association without restoring legacy profiles", async () => {
   render({
     "/deploy/overview": overview({ preferences: { deployment: "my-aws-app", profile: "legacy", profiles: { "my-aws-app-prod": "legacy-production" } } }),
     "/deploy/discover": { ok: true, value: discovery() },
     "/deploy/status": (url: URL) => ({ ok: true, value: { ...discovery(), deployment: url.searchParams.get("deployment") } }),
   });
   await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
-  const rail = ui.screen.getByRole("navigation", { name: "Deployments" });
-  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
+  ui.act(() => activeStudio.setMode("prod"));
   await ui.screen.findByRole("heading", { name: /my-aws-app-prod Prod/ });
   assert.equal(activeStudio.awsProfile, "prod"); assert.equal(activeStudio.mode, "prod");
   await ui.waitFor(() => assert.ok(requested.some(url => url.startsWith("/deploy/status") && url.includes("deployment=my-aws-app-prod") && url.includes("profile=prod"))));
@@ -445,7 +422,7 @@ test("switching targets follows declaration mode and its association without res
 test("a missing global association prevents AWS reads and never adopts a legacy preference", async () => {
   render({ "/deploy/overview": overview() }, undefined, {});
   await ui.screen.findByRole("button", { name: "Choose connection" });
-  assert.ok(ui.within(ui.screen.getByRole("region", { name: "AWS" })).getByText("Not checked."));
+  assert.equal(ui.screen.queryByRole("region", { name: "AWS" }), null);
   assert.equal(activeStudio.awsProfile, undefined);
   assert.equal(requested.some(url => /^\/deploy\/(?:discover|status)/.test(url)), false);
   assert.equal(operations().length, 0);
@@ -458,20 +435,17 @@ test("switching a deployment waits for the existing unsaved-source guard", async
     "/deploy/discover": { ok: true, value: discovery() },
     "/deploy/status": (url: URL) => ({ ok: true, value: { ...discovery(), deployment: url.searchParams.get("deployment") } }),
   });
-  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
-  const prod = ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!;
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
   ui.act(() => activeStudio.draft.setField("lambda:fixture-0", activeStudio.model.fields["lambda:fixture-0"]![0]!, 512));
-  ui.fireEvent.click(prod);
+  ui.act(() => activeStudio.setMode("prod"));
   assert.equal(activeStudio.draftState.pendingNavigation, true);
   assert.equal(activeStudio.mode, "dev");
-  assert.equal(prod.getAttribute("aria-current"), null);
   assert.equal(posted.filter(entry => entry.path === "/deploy/preferences").length, 0);
   ui.act(() => activeStudio.draft.keepEditing());
   assert.equal(activeStudio.mode, "dev");
-  ui.fireEvent.click(prod);
+  ui.act(() => activeStudio.setMode("prod"));
   ui.act(() => activeStudio.draft.discardAndContinue());
-  await ui.waitFor(() => assert.equal(activeStudio.mode, "prod"));
-  await ui.waitFor(() => assert.equal(prod.getAttribute("aria-current"), "true"));
+  await ui.screen.findByRole("heading", { name: /my-aws-app-prod Prod/ });
   assert.equal(activeStudio.awsProfile, "prod");
   assert.equal(operations().length, 0);
 });

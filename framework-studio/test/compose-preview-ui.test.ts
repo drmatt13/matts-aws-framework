@@ -21,7 +21,7 @@ afterEach(() => ui.cleanup());
 
 const mount = (motion: boolean) => {
   ui.render(h(view.ComposePreview, { motion }));
-  return ui.screen.getByRole("switch", { name: "Docker Compose" });
+  return ui.screen.getByRole("switch", { name: "Local runtime" });
 };
 const status = (control: HTMLElement) =>
   [...control.querySelectorAll("[data-slot='compose-status']")].find((item) => item.getAttribute("data-current") === "true")?.textContent;

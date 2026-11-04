@@ -46,7 +46,7 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
         type="button"
         role="switch"
         aria-checked={on}
-        aria-label="Docker Compose"
+        aria-label="Local runtime"
         aria-describedby={descriptionId}
         title="Visual preview only · no containers are started or stopped"
         data-ui="compose-preview"
@@ -217,7 +217,7 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
         </span>
 
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <span className="truncate text-label leading-none font-medium text-map-ink">Docker Compose</span>
+          <span className="truncate text-label leading-none font-medium text-map-ink">Local runtime</span>
           {/* The status rolls up when turning on and back down when turning off. */}
           <span aria-hidden className="grid text-caption leading-none">
             <span

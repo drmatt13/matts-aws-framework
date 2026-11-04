@@ -1,6 +1,5 @@
 import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
-import { iconButtonClasses } from "../../ui/IconButton";
 
 import { StatusDot, statePanelClasses, factsClasses, sectionTitleClasses } from "./DeployUI";
 
@@ -9,13 +8,11 @@ import {
   AlertTriangle,
   ExternalLink,
   Info,
-  MoreHorizontal,
   ScrollText,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import type {
   AccountContext,
-  AwsProblem,
   DeploymentRecordView,
   DriftView,
   LocalRunView,
@@ -24,10 +21,8 @@ import type {
 } from "../../../shared/deploy";
 import type { Action, Finding } from "../../../shared/deploy-findings";
 import { DeploymentBadge } from "../DeploymentBadge";
-import { callerName, eventTone, relativeTime, shortStack, stackTone } from "./format";
+import { callerName, eventTone, relativeTime, shortStack } from "./format";
 import type { RailRow } from "./Rail";
-
-export type MoreAction = "plan" | "change-sets" | "export" | "drift" | "delete";
 
 function Panel(props: {
   readonly title: string;
@@ -84,15 +79,12 @@ function ActionButton(props: {
 }
 
 /**
- * One deployment, as the three states it lives in: what this repository
- * intends, what AWS holds, and what this machine runs — with what to do next.
+ * The active mode's deployment, its findings, and local development status.
  */
 export function Detail(props: {
   readonly row: RailRow;
   readonly context?: AccountContext;
-  readonly problem?: AwsProblem;
   readonly status?: StatusView;
-  readonly statusLoading: boolean;
   readonly record?: DeploymentRecordView;
   readonly findings: readonly Finding[];
   /** Whether AWS has answered for this profile yet. */
@@ -103,39 +95,12 @@ export function Detail(props: {
   readonly local?: LocalRunView;
   readonly events: readonly StackEventView[];
   readonly drift?: DriftView | null;
-  readonly busy: boolean;
   readonly onAction: (action: Action) => void;
-  readonly onMore: (action: MoreAction) => void;
   readonly onServiceLogs: (service: string) => void;
   readonly frontend?: ReactNode;
 }) {
   const { row, context, status, record, local } = props;
-  const actions = useRef<HTMLDetailsElement>(null);
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const closeActions = (restoreFocus = false) => {
-    if (!actions.current) return;
-    actions.current.open = false;
-    if (restoreFocus) actions.current.querySelector("summary")?.focus();
-  };
-  useEffect(() => {
-    if (!actionsOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!actions.current?.contains(event.target as Node)) closeActions();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [actionsOpen]);
-  // Once status has answered (from the deployment's own region), it is the authority, even when it found nothing.
   const deployment = status ? status.detail : row.deployment;
-  const exists = Boolean(deployment && deployment.state.kind !== "absent");
-  const origin =
-    row.target?.origin === "declared"
-      ? "Declared in cdk-app/cdk.json"
-      : row.target?.origin === "implicit"
-        ? "Default development stage"
-        : row.target
-          ? "Named target"
-          : "Discovered in this account";
   const contracts = deployment?.contracts.length
     ? deployment.contracts.map((value) => `contract ${value}`).join(" + ")
     : undefined;
@@ -143,17 +108,14 @@ export function Detail(props: {
   return (
     <section
       data-mode={row.mode}
-      className="group/detail grid min-w-0 auto-rows-max gap-5 overflow-auto px-5 pt-5 pb-8 @container vp-900:px-4 vp-900:pt-4"
+      className="group/detail grid min-w-0 auto-rows-max gap-5 overflow-auto px-4 pt-2 pb-8 @container"
       aria-labelledby="deployment-heading"
     >
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="m-0 text-meta tracking-[0.08em] text-graphite uppercase group-data-[mode=dev]/detail:text-[color-mix(in_srgb,var(--dev)_85%,var(--ink))] group-data-[mode=prod]/detail:text-prod">
-            {origin}
-          </p>
           <h1
             id="deployment-heading"
-            className="mt-1 mb-2 flex flex-wrap items-center gap-2 font-condensed text-[28px] font-semibold leading-[1.2] wrap-anywhere"
+            className="mt-0 mb-2 flex flex-wrap items-center gap-2 font-condensed text-[28px] font-semibold leading-[1.2] wrap-anywhere"
           >
             {row.name} <DeploymentBadge kind={row.mode} />
           </h1>
@@ -185,127 +147,10 @@ export function Detail(props: {
             ) : null}
           </p>
         </div>
-        <div className="flex items-center gap-2 vp-480:w-full vp-480:justify-end">
-          {props.next ? (
-            <ActionButton action={props.next} onAction={props.onAction} primary />
-          ) : null}
-          <details
-            ref={actions}
-            className="relative"
-            onToggle={(event) => setActionsOpen(event.currentTarget.open)}
-            onClick={(event) => {
-              if ((event.target as HTMLElement).closest("[role=menuitem]")) closeActions(true);
-            }}
-            onBlur={(event) => {
-              if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node))
-                closeActions();
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && event.currentTarget.open) {
-                event.preventDefault();
-                event.stopPropagation();
-                closeActions(true);
-              }
-              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-              event.preventDefault();
-              event.currentTarget.open = true;
-              const items = [
-                ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-                  "[role=menuitem]:not(:disabled)",
-                ),
-              ];
-              const current = items.indexOf(document.activeElement as HTMLButtonElement);
-              const index =
-                event.key === "Home"
-                  ? 0
-                  : event.key === "End"
-                    ? items.length - 1
-                    : event.key === "ArrowDown"
-                      ? (current + 1) % items.length
-                      : current < 0
-                        ? items.length - 1
-                        : (current - 1 + items.length) % items.length;
-              items[index]?.focus();
-            }}
-          >
-            <summary
-              className={iconButtonClasses({
-                className: "list-none [&::-webkit-details-marker]:hidden",
-              })}
-              aria-label="More actions"
-              aria-haspopup="menu"
-              aria-expanded={actionsOpen}
-            >
-              <MoreHorizontal size={16} aria-hidden />
-            </summary>
-            <div
-              className="absolute top-[calc(100%+4px)] right-0 z-10 grid w-max min-w-[min(250px,calc(100vw-32px))] max-w-[calc(100vw-32px)] rounded-lg border border-rule-strong bg-sheet p-1 shadow-[0_18px_40px_-22px_color-mix(in_srgb,var(--ink)_60%,transparent)]"
-              role="menu"
-            >
-              {row.target ? (
-                <button
-                  className="min-h-8 cursor-pointer rounded-sm border-0 bg-transparent px-3 py-2 text-left wrap-anywhere enabled:hover:bg-wash disabled:cursor-default disabled:opacity-45"
-                  role="menuitem"
-                  onClick={() => props.onMore("plan")}
-                  disabled={props.busy || !context}
-                >
-                  Compare AWS templates (read-only)…
-                </button>
-              ) : null}
-              {row.target ? (
-                <button
-                  className="min-h-8 cursor-pointer rounded-sm border-0 bg-transparent px-3 py-2 text-left wrap-anywhere enabled:hover:bg-wash disabled:cursor-default disabled:opacity-45"
-                  role="menuitem"
-                  onClick={() => props.onMore("change-sets")}
-                  disabled={props.busy || !context}
-                  title="Creates CloudFormation change sets and possibly empty review stacks in AWS; does not execute infrastructure changes."
-                >
-                  Prepare CloudFormation change sets…
-                </button>
-              ) : null}
-              {row.target && row.mode === "dev" && exists ? (
-                <button
-                  className="min-h-8 cursor-pointer rounded-sm border-0 bg-transparent px-3 py-2 text-left wrap-anywhere enabled:hover:bg-wash disabled:cursor-default disabled:opacity-45"
-                  role="menuitem"
-                  onClick={() => props.onMore("export")}
-                  disabled={!context}
-                >
-                  Export settings to this machine
-                </button>
-              ) : null}
-              {exists ? (
-                <button
-                  className="min-h-8 cursor-pointer rounded-sm border-0 bg-transparent px-3 py-2 text-left wrap-anywhere enabled:hover:bg-wash disabled:cursor-default disabled:opacity-45"
-                  role="menuitem"
-                  onClick={() => props.onMore("drift")}
-                  disabled={props.busy || !context}
-                  title="Starts CloudFormation drift detection. It changes no resource."
-                >
-                  Check for drift
-                </button>
-              ) : null}
-              {exists ? (
-                <button
-                  role="menuitem"
-                  className="min-h-8 cursor-pointer rounded-sm border-0 bg-transparent px-3 py-2 text-left wrap-anywhere enabled:hover:bg-wash disabled:cursor-default disabled:opacity-45 mt-1 rounded-t-none border-t border-rule text-refuse"
-                  onClick={() => props.onMore("delete")}
-                  disabled={props.busy || !context}
-                >
-                  Delete deployment…
-                </button>
-              ) : null}
-            </div>
-          </details>
-        </div>
+        {props.next ? (
+          <ActionButton action={props.next} onAction={props.onAction} primary />
+        ) : null}
       </header>
-      {row.target ? (
-        <p className="text-caption text-graphite">
-          Template comparison reads AWS without creating review objects. Preparing CloudFormation
-          change sets creates review objects and possibly empty stacks; new secrets require separate
-          approval. Neither action applies infrastructure.
-        </p>
-      ) : null}
-
       <section className="grid gap-2" aria-label="What needs attention">
         {props.connectionMissing ? (
           <div className="grid justify-items-start gap-2">
@@ -359,120 +204,6 @@ export function Detail(props: {
       </section>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-3">
-        <Panel title="Repository">
-          <dl className={factsClasses}>
-            <dt className="text-graphite">Intent</dt>
-            <dd className="m-0 wrap-anywhere">
-              {row.target
-                ? row.target.origin === "implicit"
-                  ? "framework:app in cdk.json (default dev stage)"
-                  : row.target.stage
-                    ? `framework:targets.${row.target.stage} in cdk.json${row.target.deployAs ? " · deployAs" : ""}`
-                    : "Named on the command line"
-                : "Not declared here (read-only)"}
-            </dd>
-            <dt className="text-graphite">Mode</dt>
-            <dd className="m-0 wrap-anywhere">
-              {row.mode === "prod" ? "Production" : "Development"}
-              <span className="text-graphite"> · fixed when created</span>
-            </dd>
-            {row.target ? (
-              <>
-                <dt className="text-graphite">Inputs</dt>
-                <dd className="m-0 wrap-anywhere">
-                  <code>{row.target.inputs ?? `cdk-app/.env.${row.mode}`}</code>
-                </dd>
-              </>
-            ) : null}
-            {row.target ? (
-              <>
-                <dt className="text-graphite">Account</dt>
-                <dd className="m-0 wrap-anywhere">
-                  {row.target.account ? (
-                    <code>{row.target.account}</code>
-                  ) : (
-                    <span className="text-graphite">the profile's</span>
-                  )}
-                </dd>
-              </>
-            ) : null}
-            {row.target?.region ? (
-              <>
-                <dt className="text-graphite">Region</dt>
-                <dd className="m-0 wrap-anywhere">
-                  <code>{row.target.region}</code>
-                </dd>
-              </>
-            ) : null}
-          </dl>
-        </Panel>
-
-        <Panel title="AWS" tone={props.problem ? "unreadable" : undefined}>
-          {status?.observedAt ? (
-            <p className="m-0 [&+p]:mt-2 text-caption text-graphite">
-              Observed {new Date(status.observedAt).toLocaleString()}
-              {props.statusLoading
-                ? " · refreshing"
-                : Date.now() - Date.parse(status.observedAt) > 90_000
-                  ? " · stale; refresh before relying on this observation"
-                  : ""}
-              . CloudFormation state; application health is separate.
-            </p>
-          ) : null}
-          {status?.unreadable.map((message) => (
-            <p
-              className="m-0 [&+p]:mt-2 border-l-[3px] border-refuse py-0.5 pl-[10px]"
-              key={message}
-            >
-              {message}
-            </p>
-          ))}
-          {props.connectionMissing ? (
-            <p className="m-0 [&+p]:mt-2 text-graphite">Not checked.</p>
-          ) : props.problem ? (
-            <p className="m-0 [&+p]:mt-2 text-graphite">Not readable with this profile.</p>
-          ) : !deployment && props.statusLoading ? (
-            <p className="m-0 [&+p]:mt-2 text-graphite">Reading CloudFormation…</p>
-          ) : !exists ? (
-            <p className="m-0 [&+p]:mt-2 text-graphite">
-              No stacks of {row.name}
-              {context ? ` in ${context.account} · ${context.region}` : ""}.
-            </p>
-          ) : (
-            <>
-              <ul className="m-0 grid list-none gap-1 p-0 text-step-minus1">
-                {deployment!.stacks.map((stack) => (
-                  <li
-                    key={stack.name}
-                    data-tone={stackTone(stack.health)}
-                    className="group/stack grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 py-1"
-                  >
-                    <StatusDot tone={stackTone(stack.health)} />
-                    <span className="wrap-anywhere" title={stack.name}>
-                      {shortStack(stack.name, row.name)}
-                    </span>
-                    <span className="col-start-2 text-meta text-graphite group-data-[tone=bad]/stack:text-refuse group-data-[tone=busy]/stack:text-local">
-                      {stack.status.replaceAll("_", " ").toLowerCase()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {status?.detail?.changeSets.length ? (
-                <p className="m-0 [&+p]:mt-2 text-caption text-graphite">
-                  {status.detail.changeSets.length} pending change set
-                  {status.detail.changeSets.length === 1 ? "" : "s"}:{" "}
-                  {status.detail.changeSets
-                    .map(
-                      (set) =>
-                        `${shortStack(set.stack, row.name)} (${set.ours ? "a framework plan" : set.name})`,
-                    )
-                    .join(", ")}
-                </p>
-              ) : null}
-            </>
-          )}
-        </Panel>
-
         <Panel title="This machine" tone="machine">
           {row.mode === "dev" ? (
             <p className="m-0 [&+p]:mt-2 text-caption text-graphite">

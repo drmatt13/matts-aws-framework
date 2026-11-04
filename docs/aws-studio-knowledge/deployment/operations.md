@@ -23,14 +23,15 @@ Start with the [operational lifecycle](lifecycle.md) for the complete source-to-
 flow and the separate database, identity and frontend effect boundaries. This page owns
 Deploy's jobs, observation and local process supervision.
 
-Deploy's subnav contains machine checks and their local remedies, with no account summary
-or animated refresh button. Machine overview polls every 30 seconds; idle AWS discovery
+Deploy shows machine checks and their local remedies inline above its content. The page
+has no subnav bar, deployment rail, Repository/AWS cards, stage-creation form or direct
+template-comparison/change-set controls; their underlying services remain intact. Machine
+overview polls every 30 seconds; idle AWS discovery
 and target status poll every two minutes, while in-progress jobs retain four-second status
 reads and immediate event updates. Failed background reads keep last-good evidence and
 offer a contextual retry. Profile/configuration-session changes use fresh query scopes and
-invalidate pending reviews; running jobs keep their captured actor. Selecting a deployment
-accepts its declared mode through the unsaved-source guard, and entering Deploy or changing
-Source mode chooses a matching target. It never starts a deployment or restores an older
+invalidate pending reviews; running jobs keep their captured actor. Entering Deploy or
+changing Source mode chooses a matching target through the unsaved-source guard. It never starts a deployment or restores an older
 per-target profile.
 
 `DeployService` in [service.ts](../../../framework-studio/server/deploy/service.ts) coordinates targets/preferences, prerequisites, plans, jobs, cloud observer and local environment state. `buildOperation` in [registry.ts](../../../framework-studio/server/deploy/registry.ts) maps recognized actions to fixed repository commands/argv: plan/apply/discard, export, destroy, drift, local start/stop, dependencies, Docker and AWS login. It is not an arbitrary terminal API.
@@ -50,10 +51,10 @@ Both development and production require explicit plan review before Studio appli
 
 **No CloudWatch application log/metric/trace explorer is implemented in these operational paths.** Lambda log groups exist in CDK and local/job/CloudFormation logs are available; those do not establish a CloudWatch observability product.
 
-[destroy.ts](../../../scripts/destroy.ts) discovers deployment-owned stacks from AWS identity instead of relying on current source, validates account/mode, orders importers before exports, saves a 15-minute deletion review binding account/region/mode, immutable StackIds, policies/templates/imports and retain-failed/protection choices. Required unreadable consequences or external importers block execution. Apply rechecks the scope, uses StackIds, records each phase atomically and requires typed confirmation plus reviewed opt-in to lift termination protection. Managed secrets are retained. Studio's explicit destroy can address discovered deployments beyond repository-declared targets; the rail labels these “not declared here,” with source/deploy controls unavailable and separate deletion recovery. Teardown requires separate environment-specific authorization.
+[destroy.ts](../../../scripts/destroy.ts) discovers deployment-owned stacks from AWS identity instead of relying on current source, validates account/mode, orders importers before exports, saves a 15-minute deletion review binding account/region/mode, immutable StackIds, policies/templates/imports and retain-failed/protection choices. Required unreadable consequences or external importers block execution. Apply rechecks the scope, uses StackIds, records each phase atomically and requires typed confirmation plus reviewed opt-in to lift termination protection. Managed secrets are retained. Studio's destroy service can address discovered deployments beyond repository-declared targets; the current Deploy page follows the active source-mode target and does not expose the former discovery rail or actions menu. Teardown requires separate environment-specific authorization.
 
 Tests: Studio [jobs](../../../framework-studio/test/deploy-jobs.test.ts), [tether](../../../framework-studio/test/deploy-tether.test.ts), [log store](../../../framework-studio/test/deploy-log-store.test.ts), [infrastructure](../../../framework-studio/test/infrastructure.test.ts); CDK [status](../../../cdk-app/test/deployment-status.test.ts), [destroy](../../../cdk-app/test/deployment-destroy.test.ts), [inventory](../../../cdk-app/test/infrastructure-inventory.test.ts). Cloud status, Docker readiness and browser event recovery need their corresponding environments, not just offline verify.
 
-Cloud evidence, plans, drift and events are scoped to the resolved destination. Default-region discovery failures do not hide a readable selected-region target; observations show age and partial failures. Failed/unverified/interrupted/export-failed releases retain their phase/result evidence and expose review/recheck/new-plan or separate export recovery. CloudFormation completion never claims application health.
+Cloud evidence, plans, drift and events are scoped to the resolved destination. Default-region discovery failures do not hide a readable selected-region target; partial failures retain contextual retry feedback. Detailed observation timestamps and stack lists remain in service responses, while the former AWS card is absent from the page. Failed/unverified/interrupted/export-failed releases retain their phase/result evidence and expose review/recheck/new-plan or separate export recovery. CloudFormation completion never claims application health.
 
 Deploy and saved teardown share a per-checkout deployment-name lock. Stale, incomplete or unreadable locks require inspecting their progress and AWS before explicit removal; automatic reclamation could race a new owner. Release checks a unique ownership token. This is not cross-machine coordination.

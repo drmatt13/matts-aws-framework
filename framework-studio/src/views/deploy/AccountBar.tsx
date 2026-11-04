@@ -1,7 +1,6 @@
 import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
-import { workspaceToolbarClasses } from "../../ui/Surface";
 import { AlertTriangle, Check, ChevronDown, CircleDashed, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { OperationRequest, PrerequisiteView } from "../../../shared/deploy";
@@ -43,7 +42,7 @@ export function AccountBar(props: {
     };
   }, [showReady, ready.length, positionPanel]);
   return (
-    <section className={workspaceToolbarClasses} aria-label="Machine readiness">
+    <section className="px-4 py-3 text-label text-ink" aria-label="Machine readiness">
       {props.prerequisites.length ? (
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
           {ready.length ? (
@@ -81,7 +80,7 @@ export function AccountBar(props: {
                     item.status === "fail"
                       ? "text-refuse"
                       : item.status === "warn"
-                        ? "text-[color-mix(in_srgb,var(--local)_75%,var(--ink))]"
+                        ? "text-[color-mix(in_srgb,var(--local)_70%,var(--ink))]"
                         : "text-graphite",
                   )}
                   aria-label={`${item.label}: ${item.summary}`}

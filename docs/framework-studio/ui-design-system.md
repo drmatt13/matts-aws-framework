@@ -135,7 +135,7 @@ attributes, never presentation classes or assertions about utility strings.
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
 | Actions | `Button`, `IconButton` and their recipes; destructive actions use `tone="danger"` |
 | Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors; entity problems through `IssueNotice`, `IssueChips` and `HoverIssues` |
-| Motion | State changes are instant. The one exception is the map's Docker Compose switch (`views/map/ComposePreview.tsx`): interruptible transitions on the `--spring` and `--spring-bounce` curves plus its `compose-*` keyframes in `styles/theme.css`, all off under reduced motion and the map's Motion toggle |
+| Motion | State changes are instant. The one exception is the map's Local runtime switch (`views/map/ComposePreview.tsx`): interruptible transitions on the `--spring` and `--spring-bounce` curves plus its `compose-*` keyframes in `styles/theme.css`, all off under reduced motion and the map's Motion toggle |
 | Density | 4px within a group (label, control, support; identifier and source), 8px action-to-note, 12px heading-to-content, 16px sections; use container gaps rather than stacked paragraph margins |
 
 ## Navigation and workspace rhythm
@@ -161,7 +161,9 @@ Cognito sections and Database workspaces. Native links and buttons retain their 
 behavior. Overflow scrolls within the strip; active items and keyboard focus are revealed
 without moving the surrounding page. Keep each name on one line.
 
-Every route starts immediately below navigation with `WorkspaceToolbar`. It owns
+Workspaces generally start immediately below navigation with `WorkspaceToolbar`; Deploy
+uses inline machine readiness above its content without a separate toolbar surface or rule.
+`WorkspaceToolbar` owns
 `--workspace-gutter` (16px), `--toolbar-padding` (12px vertically), `--toolbar-height`
 (57px minimum including the rule), `--sheet` surface and `--rule` bottom border.
 Controls are 32px tall. Content follows the same horizontal gutter. Additional rows
@@ -171,8 +173,8 @@ in the application entry.
 
 Composition preserves each workspace's purpose. Isometric devotes its area
 to the map, without a redundant page heading. Database leads with its workspace tabs
-and editor controls. Deploy leads with account context, then a target rail and operational
-detail. Cognito and Domains use compact page identity and a shared reading width; Cognito's
+and editor controls. Deploy follows the global Source mode, with inline machine readiness
+and full-width deployment detail. Cognito and Domains use compact page identity and a shared reading width; Cognito's
 section navigation precedes variable inspection evidence so its position remains stable.
 
 Document workspaces (Cognito and Domains) use `pageWidthClasses` for their
@@ -214,8 +216,9 @@ actions. Search counts and reset actions must leave the input editable at every 
 The map footer gives resource/connection counts; tile counts and frame timing belong
 to the existing diagnostics API, not normal application chrome.
 
-Deploy's account toolbar uses the same geometry. Connection summary and refresh remain aligned;
-account, effective region and credential identity are distinct observations. A profile's
+Deploy's inline machine readiness aligns with the content gutters. AWS connection details
+remain in the global Source menu; the deployment heading retains account and effective
+region. A profile's
 default region never overrides a selected target's pinned region. Uninspected deployment
 status says **Unverified**. Related deployment disclosures share one summary target.
 Healthy machine checks collapse into

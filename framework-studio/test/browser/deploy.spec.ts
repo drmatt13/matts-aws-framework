@@ -17,7 +17,7 @@ test.beforeEach(async ({ context, studio }) => {
 });
 
 for (const width of [1440, 320])
-  test(`Deploy shows only machine checks and Docker remediation in its toolbar at ${width}px`, async ({ page, studio }, testInfo) => {
+  test(`Deploy shows only machine checks and Docker remediation above its deployment content at ${width}px`, async ({ page, studio }, testInfo) => {
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: {
       ...overview(), prerequisites: [
         ...Array.from({ length: 5 }, (_, index) => ({ id: `check-${index}`, label: `Tool ${index + 1}`, status: "ok", summary: "Available" })),
@@ -35,8 +35,13 @@ for (const width of [1440, 320])
     await expect(toolbar).not.toContainText("Account");
     await expect(toolbar.getByRole("button", { name: /Refresh|Manage connection/ })).toHaveCount(0);
     const before = await toolbar.boundingBox();
-    const rail = page.getByRole("navigation", { name: "Deployments", exact: true });
-    const railBefore = await rail.boundingBox();
+    const heading = page.getByRole("heading", { name: /^browser-dev/ });
+    const headingBefore = await heading.boundingBox();
+    await expect(page.getByRole("navigation", { name: "Deployments", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Repository", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "AWS", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Add a deployment stage", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Compare AWS templates/ })).toHaveCount(0);
     const popup = page.getByRole("dialog", { name: "This machine", exact: true });
     await passed.focus();
     await page.keyboard.press("Enter");
@@ -44,7 +49,7 @@ for (const width of [1440, 320])
     await expect(passed).toHaveAttribute("aria-expanded", "true");
     await expect(passed).toBeFocused();
     expect(await toolbar.boundingBox()).toEqual(before);
-    expect(await rail.boundingBox()).toEqual(railBefore);
+    expect(await heading.boundingBox()).toEqual(headingBefore);
     const bounds = await popup.boundingBox();
     expect(bounds!.x).toBeGreaterThanOrEqual(12);
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width - 12);
@@ -82,24 +87,19 @@ for (const width of [1440, 320])
     expect(studio.requests.some(request => request.path === "/api/deploy/operations")).toBe(false);
   });
 
-test("deployment target and Source mode follow each other using the accepted mode's profile", async ({ page, studio }) => {
+test("Source mode switches the deployment using the accepted mode's profile", async ({ page, studio }) => {
   await studio.goto("/deploy");
-  const rail = page.getByRole("navigation", { name: "Deployments", exact: true });
-  const dev = rail.getByRole("button", { name: /^browser-dev/ });
-  const prod = rail.getByRole("button", { name: /^browser-prod/ });
   const mode = page.getByRole("group", { name: "Source environment", exact: true });
-  await expect(dev).toHaveAttribute("aria-current", "true");
-  await prod.click();
-  await expect(mode.getByRole("button", { name: "Production", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
+  await expect(page.getByText("Default development stage", { exact: true })).toHaveCount(0);
+  await mode.getByRole("button", { name: "Production", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /^browser-prod/ })).toBeVisible();
+  await expect(page.getByText("Declared in cdk-app/cdk.json", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Production AWS profile: prod-connection", exact: true })).toBeVisible();
-  await expect(prod).toHaveAttribute("aria-current", "true");
   await expect.poll(() => studio.requests.some(request => request.path.includes("/api/deploy/status?") && request.path.includes("deployment=browser-prod") && request.path.includes("profile=prod-connection"))).toBe(true);
   expect(studio.requests.some(request => request.path.includes("deployment=browser-prod") && request.path.includes("profile=dev-connection"))).toBe(false);
-  await dev.click();
-  await expect(mode.getByRole("button", { name: "Development", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(dev).toHaveAttribute("aria-current", "true");
-  await mode.getByRole("button", { name: "Production", exact: true }).click();
-  await expect(prod).toHaveAttribute("aria-current", "true");
+  await mode.getByRole("button", { name: "Development", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
   expect(studio.requests.some(request => request.path === "/api/deploy/operations")).toBe(false);
 });
 
@@ -112,7 +112,7 @@ for (const mode of ["Development", "Production"] as const)
     await studio.goto("/graphql");
     await page.getByRole("group", { name: "Source environment", exact: true }).getByRole("button", { name: mode, exact: true }).click();
     await page.getByRole("navigation", { name: "Views", exact: true }).getByRole("link", { name: "Deploy", exact: true }).click();
-    await expect(page.getByRole("navigation", { name: "Deployments", exact: true }).getByRole("button", { name: new RegExp(`^${expected}`) })).toHaveAttribute("aria-current", "true");
+    await expect(page.getByRole("heading", { name: new RegExp(`^${expected}`) })).toBeVisible();
     expect(studio.requests.some(request => request.path === "/api/deploy/operations")).toBe(false);
   });
 
