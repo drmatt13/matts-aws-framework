@@ -26,6 +26,11 @@ Deploy's jobs, observation and local process supervision.
 Deploy uses a plain document header and the shared content column in loaded, loading and empty/error
 states. It shows machine checks on the right of the deployment heading, with local issues
 and remedies before passed checks. On narrow screens the group wraps below the name. The page
+shows a loading skeleton in the reserved account/region line during the first profile read;
+expired or missing credentials replace
+it with a red **AWS sign-in required** link that opens profile configuration. Login failures
+do not add a separate action button or findings card. Narrow layouts keep machine readiness
+on its own row so target-name length does not change the header height. The page
 has no subnav bar, deployment rail, Repository/AWS cards, stage-creation form or direct
 template-comparison/change-set controls; their underlying services remain intact. Machine
 overview polls every 30 seconds; idle AWS discovery

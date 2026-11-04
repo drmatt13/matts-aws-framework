@@ -205,14 +205,18 @@ test("an absent development deployment omits the removed panels and planning ent
   assert.equal(operations().length, 0);
 });
 
-test("an expired session opens connection management without starting a raw-output login job", async () => {
-  const expired = { ok: false, problem: { kind: "expired", message: "The selected profile's session has expired." } };
+for (const kind of ["expired", "no-credentials"] as const) test(`${kind} credentials use the account line to open connection management without starting a login job`, async () => {
+  const expired = { ok: false, problem: { kind, message: "The selected profile's session has expired." } };
   render({ "/deploy/overview": overview(), "/deploy/discover": expired, "/deploy/status": expired });
-  const buttons = await ui.screen.findAllByRole("button", { name: /Sign in/ }, { timeout: 3000 });
+  const error = await ui.screen.findByRole("button", { name: "AWS sign-in required. Open AWS profile configuration" }, { timeout: 3000 });
+  assert.ok(error.closest('[data-slot="deployment-context"]'));
+  assert.equal(ui.screen.queryByRole("button", { name: "Sign in", exact: true }), null);
+  assert.equal(ui.screen.queryByText("Sign in to dev", { exact: true }), null);
+  assert.equal(ui.screen.queryByText(expired.problem.message, { exact: true }), null);
   let opened = 0; const onOpen = () => { opened++; };
   dom.window.addEventListener("studio:aws-profile-configuration", onOpen);
   try {
-    ui.fireEvent.click(buttons[0]!);
+    ui.fireEvent.click(error);
     assert.equal(opened, 1);
     assert.deepEqual(operations(), []);
   } finally { dom.window.removeEventListener("studio:aws-profile-configuration", onOpen); }

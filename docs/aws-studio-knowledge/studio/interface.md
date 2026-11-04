@@ -82,6 +82,11 @@ there is no separate subnav bar. The Repository/AWS cards, stage-origin labels, 
 comparison/change-set entry points and stage-creation form are removed from this page;
 the underlying deployment, observation and source-edit services remain available.
 Existing saved-plan reviews, local operations, frontend releases and retention controls remain.
+The account/region line shows a caption-sized loading skeleton while the selected profile
+is first read, preserving the same line height. Expired or missing
+credentials replace that line with a red **AWS sign-in required** text action in the same
+type size. Hover/focus reveals its link styling; activation opens the active profile's
+configuration modal. These login failures do not add a Sign in button or a findings banner.
 **This machine · N checks passed** opens a compact, viewport-bounded popover without
 expanding the readiness strip; it follows the profile menu's native Escape, outside-click dismissal
 and focus-return behavior. AWS connection details live in the global chevron. Domains still edits Production intent while the global source selector

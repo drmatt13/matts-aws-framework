@@ -170,6 +170,10 @@ test) share one column; a new page is a document page unless it needs the whole 
 Document pages share header geometry; Deploy uses a plain page header that blends into
 the page, keeping machine readiness beside its deployment heading in the same column.
 It has no toolbar surface or visible bottom rule. Other document pages retain their toolbar surface.
+Deploy reserves the account/region caption line even during reads. Login errors use that
+same caption line as a red text action with an underline on hover/focus, opening AWS profile
+configuration instead of adding a button or error card. On narrow screens, machine readiness
+always occupies its own row so switching declaration modes does not reflow the header.
 `pageToolbarClasses` owns `--toolbar-padding` (12px vertically), `--toolbar-height` (57px
 minimum including the rule), the `--sheet` surface and the `--rule` bottom border.
 `WorkspaceToolbar` adds `--workspace-gutter` (16px) for workbenches. Controls are 32px tall.

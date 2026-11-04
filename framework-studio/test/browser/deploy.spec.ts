@@ -16,6 +16,64 @@ test.beforeEach(async ({ context, studio }) => {
   } } }));
 });
 
+for (const width of [1440, 390])
+  test(`AWS sign-in errors replace account metadata without shifting the header at ${width}px`, async ({ page, studio }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const expired = { ok: false, problem: { kind: "expired", message: "The selected profile's session has expired." } };
+    for (const pathname of ["/api/deploy/discover", "/api/deploy/status"])
+      studio.reply("GET", pathname, async (route, url) => {
+        const profile = url.searchParams.get("profile");
+        if (profile === "prod-connection") { await pending; await route.fulfill({ json: expired }); }
+        else await route.fulfill({ json: { ok: true, value: { ...discovery(), context: { ...discovery().context, profile }, deployment: url.searchParams.get("deployment") } } });
+      });
+    await studio.goto("/deploy");
+    const header = page.locator("main h1").locator("xpath=ancestor::header");
+    const metadata = header.locator('[data-slot="deployment-context"]');
+    const readiness = page.getByRole("region", { name: "Machine readiness", exact: true });
+    await expect(metadata).toContainText("123456789012 · us-east-1");
+    const before = { header: await header.boundingBox(), metadata: await metadata.boundingBox(), readiness: await readiness.boundingBox() };
+    const typography = await metadata.evaluate(element => ({ fontSize: getComputedStyle(element).fontSize, lineHeight: getComputedStyle(element).lineHeight }));
+    const source = page.getByRole("group", { name: "Source environment", exact: true });
+    await source.getByRole("button", { name: "Production", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /^browser-prod/ })).toBeVisible();
+    const skeleton = metadata.getByRole("status", { name: "Loading AWS profile", exact: true });
+    await expect(skeleton).toBeVisible();
+    expect((await skeleton.boundingBox())!.height).toBe(before.metadata!.height);
+    expect((await header.boundingBox())!.height).toBe(before.header!.height);
+    release();
+    const error = metadata.getByRole("button", { name: "AWS sign-in required. Open AWS profile configuration", exact: true });
+    await expect(error).toBeVisible();
+    await expect(skeleton).toHaveCount(0);
+    await expect(error).toHaveCSS("font-size", typography.fontSize);
+    await expect(error).toHaveCSS("line-height", typography.lineHeight);
+    expect((await metadata.boundingBox())!.y).toBe(before.metadata!.y);
+    expect((await metadata.boundingBox())!.height).toBe(before.metadata!.height);
+    expect(await header.boundingBox()).toEqual(before.header);
+    expect(await readiness.boundingBox()).toEqual(before.readiness);
+    await expect(header.getByRole("button", { name: "Sign in", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Sign in to prod-connection", { exact: true })).toHaveCount(0);
+    await expect(page.getByText(expired.problem.message, { exact: true })).toHaveCount(0);
+    await assertAccessible(page);
+    await error.hover();
+    await expect(error).toHaveCSS("text-decoration-line", "underline");
+    await page.screenshot({ path: testInfo.outputPath("inline-aws-sign-in.png"), fullPage: true });
+    await error.focus();
+    await page.keyboard.press("Enter");
+    const configuration = page.getByRole("dialog", { name: "AWS profile configuration", exact: true });
+    await expect(configuration).toBeVisible();
+    await expect(configuration.getByRole("heading", { name: "prod-connection", exact: true })).toBeVisible();
+    await configuration.getByRole("button", { name: "Close AWS profile configuration", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Production AWS profile: prod-connection", exact: true })).toBeFocused();
+    await source.getByRole("button", { name: "Development", exact: true }).click();
+    await expect(metadata).toContainText("123456789012 · us-east-1");
+    await expect(error).toHaveCount(0);
+    expect(await header.boundingBox()).toEqual(before.header);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(studio.requests.filter(request => request.path === "/api/deploy/operations" || /\/aws-connections\/(?:authenticate|check)$/.test(request.path))).toEqual([]);
+  });
+
 for (const width of [1440, 320])
   test(`Deploy aligns machine readiness to the right with Docker remediation first at ${width}px`, async ({ page, studio }, testInfo) => {
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: {

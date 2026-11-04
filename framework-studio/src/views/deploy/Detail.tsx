@@ -102,6 +102,9 @@ export function Detail(props: {
   readonly frontend?: ReactNode;
 }) {
   const { row, context, status, record, local } = props;
+  const authenticationFinding = props.findings.find((finding) => finding.code === "SIGNED_OUT");
+  const findings = props.findings.filter((finding) => finding !== authenticationFinding);
+  const next = authenticationFinding ? undefined : props.next;
   const deployment = status ? status.detail : row.deployment;
   const contracts = deployment?.contracts.length
     ? deployment.contracts.map((value) => `contract ${value}`).join(" + ")
@@ -120,46 +123,66 @@ export function Detail(props: {
           >
             {row.name} <DeploymentBadge kind={row.mode} />
           </h1>
-          {context || contracts || record?.deployedAt || deployment?.lastUpdated ? (
-            <p className={cx(documentSupportClasses, "flex flex-wrap gap-x-4 gap-y-1 wrap-anywhere")}>
-              {context ? (
-                <span>
-                  {deployment?.account ?? context.account} · {deployment?.region ?? context.region}
-                </span>
-              ) : null}
-              {contracts ? <span>{contracts}</span> : null}
-              {record?.deployedAt ? (
-                <span title={record.deployedBy}>
-                  Deployed {relativeTime(record.deployedAt)}
-                  {record.deployedBy ? ` by ${callerName(record.deployedBy)}` : ""}
-                  {record.via ? ` via ${record.via === "studio" ? "Studio" : "the CLI"}` : ""}
-                  {record.revision?.commit ? (
-                    <>
-                      {" "}
-                      from{" "}
-                      <code>
-                        {record.revision.commit.slice(0, 7)}
-                        {record.revision.dirty ? "+" : ""}
-                      </code>
-                    </>
-                  ) : null}
-                </span>
-              ) : deployment?.lastUpdated ? (
-                <span>Updated {relativeTime(deployment.lastUpdated)}</span>
-              ) : null}
-            </p>
-          ) : null}
+          <p
+            className={cx(documentSupportClasses, "flex min-h-[1.5em] min-w-0 flex-wrap gap-x-4 gap-y-1 wrap-anywhere")}
+            data-slot="deployment-context"
+            aria-live="polite"
+          >
+            {authenticationFinding ? (
+              <button
+                type="button"
+                className="max-w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left text-caption leading-[1.5] text-refuse underline-offset-2 hover:underline focus-visible:underline"
+                aria-label="AWS sign-in required. Open AWS profile configuration"
+                title={`${authenticationFinding.title}. ${authenticationFinding.detail ?? "Open AWS profile configuration to reconnect."}`}
+                onClick={props.onChooseConnection}
+              >
+                AWS sign-in required
+              </button>
+            ) : context ? (
+              <span>
+                {deployment?.account ?? context.account} · {deployment?.region ?? context.region}
+              </span>
+            ) : !props.awsKnown && !props.connectionMissing ? (
+              <span
+                role="status"
+                aria-label="Loading AWS profile"
+                className="inline-flex h-[1.5em] w-[24ch] max-w-full items-center"
+              >
+                <span aria-hidden="true" className="h-[1em] w-full rounded-sm bg-rule-strong" />
+              </span>
+            ) : null}
+            {!authenticationFinding && contracts ? <span>{contracts}</span> : null}
+            {!authenticationFinding && record?.deployedAt ? (
+              <span title={record.deployedBy}>
+                Deployed {relativeTime(record.deployedAt)}
+                {record.deployedBy ? ` by ${callerName(record.deployedBy)}` : ""}
+                {record.via ? ` via ${record.via === "studio" ? "Studio" : "the CLI"}` : ""}
+                {record.revision?.commit ? (
+                  <>
+                    {" "}
+                    from{" "}
+                    <code>
+                      {record.revision.commit.slice(0, 7)}
+                      {record.revision.dirty ? "+" : ""}
+                    </code>
+                  </>
+                ) : null}
+              </span>
+            ) : !authenticationFinding && deployment?.lastUpdated ? (
+              <span>Updated {relativeTime(deployment.lastUpdated)}</span>
+            ) : null}
+          </p>
         </div>
-        <div className="ml-auto flex min-h-8 min-w-0 max-w-full flex-wrap items-center justify-end gap-3">
+        <div className="ml-auto flex min-h-8 min-w-0 max-w-full flex-wrap items-center justify-end gap-3 vp-720:w-full">
           {props.machine}
-          {props.next ? (
-            <ActionButton action={props.next} onAction={props.onAction} primary />
+          {next ? (
+            <ActionButton action={next} onAction={props.onAction} primary />
           ) : null}
         </div>
       </PageToolbar>
       <section className={cx(pageBodyClasses, "grid auto-rows-max gap-3 @container")} aria-labelledby="deployment-heading">
         {props.notice}
-        {props.connectionMissing || !props.awsKnown || props.findings.length ? (
+        {props.connectionMissing || !props.awsKnown || findings.length ? (
           <section className="grid gap-2" aria-label="What needs attention">
             {props.connectionMissing ? (
               <Notice tone="neutral" className="grid justify-items-start gap-2">
@@ -171,7 +194,7 @@ export function Detail(props: {
                 Reading what {context?.account ?? "the account"} holds…
               </Notice>
             ) : null}
-            {props.findings.map((finding) => (
+            {findings.map((finding) => (
               <article
                 key={`${finding.code}-${finding.title}`}
                 data-severity={finding.severity}
@@ -197,7 +220,7 @@ export function Detail(props: {
                   {finding.actions
                     .filter(
                       (action) =>
-                        !(props.next && action.id === props.next.id && action.plan === props.next.plan),
+                        !(next && action.id === next.id && action.plan === next.plan),
                     )
                     .map((action) => (
                       <ActionButton
