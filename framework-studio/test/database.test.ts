@@ -6,7 +6,6 @@ import { parseDeclaredSchema, readDeclaredSchema, readLocalDatabases, withLocalD
 import { SnapshotBuilder } from "../server/snapshot";
 import { watchRepository } from "../server/watch";
 import { buildScene } from "../src/scene/build";
-import { layoutBoard } from "../src/layout";
 import { schemaLayout, TABLE_WIDTH } from "../src/schema-layout";
 import type { Snapshot } from "../shared/model";
 
@@ -144,7 +143,6 @@ test("local execution connects to PostgreSQL; production retains its RDS binding
   assert.ok(prod.edges.some((edge) => edge.from === "lambda:graphql-api" && edge.to === "resource:rds.database"));
   assert.ok(!prod.edges.some((edge) => edge.to === "local:postgres"));
   for (const model of [dev, prod]) {
-    assert.ok(layoutBoard(model).nodes.some((node) => node.id === "local:postgres"));
     const scene = buildScene(model);
     assert.equal(scene.nodes.find((node) => node.id === "local:postgres")?.presence, model.mode === "dev" ? "built" : "other");
     assert.equal(scene.islands.some((island) => island.id === "island:local"), false, "the local database has no island of its own");

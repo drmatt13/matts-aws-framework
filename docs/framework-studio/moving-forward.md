@@ -6,7 +6,7 @@ verify a change, the traps already found, its known limits, and where it could g
 ## Where things stand
 
 - Map, Database, Deploy, Cognito, Domains and WebSockets are the six routed workspaces.
-  Board remains unrouted; the shared shell owns source context and selection.
+  The shared shell owns source context and selection.
   Supported authoring uses a draft, validated review and guarded source application.
 - The [knowledge router](../aws-studio-knowledge/README.md) owns current subsystem
   contracts and verification routes. The [declaration guide](declarations-and-tags.md)
@@ -102,7 +102,7 @@ Other root properties remain available in `located.properties` (`defaults`, `res
 4. For an edge, give it a `Relation` and a category.
 5. Add a real-repository assertion to `test/model.test.ts`.
 
-The Inspector and isometric view use edge categories; the unrouted Board also consumes them. New entity kinds
+The Inspector and isometric view use edge categories. New entity kinds
 need a building (see the [isometric view's extension table](isometric-view.md#extending-it)).
 
 ## Verifying a change

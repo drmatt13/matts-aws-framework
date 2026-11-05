@@ -37,8 +37,8 @@ npm run studio -- --print # the whole model as JSON, then exit
 | Agent test (experiment) | `/test` | Installed coding CLI planning, exact diff review and a separately applied edit to one fixed Studio demo message; [experiment guide](local-agent-lab.md) |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
-The Board (`views/Board.tsx`, three columns of routes, workloads and catalog entries) is set
-aside: its source and tests remain, but no route or navigation link opens it.
+The retired Board implementation and its exclusive tests have been removed. Historical
+reports and visual references remain as evidence of that earlier interface.
 
 A Development/Production switch picks which deployment graph Isometric describes.
 Deploy owns its named deployment/profile/account/region selection; Database requires an

@@ -126,16 +126,3 @@ export function DeploymentBadge({ kind }: { readonly kind: DeploymentBadgeKind |
     </span>
   );
 }
-
-export function DeploymentLegend() {
-  return (
-    <span
-      data-ui="deployment-legend"
-      className="inline-flex flex-wrap items-center justify-end gap-2 text-step-minus1 text-graphite"
-    >
-      <span>Unmarked · Dev + Prod</span>
-      <DeploymentBadge kind="dev" />
-      <DeploymentBadge kind="prod" />
-    </span>
-  );
-}

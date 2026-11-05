@@ -56,7 +56,6 @@ export function dopOf(points: readonly { readonly x: number; readonly y: number 
   return { x0, x1, y0, y1, a0, a1, b0, b1 };
 }
 export const shiftDop = (d: Dop, x: number, y: number): Dop => ({ x0: d.x0 + x, x1: d.x1 + x, y0: d.y0 + y, y1: d.y1 + y, a0: d.a0 + x + 2 * y, a1: d.a1 + x + 2 * y, b0: d.b0 + x - 2 * y, b1: d.b1 + x - 2 * y });
-export const dopBounds = (d: Dop): Bounds => ({ minX: d.x0, maxX: d.x1, minY: d.y0, maxY: d.y1 });
 
 /** Ground terrain for footprints measured without it (synthetic fixtures): a square deck. */
 function groundOf(footprint: { readonly size: number; readonly ground?: IslandGround }): IslandGround {

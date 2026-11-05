@@ -54,18 +54,6 @@ export const ROLE_LABEL: Readonly<Record<TargetRole, string>> = {
   workflow: "Workflow",
 };
 
-/** How compute is grouped on the board. */
-export const ROLE_GROUPS: readonly { readonly title: string; readonly roles: readonly TargetRole[] }[] = [
-  { title: "HTTP Lambdas", roles: ["http"] },
-  { title: "WebSocket Lambdas", roles: ["webSocket", "webSocketAuthorizer"] },
-  { title: "Event Lambdas", roles: ["event"] },
-  { title: "Agents", roles: ["agent"] },
-  { title: "Agent tools", roles: ["tool"] },
-  { title: "Container services", roles: ["service"] },
-  { title: "Container tasks", roles: ["task"] },
-  { title: "Workflows", roles: ["workflow"] },
-];
-
 export type EdgeCategory = "routes" | "inputs" | "interactions" | "structure";
 
 export const CATEGORY_LABEL: Readonly<Record<EdgeCategory, string>> = {

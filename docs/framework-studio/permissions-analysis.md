@@ -366,7 +366,7 @@ native grant behavior during this presentation work.
    Add omissions such as WebSocket management and callback-worker facts.
    Focused fixtures: database writer/direct/readers/local, ARN versus ordinary
    reference, startup versus runtime secret, workflow and AgentCore auth branches.
-2. **Consistent presentation.** One formatter/shared authorization summary for Board,
+2. **Consistent presentation.** One formatter/shared authorization summary for
    Isometric hover, Resources preview, connection inspector, aggregated connection
    members, workload/resource inspectors and draft impact summaries. Display all
    members' IAM facts. Focused UI tests for principal, grouping and local-mode wording.

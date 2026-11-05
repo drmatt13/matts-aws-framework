@@ -8,7 +8,6 @@ import { indexModel } from "../src/lookup";
 import { buildScene } from "../src/scene/build";
 import { searchScene } from "../src/scene/focus";
 import { nodeHoverFacts } from "../src/scene/hover";
-import { layoutBoard } from "../src/layout";
 import { connectionVisible } from "../src/scene/connections";
 
 const MODES = ["dev", "prod"] as const;
@@ -102,7 +101,7 @@ test("a single-graph projection preserves source evidence without inventing avai
   }
 });
 
-test("map, Board, searches and hover locations share one CDK environment while retaining both physical files", () => {
+test("map, searches and hover locations share one CDK environment while retaining both physical files", () => {
   const models = fixture();
   for (const mode of MODES) {
     const scene = buildScene(models[mode], { layoutModels: Object.values(models) });
@@ -115,10 +114,5 @@ test("map, Board, searches and hover locations share one CDK environment while r
     }
     const facts = nodeHoverFacts(environment.find(node => node.id === CDK_ENVIRONMENT_ID)!, { dev: indexModel(models.dev), prod: indexModel(models.prod) });
     assert.deepEqual(facts.places, MODES.map(env => ({ env, where: `Local file · cdk-app/.env.${env}` })));
-    const board = layoutBoard(models[mode], Object.values(models));
-    assert.ok(board.nodes.some(node => node.id === CDK_ENVIRONMENT_ID));
-    assert.ok(!board.nodes.some(node => node.id === "envfile:dev" || node.id === "envfile:prod"));
-    assert.equal(board.edges.filter(edge => edge.edge.from === CDK_ENVIRONMENT_ID).length, 1);
-    assert.equal(board.edges.find(edge => edge.edge.from === CDK_ENVIRONMENT_ID)!.connection!.members.length, 3);
   }
 });

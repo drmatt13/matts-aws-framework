@@ -24,7 +24,7 @@ related:
 `ModeModel.tagging` maps canonical entity IDs to authored/effective tags, per-key provenance
 and explicit AWS ownership/capability explanations. Targets, routes, networks, database,
 catalog entries and source-discovered public members share this metadata. It never contains
-secret values. Board and Isometric retain the same canonical selection and source identities;
+secret values. Isometric retains canonical selection and source identities;
 tag filtering is a rendering projection rather than a new infrastructure resource.
 
 [shared/model.ts](../../../framework-studio/shared/model.ts) is the serialized server/browser contract; avoid creating parallel graph types in a view. `projectModel`, `targetLanes` and `targetPlacement` in [model/project.ts](../../../framework-studio/server/model/project.ts) derive the graph from normalized declarations and mode predicates.
@@ -124,7 +124,7 @@ entry keeps its own absence.
 Declared/derived/source-inferred edges retain their evidence classification. [source-indexing](source-indexing.md) defines inference limits. Studio is a declaration/source graph, not an authoritative live AWS topology or full IAM analysis.
 
 Implementation health is separate from declaration validity: a missing handler can leave
-the declaration graph readable so its node offers repair. Board, Isometric and Inspector
+the declaration graph readable so its node offers repair. Isometric and Inspector
 show this warning without inventing a replacement target, changing topology or asserting
 runtime health. Reviewed source application checks canonical artifacts against the proposed
 file overlay; current files are never silently scaffolded during evaluation.

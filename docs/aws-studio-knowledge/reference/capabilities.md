@@ -21,7 +21,7 @@ Source reviewed 2026-10-29, including existing working-tree input/client changes
 | --- | --- | --- |
 | Typed framework declarations, normalization, generation | Implemented | Literal sections; shared validation/identities; [configuration](../framework/configuration.md) |
 | Native resource attributes/grants | Implemented | Public linked CDK fields; required references must resolve; [resources/CDK](../framework/resources-and-cdk.md) |
-| Map / Isometric source graph | Implemented; Board is unrouted | Evaluated declarations plus bounded inference, not live topology; [graph](../studio/graph-model.md), [rendering](../studio/rendering.md) |
+| Map / Isometric source graph | Implemented | Evaluated declarations plus bounded inference, not live topology; [graph](../studio/graph-model.md), [rendering](../studio/rendering.md) |
 | Inspector settings/defaults/routes | Implemented, bounded | Recognized fields/source shapes; reviewed source transformations; [editing](../studio/editing.md) |
 | Multi-file edit and recovery | Implemented, bounded | Batch source application has a durable recovery journal; saved-source history belongs to Git. Recovery preserves subsequent edits; specialized editors retain their own boundaries; [editing](../studio/editing.md) |
 | General arbitrary code/CDK editing | Not implemented as a general UI editor | Narrow splices/native removals/creator scaffolds do not establish arbitrary editing |

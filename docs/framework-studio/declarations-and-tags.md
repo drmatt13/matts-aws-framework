@@ -177,7 +177,7 @@ candidates. Parameters with tags still participate in explicit value filters. Fi
 moves, removes or duplicates resources, changes their deployment status, or hides real
 VPC/subnet and execution information. Selection, connections and source links retain their
 canonical identities. Clearing the filter restores the full view. Filter preferences never
-write declarations. Board shares the same metadata and tag Inspector.
+write declarations.
 
 ## Migration
 

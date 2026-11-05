@@ -1,5 +1,4 @@
 import { cx } from "../ui/classes";
-import { buttonClasses } from "../ui/Button";
 import {
   Bot,
   Container,
@@ -32,11 +31,7 @@ const options = [
 ] satisfies { kind: CreationKind; icon: typeof Plus; label?: string }[];
 
 /** Creation shares the Inspector's guarded draft and complete diff review. */
-export function AddMenu({
-  presentation = "floating",
-}: {
-  readonly presentation?: "floating" | "toolbar";
-}) {
+export function AddMenu() {
   const { draft, draftState, live } = useStudio();
   const creation = draft.creation();
   const [open, setOpen] = useState(false);
@@ -48,10 +43,7 @@ export function AddMenu({
     (model) => model.stale || model.status === "error",
   );
   const disabled = unavailable || !!draftState.busy || live.evaluating;
-  const focusClasses = cx(
-    "focus-visible:outline-2 focus-visible:outline-offset-[3px]",
-    presentation === "toolbar" ? "focus-visible:outline-prod" : "focus-visible:outline-map-focus",
-  );
+  const focusClasses = "focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-map-focus";
 
   useEffect(() => {
     if (!open) return;
@@ -77,7 +69,7 @@ export function AddMenu({
     <>
       <div
         data-ui="landscape-add"
-        data-presentation={presentation}
+        data-presentation="floating"
         className="pointer-events-auto relative z-5 shrink-0"
         ref={root}
         onBlur={(event) => {
@@ -89,9 +81,7 @@ export function AddMenu({
             data-ui="landscape-add-menu"
             className={cx(
               "absolute right-0 bottom-[52px] max-h-[calc(100dvh-180px)] w-[min(320px,calc(100vw-48px))] overflow-y-auto overscroll-contain rounded-lg border p-4 shadow-popover vp-900:fixed vp-900:right-(--workspace-gutter) vp-900:bottom-4 vp-900:z-30 vp-900:max-h-[calc(100dvh-32px)] vp-900:w-[min(360px,calc(100vw-32px))]",
-              presentation === "toolbar"
-                ? "top-[calc(100%+12px)] bottom-auto border-rule-strong bg-sheet text-ink vp-900:top-auto vp-900:bottom-4"
-                : "border-map-rule bg-map-panel text-map-ink",
+              "border-map-rule bg-map-panel text-map-ink",
             )}
             id={id}
             role="dialog"
@@ -111,9 +101,7 @@ export function AddMenu({
                 className={cx(
                   focusClasses,
                   "flex size-8 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent p-0",
-                  presentation === "toolbar"
-                    ? "text-graphite hover:bg-wash hover:text-ink"
-                    : "text-[#b9c7d8] hover:bg-[#ffffff12]",
+                  "text-[#b9c7d8] hover:bg-[#ffffff12]",
                 )}
                 aria-label="Close add menu"
                 onClick={() => {
@@ -126,10 +114,7 @@ export function AddMenu({
             </div>
             <p
               id={`${id}-description`}
-              className={cx(
-                "mt-2 mb-4 text-caption leading-[1.5]",
-                presentation === "toolbar" ? "text-graphite" : "text-[#a3b1c4]",
-              )}
+              className="mt-2 mb-4 text-caption leading-[1.5] text-[#a3b1c4]"
             >
               Choose what to add, configure it, then review the source changes.
             </p>
@@ -176,9 +161,7 @@ export function AddMenu({
                   className={cx(
                     focusClasses,
                     "flex min-h-12 min-w-0 cursor-pointer flex-row items-center gap-2 rounded-md border p-3 text-left text-caption disabled:cursor-not-allowed disabled:opacity-50",
-                    presentation === "toolbar"
-                      ? "border-rule bg-paper text-ink enabled:hover:border-graphite enabled:hover:bg-wash"
-                      : "border-[#2c394b] bg-[#1a2534] text-[#b9c7d8] enabled:hover:border-[#7791b0] enabled:hover:bg-map-row enabled:hover:text-[#eef4fc]",
+                    "border-[#2c394b] bg-[#1a2534] text-[#b9c7d8] enabled:hover:border-[#7791b0] enabled:hover:bg-map-row enabled:hover:text-[#eef4fc]",
                   )}
                   key={kind}
                   disabled={disabled}
@@ -209,9 +192,7 @@ export function AddMenu({
           ref={trigger}
           className={cx(
             focusClasses,
-            presentation === "toolbar"
-              ? buttonClasses({ variant: "quiet" })
-              : "flex size-10 cursor-pointer items-center justify-center rounded-full border border-[#ffffff24] bg-transparent bg-[linear-gradient(145deg,#29313ecc,#151c28e6)] p-0 text-[#cbd5e1] shadow-[0_3px_12px_#0004,inset_0_1px_0_#ffffff0a] backdrop-blur-[12px] transition-[border-color,color] duration-150 hover:border-[#ffffff45] hover:bg-[linear-gradient(145deg,#343f50e6,#202b3be6)] hover:text-[#f1f5f9] aria-expanded:border-[#ffffff45] aria-expanded:bg-[linear-gradient(145deg,#343f50e6,#202b3be6)] aria-expanded:text-[#f1f5f9]",
+            "flex size-10 cursor-pointer items-center justify-center rounded-full border border-[#ffffff24] bg-transparent bg-[linear-gradient(145deg,#29313ecc,#151c28e6)] p-0 text-[#cbd5e1] shadow-[0_3px_12px_#0004,inset_0_1px_0_#ffffff0a] backdrop-blur-[12px] transition-[border-color,color] duration-150 hover:border-[#ffffff45] hover:bg-[linear-gradient(145deg,#343f50e6,#202b3be6)] hover:text-[#f1f5f9] aria-expanded:border-[#ffffff45] aria-expanded:bg-[linear-gradient(145deg,#343f50e6,#202b3be6)] aria-expanded:text-[#f1f5f9]",
           )}
           aria-label="Add to application"
           title="Add to application"
@@ -224,8 +205,7 @@ export function AddMenu({
             else draft.requestNavigation(show);
           }}
         >
-          <Plus size={presentation === "toolbar" ? 16 : 20} strokeWidth={1.75} aria-hidden />
-          {presentation === "toolbar" ? <span>Add to application</span> : null}
+          <Plus size={20} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
       {creation && !creation.environmentVariable && !open ? <CreationWizard entry={creation} back={() => setOpen(true)} /> : null}

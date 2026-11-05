@@ -29,22 +29,6 @@ export function shortStack(name: string, deployment: string): string {
   return name.startsWith(`${deployment}-`) ? name.slice(deployment.length + 1) : name;
 }
 
-export const STATE_LABEL: Readonly<Record<string, string>> = {
-  ready: "Deployed",
-  "in-progress": "Updating",
-  failed: "Failed",
-  "rolled-back": "Rolled back",
-  conflict: "Conflict",
-  absent: "Not deployed",
-};
-
-export function stackTone(health: string): "ok" | "busy" | "warn" | "bad" {
-  if (health === "complete") return "ok";
-  if (health === "in-progress" || health === "review") return "busy";
-  if (health === "rolled-back" || health === "paused") return "warn";
-  return "bad";
-}
-
 export function eventTone(status: string): "ok" | "busy" | "bad" {
   if (/FAILED/.test(status)) return "bad";
   if (/IN_PROGRESS/.test(status)) return "busy";

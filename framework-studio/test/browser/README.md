@@ -7,7 +7,7 @@ npm exec --workspace framework-studio -- playwright install chromium firefox web
 npm --workspace framework-studio run test:browser
 ```
 
-The suite builds the real production entry and an independent Board/shared-component
+The suite builds the real production entry and an independent shared-component
 gallery, then starts strict-port Vite previews on `127.0.0.1:4592` and `:4593`.
 It never starts the Studio application server. Each test has a fresh browser context.
 Every API operation, EventSource event and WebSocket connection uses explicit,

@@ -14,7 +14,6 @@ let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
 let add: typeof import("../src/views/AddMenu");
-let board: typeof import("../src/views/Board");
 let database: typeof import("../src/views/DatabaseDiagram");
 let shell: typeof import("../src/views/Shell");
 let navigation: typeof import("../src/views/NavigationStrip");
@@ -30,7 +29,7 @@ before(async () => {
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
-  studio = await import("../src/studio"); add = await import("../src/views/AddMenu"); board = await import("../src/views/Board"); database = await import("../src/views/DatabaseDiagram");
+  studio = await import("../src/studio"); add = await import("../src/views/AddMenu"); database = await import("../src/views/DatabaseDiagram");
   shell = await import("../src/views/Shell");
   navigation = await import("../src/views/NavigationStrip");
   api = await import("../src/api");
@@ -255,22 +254,6 @@ test("creation chooser supports directional navigation and Escape returns focus 
   assert.equal(document.activeElement, trigger);
 });
 
-test("toolbar creation has a visible action label and preserves chooser dismissal focus", async () => {
-  await mount(() => h(add.AddMenu, { presentation: "toolbar" }));
-  const trigger = ui.screen.getByRole("button", { name: "Add to application" });
-  assert.equal(trigger.textContent, "Add to application");
-  ui.fireEvent.click(trigger);
-  const chooser = ui.screen.getByRole("dialog", { name: "Add to application" });
-  assert.equal(trigger.getAttribute("aria-expanded"), "true");
-  assert.equal(trigger.getAttribute("aria-controls"), chooser.id);
-  const close = ui.within(chooser).getByRole("button", { name: "Close add menu" });
-  assert.equal(document.activeElement, close);
-  ui.fireEvent.click(close);
-  assert.equal(ui.screen.queryByRole("dialog"), null);
-  assert.equal(trigger.getAttribute("aria-expanded"), "false");
-  assert.equal(document.activeElement, trigger);
-});
-
 test("unavailable creation explains the reason beside disabled resource choices", async () => {
   const snapshot = response.snapshot;
   await mount(add.AddMenu, { ...response, snapshot: { ...snapshot, models: { ...snapshot.models, dev: { ...snapshot.models.dev, stale: true } } } });
@@ -305,31 +288,6 @@ test("creation helpers and validation stay associated with controls and source c
   for (const element of wizard.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement>("[data-slot=\"creation-form-fields\"] input, [data-slot=\"creation-form-fields\"] select, [data-slot=\"creation-form-fields\"] button")) assert.equal(element.disabled, true);
   assert.equal((controls.getByRole("button", { name: "Review generated changes" }) as HTMLButtonElement).disabled, true);
   assert.equal((controls.getByRole("button", { name: "Cancel creation" }) as HTMLButtonElement).disabled, false);
-});
-
-test("the architecture board keeps valid resource-only applications visible and offers creation", async () => {
-  const snapshot = response.snapshot;
-  const models = { dev: { ...snapshot.models.dev, targets: [], routes: [], edges: [] }, prod: { ...snapshot.models.prod, targets: [], routes: [], edges: [] } };
-  await mount(() => h(shell.Shell, { children: h(board.Board) }), { ...response, snapshot: { ...snapshot, models } });
-  assert.ok(ui.screen.getByRole("group", { name: "Application architecture" }));
-  assert.ok(document.querySelector("[data-ui~=\"board\"] [data-entity-id^='resource:']"));
-  assert.ok(ui.screen.getByRole("button", { name: "Add to application" }));
-  assert.equal(ui.screen.queryByText(/graph did not load/), null);
-});
-
-test("an unavailable Board graph keeps its source switch available to reach a working environment", async () => {
-  const snapshot = response.snapshot;
-  await mount(() => h(shell.Shell, { children: h(board.Board) }), { ...response, snapshot: { ...snapshot, models: { ...snapshot.models,
-    dev: { ...snapshot.models.dev, status: "error", targets: [], routes: [], resources: [], edges: [], localServices: [] },
-  } } });
-  assert.ok(ui.screen.getByText(/development graph did not load/));
-  const environment = ui.within(ui.screen.getByRole("group", { name: "Source environment" }));
-  const production = environment.getByRole("button", { name: "Production" });
-  assert.equal((production as HTMLButtonElement).disabled, false);
-  ui.fireEvent.click(production);
-  await ui.screen.findByRole("group", { name: "Application architecture" });
-  assert.equal(ui.screen.queryByText(/graph did not load/), null);
-  assert.equal(ui.screen.getByRole("button", { name: "Production" }).getAttribute("aria-pressed"), "true");
 });
 
 test("schema search offers a keyboard reset, retains input focus after clearing and bounds zoom controls", async () => {

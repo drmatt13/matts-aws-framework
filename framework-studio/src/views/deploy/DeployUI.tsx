@@ -2,7 +2,6 @@ import type { ComponentPropsWithRef } from "react";
 import { cardClasses } from "../../ui/Surface";
 import { cx } from "../../ui/classes";
 
-export type StatusTone = "ok" | "done" | "busy" | "warn" | "bad" | "none" | "unknown";
 export function StatusDot({
   tone,
   ...props

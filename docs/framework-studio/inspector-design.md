@@ -4,7 +4,7 @@ Studio is a visual control room. Inspectors should answer what an item is, where
 runs, and what can be changed before asking the developer to read implementation detail.
 The shared tokens live in `framework-studio/src/styles/theme.css`; native controls
 live in `src/ui/`. Tailwind panel/dialog recipes live in `src/inspector-ui.ts` and
-section/disclosure/switch implementations in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same inspector.
+section/disclosure/switch implementations in `src/views/InspectorUI.tsx`. Isometric and Database use the same inspector.
 The [editing architecture](../aws-studio-knowledge/studio/editing.md#inspector-module-ownership)
 locates entity/trigger rendering and session ownership; the [source map](../aws-studio-knowledge/REPOSITORY-MAP.md#where-to-change-studio)
 locates implementation and tests for common changes.

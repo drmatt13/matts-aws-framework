@@ -145,8 +145,7 @@ The seven core workspaces are **Map**, **Database**, **Deploy**, **GraphQL**, **
 is a [local coding-agent experiment](framework-studio/local-agent-lab.md) that plans and
 separately applies an edit to one fixed Studio demo message. GraphQL currently shows a placeholder page.
 The shared **Source: Development / Production** control selects
-declaration context; Deploy has its own target context. Map is the isometric home view;
-the old Board remains in source but has no navigation route.
+declaration context; Deploy has its own target context. Map is the isometric home view.
 
 Map supports camera controls, keyboard navigation, search, tags, a resource navigator,
 connection categories and source-linked inspectors. The renderer groups entities into

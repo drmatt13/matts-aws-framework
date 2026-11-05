@@ -605,9 +605,6 @@ their own inspection, review and approval paths.
   event invalidation. Feature query definitions share read identity while callers
   retain polling/refresh policy; the shared `events.ts` hub retains one stream per tab.
 - **Views.**
-  - [Board](../../framework-studio/src/views/Board.tsx), laid out by
-    [layout.ts](../../framework-studio/src/layout.ts): absolutely positioned DOM nodes
-    over an SVG of curves. Set aside and not routed.
   - [Isometric](../../framework-studio/src/views/Isometric.tsx).
   - [Database](../../framework-studio/src/views/Database.tsx).
   - [Deploy](../../framework-studio/src/views/Deploy.tsx): deployment discovery, reviewed plans, authorized operations and local lifecycle controls; see [current operations](../aws-studio-knowledge/deployment/operations.md).

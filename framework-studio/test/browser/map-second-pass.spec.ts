@@ -63,34 +63,6 @@ for (const width of [320, 800, 1440]) {
   });
 }
 
-test("Board narrow filters and creation chooser remain reachable while its graph scrolls", async ({ page, studio }, info) => {
-  await page.setViewportSize({ width: 320, height: 900 });
-  await page.goto("http://127.0.0.1:4593/?view=board");
-  const board = page.getByRole("group", { name: "Application architecture" });
-  await expect(board).toBeVisible();
-  const toolbar = page.locator('[data-ui="workspace-toolbar"]');
-  const initial = await toolbar.boundingBox();
-  await board.evaluate(element => { const container = element.closest("main")!; container.scrollTop = 100; container.scrollLeft = 300; });
-  const scrolled = await toolbar.boundingBox();
-  expect(scrolled!.x).toBe(initial!.x);
-  expect(scrolled!.y).toBe(initial!.y);
-  const filters = page.getByRole("group", { name: "Relations shown" });
-  const last = filters.getByRole("button").last();
-  await last.focus();
-  await expect(last).toBeInViewport();
-  await page.getByRole("button", { name: "Add to application", exact: true }).click();
-  const chooser = page.locator('[data-ui="landscape-add-menu"]');
-  await expect(chooser).toBeVisible();
-  const bounds = await chooser.boundingBox();
-  expect(bounds!.x).toBeGreaterThanOrEqual(0);
-  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
-  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900);
-  await page.screenshot({ path: info.outputPath("board-narrow-creation.png") });
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Add to application", exact: true })).toBeFocused();
-  await studio.settle();
-});
-
 test("short phone viewport can scroll to resource rows and inspector controls", async ({ page, studio }, info) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await studio.goto();

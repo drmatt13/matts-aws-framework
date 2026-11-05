@@ -77,11 +77,6 @@ function ownerOf(root: string, state: StudioState, entity: string, overrides: Re
   return { resource, facts, membership, declaration, source: facts.key };
 }
 
-export function resourceRenameEligibility(root: string, state: StudioState, entity: string, overrides: ReadonlyMap<string, string> = new Map()): { readonly allowed: boolean; readonly reason?: string; readonly source?: SourceLocation } {
-  try { return { allowed: true, source: ownerOf(root, state, entity, overrides).source }; }
-  catch (error) { return { allowed: false, reason: error instanceof Error ? error.message : String(error), source: state.snapshot.source.entities[entity]?.value }; }
-}
-
 function metadataPins(root: string, state: StudioState, entity: string, overlays: Map<string, string>): void {
   const resources = new Map(Object.values(state.snapshot.models).flatMap(model => model.resources).filter(resource => resource.id === entity || resource.id.startsWith(entity + ".")).map(resource => [resource.id, resource]));
   for (const resource of resources.values()) {

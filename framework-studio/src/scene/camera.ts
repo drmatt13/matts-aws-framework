@@ -133,12 +133,6 @@ export function fitBounds(bounds: Bounds, viewport: Viewport, padding = 48, maxZ
   return { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2, zoom };
 }
 
-/** Whether a world point is inside the viewport, inset by `margin` CSS pixels. */
-export function isVisible(camera: Camera, viewport: Viewport, point: Point, margin = 40): boolean {
-  const screen = worldToScreen(camera, viewport, point);
-  return screen.x >= margin && screen.y >= margin && screen.x <= viewport.width - margin && screen.y <= viewport.height - margin;
-}
-
 /**
  * A point on the way from one camera to another, `t` in [0, 1]. Zoom is
  * interpolated in log space, so a zoom-in and a zoom-out of the same ratio take

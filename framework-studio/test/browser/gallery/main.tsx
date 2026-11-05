@@ -8,8 +8,6 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { StudioProvider } from "../../../src/studio";
-import { Board } from "../../../src/views/Board";
-import { Shell } from "../../../src/views/Shell";
 import {
   InspectorDisclosure,
   InspectorSection,
@@ -139,11 +137,7 @@ function Gallery() {
     view = new URLSearchParams(window.location.search).get("view");
   return (
     <StudioProvider response={response} selected={selected} select={select}>
-      {view === "board" ? (
-        <Shell>
-          <Board />
-        </Shell>
-      ) : view === "containers" ? (
+      {view === "containers" ? (
         <main aria-label="Inspector container cases" className="browser-gallery">
           <h1>Inspector containers</h1>
           {[299, 300, 301, 359, 360, 361, 380, 419, 420, 421].map((width) => (

@@ -40,7 +40,7 @@ isolated tests, local execution and live AWS outcomes are different evidence lev
 
 ## Current limitations worth finding early
 
-- The Board source is retained but unrouted. Map is `/`; `/isometric` redirects.
+- Map is `/`; `/isometric` redirects. The retired Board implementation has been removed.
 - Saved-source history is Git. Current source operations expose guarded plan/apply and
   interrupted-write recovery, not the old global Undo/Redo endpoints.
 - The Source Development/Production switch selects graph context, not a cloud account

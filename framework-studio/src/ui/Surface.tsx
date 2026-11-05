@@ -22,6 +22,3 @@ export const pageHeaderClasses = "min-h-(--toolbar-height) py-(--toolbar-padding
 /** The full-bleed toolbar surface. `PageToolbar` puts its contents in the page column. */
 export const pageToolbarClasses = cx(pageHeaderClasses, "border-b border-rule bg-sheet");
 export const workspaceToolbarClasses = cx(pageToolbarClasses, "px-(--workspace-gutter)");
-export function WorkspaceToolbar({ className, ...props }: ComponentPropsWithRef<"header">) {
-  return <header {...props} className={cx(workspaceToolbarClasses, className)} />;
-}

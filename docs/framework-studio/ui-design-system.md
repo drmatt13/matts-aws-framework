@@ -34,8 +34,8 @@ buttons retain their explicit danger treatment.
 `TextInput`, `Select` and `Textarea` retain native props/events/refs;
 `controlSize` is separate from the native `size`; `controlSize="panel"` follows the
 inspector or dialog control-height token. `UnitInput` draws a numeric unit inside the
-input's trailing edge; callers keep the unit in the accessible label. `Card`, `Notice` and
-`WorkspaceToolbar` cover shared surfaces. `Notice` does not invent an ARIA role.
+input's trailing edge; callers keep the unit in the accessible label. `Card` and `Notice`
+cover shared surfaces. `Notice` does not invent an ARIA role.
 `InspectorUI`, `FieldRow`, `NavigationStrip`, `WorkspacePanel`, `WorkbenchUI` and
 `DocumentCard` remain the higher-level owners. `cx` joins complete static class strings;
 it does not resolve conflicting utilities, and JSX class order is not CSS precedence.
@@ -178,7 +178,7 @@ configuration instead of adding a button or error card. On narrow screens, machi
 always occupies its own row so switching declaration modes does not reflow the header.
 `pageToolbarClasses` owns `--toolbar-padding` (12px vertically), `--toolbar-height` (57px
 minimum including the rule), the `--sheet` surface and the `--rule` bottom border.
-`WorkspaceToolbar` adds `--workspace-gutter` (16px) for workbenches. Controls are 32px tall.
+`workspaceToolbarClasses` adds `--workspace-gutter` (16px) for workbenches. Controls are 32px tall.
 Additional rows accommodate genuine controls, warnings or narrow widths; do not add a
 route-specific heading spacer or an inset rule above the first toolbar. Keep responsive
 utilities with their owning component; register shared query variants in the application entry.
@@ -229,15 +229,9 @@ must remain visible without widening the document or separating them from their 
 Deploy keeps its plain title header and column through loading, missing profiles, missing targets
 and read failures; background read failures retain the deployment and contextual retry.
 
-The Board is set aside and not routed; the rules below still describe its source.
-Board relationship toggles and Database workspace choices use the same restrained
-selected treatment: wash surface, rule border, regular radius and readable foreground.
-Keep Board's toolbar pinned during horizontal and vertical graph scrolling.
-Group Board's trailing legend and **Add to application** action so they stay together
-when the toolbar wraps. At phone widths the relation filters scroll horizontally instead
-of taking several rows; keyboard focus scrolls the focused filter into view.
-Board's creation action has a visible label and its chooser
-uses theme tokens; the map retains its compact floating creation action.
+Database workspace choices use a restrained selected treatment: wash surface, rule
+border, regular radius and readable foreground. The map retains its compact floating
+creation action.
 
 Isometric search, tag filters and camera controls occupy a normal-flow toolbar outside
 the measured canvas. Wrapping controls must reduce the canvas viewport rather than cover

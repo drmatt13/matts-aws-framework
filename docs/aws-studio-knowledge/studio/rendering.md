@@ -1,10 +1,9 @@
 ---
 id: studio.rendering
-summary: Board layout and the Isometric scene, bounded optimizer, connection routing, Canvas rendering and picking.
+summary: The Isometric scene, bounded optimizer, connection routing, Canvas rendering and picking.
 read_when:
   - Improving layout, routing, performance, focus, or selection
 source:
-  - framework-studio/src/layout.ts
   - framework-studio/src/scene/build.ts
   - framework-studio/src/scene/types.ts
   - framework-studio/src/scene/layout-optimize.ts
@@ -27,9 +26,9 @@ related:
   - studio.graph-model
   - studio.snapshots
 ---
-# Board and Isometric rendering
+# Isometric rendering
 
-React-owned map/Board controls, panels, resource lists and tooltip portals use Tailwind
+React-owned map controls, panels, resource lists and tooltip portals use Tailwind
 utilities and shared UI recipes; the [design system](../../framework-studio/ui-design-system.md)
 owns their conventions. CSS variables in `styles/theme.css` own application colors,
 fonts and density. Always-dark map DOM tokens are root-visible so portals receive the
@@ -151,8 +150,8 @@ Opening the panel keeps the map's window position, and every new selection comes
 at the same zoom (cut-off ones slide just far enough, unseen ones are centred); on narrow
 windows the panel sits below the canvas. Search/type filtering changes the list and map
 emphasis, never source or infrastructure identity. Missing implementation artifacts are an
-issue on the canonical workload (badge, caption, hover, Resources row and inspector notice;
-the set-aside Board keeps its own marker); selecting it exposes its configured path and
+issue on the canonical workload (badge, caption, hover, Resources row and inspector notice);
+selecting it exposes its configured path and
 reviewed repair. These
 source-health facts do not imply runtime readiness. Existing keyboard access to every
 connection and network fixture is retained. The navigator explicitly distinguishes the
@@ -188,10 +187,7 @@ retry guidance otherwise. Starting Docker or checking again only shows readiness
 the switch stays off until a separate click on **Local runtime**. Dismissing the popover stops observing, not an explicitly
 requested Docker start. It does not start or stop application containers.
 See the [UI design system](../../framework-studio/ui-design-system.md) for route gutters,
-surface and responsive ownership. Board uses a labeled creation action and a themed
-chooser; its trailing legend and action wrap together.
-Board keeps resource-only and local-service graphs visible even before any compute
-is declared; its creation menu remains available on those valid graphs.
+surface and responsive ownership.
 The landscape entity list becomes a bounded visible navigator while it contains
 keyboard focus. Arrow keys and Home/End browse the existing entity order; Enter
 inspects, and Escape returns focus to the canvas without changing selection.
@@ -199,7 +195,7 @@ An empty/error graph shows configuration-health guidance; canvas renderer and
 wheel listeners mount when a later valid snapshot restores entities, and dispose
 again if the graph becomes empty.
 
-Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, compute and catalog columns with role grouping and SVG connections. Isometric builds a separate geometric scene from the same [graph model](graph-model.md); layout coordinates are disposable projections, never infrastructure configuration.
+Isometric builds a geometric scene from the [graph model](graph-model.md); layout coordinates are disposable projections, never infrastructure configuration.
 
 [Isometric.tsx](../../../framework-studio/src/views/Isometric.tsx) remains the workspace
 coordinator for scene derivation, camera/renderer lifetime, resize, gestures, hover,
@@ -277,7 +273,7 @@ never its colour or dash style. Folded members use the visible owning stack's ic
 including `Routes to: /api/test/start-workflow`, `Starts workflow: invocation-test-workflow`
 and `Reads: 3 environment values`. Calls name the configured destination, workflow steps
 name their typed operation and target, and grants retain the resource name. Tooltips,
-inspectors, member rows, Board labels and description reviews use this same formatter.
+inspectors, member rows and description reviews use this same formatter.
 The exception is a heading with From/To beneath it, the hover title and the inspector's
 `connectionTitle`: when the value only repeats a From/To endpoint name, it keeps a complete
 action label (`Calls tool`, `Connects to database`, `Provides database`, `Conditional Deployment`).
@@ -402,8 +398,8 @@ Validation: [island placement](../../../framework-studio/test/island-placement.t
 The **CDK environment files** island has one **CDK environment** building; the separate
 **Client environment files** island has the client mappings building. Both are catalog
 islands in the configuration group. Physical CDK file records share the logical `envfile:cdk`
-representative for layout, search, focus, navigator entries and connections, including
-the retained Board. Old file selections open the combined editor on the requested mode.
+representative for layout, search, focus, navigator entries and connections.
+Old file selections open the combined editor on the requested mode.
 
 The APIs island has one building per actual API Gateway. Shared `src/drawn-as.ts`
 representatives fold HTTP/service and WebSocket routes and gateway export stacks into

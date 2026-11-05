@@ -619,7 +619,7 @@ tweening. A still picture draws nothing.
   inspector opens or closes; browser resize observations also redraw synchronously,
   keeping CSS dimensions, bitmap dimensions and camera projection in step. If the
   selection ends up hidden, the camera flies to it once at its current zoom. A selection made
-  elsewhere (the inspector, the Board) that is off screen also brings its building into
+  elsewhere (the inspector) that is off screen also brings its building into
   view.
 - **Memory.** The camera is kept in module memory across view switches, for the life of the
   page.

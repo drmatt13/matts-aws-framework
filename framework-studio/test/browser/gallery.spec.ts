@@ -17,15 +17,6 @@ test("baseline shared controls and disclosure", async ({ page, studio }, testInf
   await expect(page.getByText("Details retain their native keyboard behavior.")).toBeVisible();
 });
 
-test("baseline unrouted Board retains geometry and resource actions", async ({ page, studio }) => {
-  await page.goto("http://127.0.0.1:4593/?view=board");
-  await expect(page.getByRole("group", { name: "Application architecture" })).toBeVisible();
-  await studio.settle();
-  await expect(page).toHaveScreenshot("board-desktop.png", { fullPage: true });
-  await page.setViewportSize({ width: 420, height: 850 });
-  await expect(page.getByRole("button", { name: "Add to application", exact: true })).toBeVisible();
-});
-
 test("native dialog contains focus and restores its trigger", async ({ page, studio }) => {
   await page.goto("http://127.0.0.1:4593/");
   const trigger = page.getByRole("button", { name: "Open example dialog" });
