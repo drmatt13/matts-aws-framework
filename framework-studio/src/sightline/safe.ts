@@ -1,6 +1,10 @@
 import type { SourceLocation } from "../../shared/model";
 import type { SightlineOmission, SightlineRecord } from "./types";
 
+/** Stable across browser/server locale settings. */
+export const lexical = (a: string, b: string): number =>
+  a < b ? -1 : a > b ? 1 : 0;
+
 export function omit(
   omitted: SightlineOmission[],
   path: string,
@@ -28,7 +32,7 @@ export function text(
 ): string {
   const sanitized = value
     .replace(
-      /(?:\/Users\/|\/home\/|[A-Za-z]:[\\/]Users[\\/])[^\s"'<>),;]*/g,
+      /(?:\/Users\/|\/home\/|\/root\/|[A-Za-z]:[\\/]Users[\\/])[^\s"'<>),;]*/g,
       "[private path]",
     )
     .replace(/\barn:(?:aws|aws-cn|aws-us-gov):[^\s"'<>),;]*/g, "[ARN omitted]")

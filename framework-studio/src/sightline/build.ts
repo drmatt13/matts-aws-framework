@@ -1,6 +1,6 @@
 import type { Mode } from "../../shared/model";
 import { buildFocus, relevantDiagnostics } from "./focus";
-import { bounded, omit, text } from "./safe";
+import { bounded, lexical, omit, text } from "./safe";
 import { buildWorkspace, workspaceFor } from "./workspace";
 import type {
   Sightline,
@@ -92,8 +92,7 @@ function activity(
       recent: null,
     };
   const ordered = [...inputs.jobs].sort(
-    (a, b) =>
-      b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id),
+    (a, b) => lexical(b.startedAt, a.startedAt) || lexical(a.id, b.id),
   );
   const running = ordered.filter((job) => job.status === "running"),
     recent = ordered.filter((job) => job.status !== "running");

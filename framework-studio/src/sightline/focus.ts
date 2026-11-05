@@ -20,6 +20,7 @@ import { groupEntries, withinGroup } from "../input-groups";
 import { indexModel, titleOf, type ModelIndex } from "../lookup";
 import {
   bounded,
+  lexical,
   notApplicable,
   omit,
   relativePath,
@@ -873,7 +874,7 @@ function connectionDifferences(
     bounded(
       [...left]
         .filter(([id]) => !right.has(id))
-        .sort(([a], [b]) => a.localeCompare(b)),
+        .sort(([a], [b]) => lexical(a, b)),
       6,
       path,
       omitted,
@@ -883,7 +884,7 @@ function connectionDifferences(
       ([id, edge]) =>
         b.has(id) && JSON.stringify(edge) !== JSON.stringify(b.get(id)),
     )
-    .sort(([a], [b]) => a.localeCompare(b));
+    .sort(([a], [b]) => lexical(a, b));
   return {
     devOnly: only(a, b, "focus.comparison.connections.devOnly"),
     prodOnly: only(b, a, "focus.comparison.connections.prodOnly"),
@@ -1044,7 +1045,7 @@ export function buildFocus(
       : null,
     tags: tags
       ? bounded(
-          Object.entries(tags.effective).sort(([a], [b]) => a.localeCompare(b)),
+          Object.entries(tags.effective).sort(([a], [b]) => lexical(a, b)),
           12,
           "focus.tags",
           omitted,

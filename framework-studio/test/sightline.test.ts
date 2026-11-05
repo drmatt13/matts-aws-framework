@@ -710,6 +710,18 @@ test("Sightline is deterministic and does not mutate frozen caller data", () => 
       buildSightline({ ...inputs, selected }),
       buildSightline({ ...inputs, selected }),
     );
+  const ordered = buildSightline({
+    ...inputs,
+    activity: {
+      availability: "available",
+      jobs: ["é", "a", "Z"].map((id) => ({ ...inputs.activity.jobs![0]!, id })),
+    },
+  });
+  assert.deepEqual(
+    (ordered.activity.running as { id: string }[]).map((job) => job.id),
+    ["Z", "a", "é"],
+    "Operation ordering must not depend on the host locale.",
+  );
 });
 
 test("Sightline canaries never escape any workspace or selection, including nested private fields and future response fields", () => {
@@ -826,14 +838,14 @@ test("Sightline strips home paths and account/ARN identifiers even in nominal di
   const { inputs } = fixture();
   Object.assign(inputs.snapshot.descriptions.values, {
     "lambda:fixture-0":
-      "Read /Users/alice/private.txt or /home/bob/secret.txt; arn:aws:iam::123456789012:role/private and account 123456789012",
+      "Read /Users/alice/private.txt or /home/bob/secret.txt or /root/private.txt; arn:aws:iam::123456789012:role/private and account 123456789012",
   });
   Object.assign(inputs.snapshot.source.entities["lambda:fixture-0"]!.key, {
     file: "/Users/alice/repo/secret.ts",
   });
   const result = buildSightline({ ...inputs, selected: "lambda:fixture-0" });
   const json = JSON.stringify(result);
-  for (const forbidden of ["/Users/", "/home/", "123456789012", "arn:aws:"])
+  for (const forbidden of ["/Users/", "/home/", "/root/", "123456789012", "arn:aws:"])
     assert.equal(json.includes(forbidden), false);
   assert.ok(
     result.omitted.some(
