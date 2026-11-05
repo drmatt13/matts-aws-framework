@@ -19,7 +19,8 @@ starts a read. Source mode and the deployment destination are separate fields.
 The feature lives in `framework-studio/src/sightline/`. Existing files supply small
 presentation seams. `GlobalActivity` stays memoized and consumes no route or Studio
 context. Conversation DOM, draft and scroll remain mounted when Sightline is shown;
-only Sightline mounts/unmounts its input hook. Nothing reads workspace state from DOM.
+only Sightline mounts/unmounts its input hook. A display-only visibility callback keeps
+replies unread while the conversation is hidden. Nothing reads workspace state from DOM.
 
 ### State inventory
 
@@ -93,6 +94,9 @@ Workspace is a discriminated union. Availability is explicit: not-loaded, loadin
 error, available and not-applicable are different from an available empty collection.
 Deployment keeps the existing missing-profile/loading-profiles/unavailable-profile/
 catalog-error/available states, plus cache evidence availability.
+Observed freshness is evaluated at capture using the existing read owner's stale-time
+policy, invalidation and failure state. `freshUntil` makes that boundary inspectable;
+there is no extra timer. A disabled query's `isStale` flag alone cannot supply this fact.
 
 Focus is null when nothing is selected. Otherwise it has status (found, not-found,
 other-mode-only, stale-model or renamed), kind/id/name, available metadata and a separate
@@ -103,26 +107,492 @@ Unavailable fields say not-applicable or not-loaded, rather than inventing facts
 
 Evidence sections are named declared, observed and localView. Connections keep their
 original declared/derived/source provenance. Source locations are not runtime evidence.
-Dev/Prod comparison contains presence and changed safe metadata paths, not full duplicate
-entities. Names, catalog paths, public routes, target references and construct IDs retain
+Dev/Prod comparison contains presence, bounded safe leaf differences and changed connections,
+not full duplicate entities. Names, catalog paths, public routes, target references and construct IDs retain
 their existing meanings.
 
-Illustrative real-repository cases (capture timestamps and observed cache availability vary):
+Actual captures from the real repository on port 4591 (November 5, 2026). These
+are complete objects, including empty or unavailable evidence. The deployment names
+come from this repository; they do not imply a deployment exists.
+
+<details>
+<summary>Map overview</summary>
 
 ```json
-{"schemaVersion":1,"capturedAt":"2026-11-05T15:00:00.000Z","location":{"pathname":"/","workspace":"map","subsection":null},"source":{"mode":"dev","revision":"<accepted revision>","modelStatus":"ok","stale":false,"evaluating":false,"draft":{"dirty":false,"conflicted":false}},"focus":{"status":"found","kind":"resource","id":"resource:langgraph","name":"langgraph","declared":{"kind":"group","catalogPath":["langgraph"],"members":"bounded input/secret names and requirement states","connections":"bounded consumers with provenance"}},"workspace":{"kind":"map","localView":{"search":"","categories":["interactions","structure"],"errorsShown":true},"declared":{"counts":"target/route/resource/edge totals","networks":"declared network metadata"}},"deployments":{"dev":{"availability":"missing-profile"},"prod":{"availability":"missing-profile"}},"activity":{"availability":"available","running":[],"recent":[]},"issues":[],"omitted":[]}
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T08:05:07.344Z",
+  "location": {
+    "pathname": "/",
+    "workspace": "map",
+    "subsection": null
+  },
+  "source": {
+    "mode": "dev",
+    "revision": "1-b5ecbab4c1da",
+    "latestRevision": "1-b5ecbab4c1da",
+    "modelStatus": "ok",
+    "stale": false,
+    "evaluating": false,
+    "connected": true,
+    "draft": {
+      "dirty": false,
+      "conflicted": false
+    }
+  },
+  "focus": null,
+  "workspace": {
+    "kind": "map",
+    "localView": {
+      "availability": "available",
+      "search": "",
+      "resourceKind": "",
+      "categories": [
+        "interactions"
+      ],
+      "errorsShown": true,
+      "tagFilter": {
+        "key": "",
+        "value": null
+      },
+      "view": "closed"
+    },
+    "declared": {
+      "counts": {
+        "targets": 27,
+        "routes": 16,
+        "resources": 93,
+        "gateways": 2,
+        "localServices": 1,
+        "connections": 139
+      },
+      "networks": [
+        {
+          "id": "application",
+          "name": "application",
+          "constructId": "NetworkStack",
+          "cidr": "10.0.0.0/16",
+          "zones": 2,
+          "natGateway": false,
+          "egressOnlyInternetGateway": true,
+          "subnets": [
+            {
+              "name": "public",
+              "egress": {
+                "ipv4": true,
+                "ipv6": true
+              }
+            },
+            {
+              "name": "private",
+              "egress": {
+                "ipv4": false,
+                "ipv6": true
+              }
+            },
+            {
+              "name": "isolated",
+              "egress": {
+                "ipv4": false,
+                "ipv6": false
+              }
+            }
+          ],
+          "gatewayEndpoints": [
+            "s3",
+            "dynamodb"
+          ],
+          "interfaceEndpoints": [],
+          "builtInProd": true
+        }
+      ]
+    }
+  },
+  "deployments": {
+    "dev": {
+      "availability": "missing-profile",
+      "target": {
+        "evidence": "declared",
+        "name": "studio-test-dev",
+        "mode": "dev"
+      },
+      "observed": {
+        "evidence": "observed",
+        "availability": "not-loaded"
+      }
+    },
+    "prod": {
+      "availability": "missing-profile",
+      "target": {
+        "evidence": "declared",
+        "name": "studio-test-prod",
+        "mode": "prod",
+        "region": "us-east-1"
+      },
+      "observed": {
+        "evidence": "observed",
+        "availability": "not-loaded"
+      }
+    }
+  },
+  "activity": {
+    "evidence": "observed",
+    "availability": "available",
+    "updatedAt": "2026-11-05T08:05:06.887Z",
+    "counts": {
+      "running": 0,
+      "recent": 13
+    },
+    "running": [],
+    "recent": [
+      {
+        "id": "mw32u00k-2b7d1d",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-05T05:00:02.324Z",
+        "endedAt": "2026-11-05T05:00:06.990Z"
+      },
+      {
+        "id": "mw2u6xuq-ba817c",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-05T00:58:09.506Z",
+        "endedAt": "2026-11-05T00:58:13.985Z"
+      },
+      {
+        "id": "mw2fep30-860f84",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-04T18:04:17.148Z",
+        "endedAt": "2026-11-04T18:04:19.913Z"
+      },
+      {
+        "id": "mw2fa87k-1ac3a3",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-04T18:00:48.656Z",
+        "endedAt": "2026-11-04T18:00:52.069Z"
+      }
+    ]
+  },
+  "issues": [],
+  "omitted": [
+    {
+      "path": "source.repositoryRoot-privateValues-sourceText",
+      "reason": "privacy"
+    },
+    {
+      "path": "activity.logs-params-titles-summaries-recovery",
+      "reason": "privacy"
+    },
+    {
+      "path": "activity.recent",
+      "reason": "budget",
+      "count": 9
+    }
+  ]
+}
 ```
+
+</details>
+
+<details>
+<summary>Database, saved schema editor</summary>
 
 ```json
-{"location":{"pathname":"/database","workspace":"database","subsection":null},"workspace":{"kind":"database","evidence":"local-view","availability":"available","tab":"schema","editorMode":"split","selection":{"table":"schema:User"},"draft":{"dirty":false,"conflicted":false},"validation":{"availability":"available","valid":true},"migration":{"availability":"not-loaded"},"target":{"availability":"not-loaded"}},"focus":{"kind":"schema","id":"schema:User","status":"found"},"source":"same mandatory source envelope","deployments":"both mandatory deployment envelopes","activity":"mandatory cached summary","issues":[],"omitted":[{"path":"workspace.source","reason":"privacy"}]}
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T08:05:18.450Z",
+  "location": {
+    "pathname": "/database",
+    "workspace": "database",
+    "subsection": null
+  },
+  "source": {
+    "mode": "dev",
+    "revision": "1-b5ecbab4c1da",
+    "latestRevision": "1-b5ecbab4c1da",
+    "modelStatus": "ok",
+    "stale": false,
+    "evaluating": false,
+    "connected": true,
+    "draft": {
+      "dirty": false,
+      "conflicted": false
+    }
+  },
+  "focus": null,
+  "workspace": {
+    "kind": "database",
+    "evidence": "local-view",
+    "availability": "available",
+    "tab": "schema",
+    "editorMode": "split",
+    "selection": null,
+    "draft": {
+      "dirty": false,
+      "conflicted": false
+    },
+    "revision": "987ce4aeca616b265ce9a90b5b5b547cf30812cc30b25016d149fb05c2d7a970",
+    "file": "packages/database/prisma/contract.prisma",
+    "validation": {
+      "availability": "available",
+      "current": true,
+      "valid": true,
+      "diagnostics": [],
+      "diagramRetained": false
+    },
+    "migration": {
+      "availability": "not-loaded",
+      "selectedId": null,
+      "selected": null,
+      "busy": null
+    },
+    "target": {
+      "availability": "not-applicable",
+      "id": null,
+      "selected": null,
+      "inspecting": false,
+      "reviewing": false,
+      "applying": false,
+      "observed": {
+        "availability": "not-loaded"
+      },
+      "cloud": {
+        "availability": "not-applicable"
+      }
+    }
+  },
+  "deployments": {
+    "dev": {
+      "availability": "missing-profile",
+      "target": {
+        "evidence": "declared",
+        "name": "studio-test-dev",
+        "mode": "dev"
+      },
+      "observed": {
+        "evidence": "observed",
+        "availability": "not-loaded"
+      }
+    },
+    "prod": {
+      "availability": "missing-profile",
+      "target": {
+        "evidence": "declared",
+        "name": "studio-test-prod",
+        "mode": "prod",
+        "region": "us-east-1"
+      },
+      "observed": {
+        "evidence": "observed",
+        "availability": "not-loaded"
+      }
+    }
+  },
+  "activity": {
+    "evidence": "observed",
+    "availability": "available",
+    "updatedAt": "2026-11-05T08:05:18.243Z",
+    "counts": {
+      "running": 0,
+      "recent": 13
+    },
+    "running": [],
+    "recent": [
+      {
+        "id": "mw32u00k-2b7d1d",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-05T05:00:02.324Z",
+        "endedAt": "2026-11-05T05:00:06.990Z"
+      },
+      {
+        "id": "mw2u6xuq-ba817c",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-05T00:58:09.506Z",
+        "endedAt": "2026-11-05T00:58:13.985Z"
+      },
+      {
+        "id": "mw2fep30-860f84",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-04T18:04:17.148Z",
+        "endedAt": "2026-11-04T18:04:19.913Z"
+      },
+      {
+        "id": "mw2fa87k-1ac3a3",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-04T18:00:48.656Z",
+        "endedAt": "2026-11-04T18:00:52.069Z"
+      }
+    ]
+  },
+  "issues": [],
+  "omitted": [
+    {
+      "path": "source.repositoryRoot-privateValues-sourceText",
+      "reason": "privacy"
+    },
+    {
+      "path": "workspace.database.source-sql-results-errors",
+      "reason": "privacy"
+    },
+    {
+      "path": "activity.logs-params-titles-summaries-recovery",
+      "reason": "privacy"
+    },
+    {
+      "path": "activity.recent",
+      "reason": "budget",
+      "count": 9
+    }
+  ]
+}
 ```
+
+</details>
+
+<details>
+<summary>Deploy with no associated AWS profile</summary>
 
 ```json
-{"location":{"pathname":"/deploy","workspace":"deploy","subsection":null},"workspace":{"kind":"deploy","evidence":"local-view","target":{"name":"matts-aws-framework-dev","mode":"dev","region":"<declared region if present>"},"reviewKey":null,"findings":{"availability":"not-loaded"},"running":[]},"source":{"mode":"dev","revision":"<accepted revision>","draft":{"dirty":false,"conflicted":false}},"deployments":{"dev":{"availability":"missing-profile","observed":{"availability":"not-loaded"}},"prod":{"availability":"missing-profile","observed":{"availability":"not-loaded"}}},"activity":"mandatory summary","focus":null,"issues":[],"omitted":[]}
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T08:05:20.084Z",
+  "location": {
+    "pathname": "/deploy",
+    "workspace": "deploy",
+    "subsection": null
+  },
+  "source": {
+    "mode": "dev",
+    "revision": "1-b5ecbab4c1da",
+    "latestRevision": "1-b5ecbab4c1da",
+    "modelStatus": "ok",
+    "stale": false,
+    "evaluating": false,
+    "connected": true,
+    "draft": {
+      "dirty": false,
+      "conflicted": false
+    }
+  },
+  "focus": null,
+  "workspace": {
+    "kind": "deploy",
+    "evidence": "local-view",
+    "availability": "available",
+    "target": {
+      "name": "studio-test-dev",
+      "mode": "dev"
+    },
+    "reviewKey": null,
+    "findings": {
+      "availability": "not-loaded",
+      "entries": null
+    },
+    "running": []
+  },
+  "deployments": {
+    "dev": {
+      "availability": "missing-profile",
+      "target": {
+        "evidence": "declared",
+        "name": "studio-test-dev",
+        "mode": "dev"
+      },
+      "observed": {
+        "evidence": "observed",
+        "availability": "not-loaded"
+      }
+    },
+    "prod": {
+      "availability": "missing-profile",
+      "target": {
+        "evidence": "declared",
+        "name": "studio-test-prod",
+        "mode": "prod",
+        "region": "us-east-1"
+      },
+      "observed": {
+        "evidence": "observed",
+        "availability": "not-loaded"
+      }
+    }
+  },
+  "activity": {
+    "evidence": "observed",
+    "availability": "available",
+    "updatedAt": "2026-11-05T08:05:19.771Z",
+    "counts": {
+      "running": 0,
+      "recent": 13
+    },
+    "running": [],
+    "recent": [
+      {
+        "id": "mw32u00k-2b7d1d",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-05T05:00:02.324Z",
+        "endedAt": "2026-11-05T05:00:06.990Z"
+      },
+      {
+        "id": "mw2u6xuq-ba817c",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-05T00:58:09.506Z",
+        "endedAt": "2026-11-05T00:58:13.985Z"
+      },
+      {
+        "id": "mw2fep30-860f84",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-04T18:04:17.148Z",
+        "endedAt": "2026-11-04T18:04:19.913Z"
+      },
+      {
+        "id": "mw2fa87k-1ac3a3",
+        "kind": "docker-start",
+        "status": "succeeded",
+        "startedAt": "2026-11-04T18:00:48.656Z",
+        "endedAt": "2026-11-04T18:00:52.069Z"
+      }
+    ]
+  },
+  "issues": [],
+  "omitted": [
+    {
+      "path": "source.repositoryRoot-privateValues-sourceText",
+      "reason": "privacy"
+    },
+    {
+      "path": "workspace.deploy.finding-details-review-content",
+      "reason": "privacy"
+    },
+    {
+      "path": "activity.logs-params-titles-summaries-recovery",
+      "reason": "privacy"
+    },
+    {
+      "path": "activity.recent",
+      "reason": "budget",
+      "count": 9
+    }
+  ]
+}
 ```
 
-These sketches show relevant field groups, not fixtures with invented observations. Final
-executable contract and captured examples are checked against the real application below.
+</details>
+
+For `/?select=resource%3Alanggraph`, focus identifies the `langgraph` group, its
+four named provider/model inputs, each requirement state and repository-relative input
+file, the example agent consuming them, and their source relationships. It withholds
+input values and shows bounded Dev/Prod leaf and connection differences. The final
+real capture fits below the unchanged 12,000-character limit.
 
 ### Privacy and size
 
@@ -224,9 +694,113 @@ exists in AWS. None of these gaps requires a DSL/core-model change for this proo
 
 ## Verification and removal review
 
-Implementation results, measurements, real-app capture review, checks, and every existing
-file seam are recorded here after validation. Disposable evidence belongs in
-`output/playwright/sightline/`; the permanent browser spec is
-`framework-studio/test/browser/sightline.spec.ts`. Forbidden paths, generated artifacts,
-chat payload and server overview must remain unchanged. This design was written before
-feature code and will be revised when tests or real-app evidence expose weak assumptions.
+Disposable evidence is in `output/playwright/sightline/`; the permanent browser spec is
+`framework-studio/test/browser/sightline.spec.ts`. The design was committed before feature
+code. The budget remains 12,000 characters: the final real-app capture set spans 1,790–8,832
+compact characters, and the oversized unit fixture fits at 11,774 with 24 recorded cuts.
+No measurement justified increasing the limit.
+
+### Real-app capture review
+
+The second Studio ran on port 4591 against this repository. Port 4590 and running dev
+stacks were left alone. A fresh browser with no selected AWS profile visited every route,
+all listed selection kinds and Cognito subsection, then switched source mode and tested
+1440px/390px and light/dark presentation. Each of the 25 captures was read as JSON and
+paired with a screenshot. The separate DevTools browser found no console errors or warnings.
+No AWS action, deployment, migration, database apply or model request was performed.
+
+| Capture group | Useful facts checked / resulting decision |
+| --- | --- |
+| Map overview | Counts, networks, issue counts and live filters; avoid whole entity inventories |
+| Langgraph, Prod and mobile variants | Four input members, requirement state, input file, consuming agent and relationships; added group consumers and concrete safe mode differences |
+| Gateway and route | Gateway kind/route ownership and target references; public route remains distinct from target/construct identity |
+| Target | Effective configuration/provenance, placement, lanes and implementation readiness; repository-owned absolute directory becomes a relative path |
+| Local service | Compose source, image/dependencies and lanes; environment values remain absent |
+| Island | Existing scene membership and metadata; do not run layout to reconstruct it elsewhere |
+| Defaults | Inherited fields/usage and source; no fabricated deployment evidence |
+| Network fixture | Network identity, NAT/endpoints/gateway settings; expanded settings needed to explain placement |
+| Connection | Original endpoints, relationship/provenance and mode differences; no invented invocation history |
+| Database and schema | Active editor/tab, dirty/validation state, selected logical/storage schema metadata; raw type expressions were found to contain defaults/SQL and are now withheld |
+| Deploy | Explicit target, finding availability, open review and work; missing-profile stays separate from not-loaded AWS observations |
+| Cognito plus four subsections | Subsection, destination, declared identities and observation availability; no false pool selection or user data |
+| Domains | Production intent authority, destination, input names/presence and diagnostics; exact hostnames remain private-input data |
+| WebSockets | Both panel states and configured/valid booleans; connection URL/messages/tokens stay absent |
+| GraphQL | Honest placeholder plus mandatory envelope |
+| Test | Minimal experiment identity plus mandatory envelope |
+
+These checks revised the relevance matrix above. Fixture browser tests additionally
+exercise live cached AWS evidence, dirty drafts, source publication, operations, migration
+selection and WebSocket connection transitions without making those real-world changes.
+Real AWS observations and deployed behavior remain unverified by design.
+
+### Checks and known failures
+
+The final focused unit suite passed all 20 tests and covers every workspace, selectable kind and focus state,
+determinism, canaries, budget/omissions, availability, freshness and registry lifetimes.
+The final focused browser suite passed all 48 tests, including the unchanged
+`agent-panel.spec.ts` (28 tests). It checks both
+themes, keyboard/axe accessibility, 1440px/390px, navigation/history, map selection,
+accepted source mode, live state, copy/count, preserved expansion/chat/draft/scroll and
+the exact unchanged chat body. Opening Sightline adds zero API requests, event streams
+or WebSocket connections compared with leaving it closed. Lazy JavaScript chunks are
+ordinary code loading and are not counted as data reads.
+
+The complete Studio unit run recorded 1,438 passes, 14 failures and 3 skips. Thirteen
+failures reproduce against untouched starting commit `510fb39`. The remaining VPC-rim
+assertion passes in isolation but fails in the current full isometric file. Replacing
+Sightline publication with an inert function in memory reproduces the exact same five
+isometric failures, including that assertion, with the same checkout and private-input
+availability. This rules out the new workspace seam; its underlying order/environment
+cause remains unresolved. The baseline archive omits ignored private inputs, so its
+additional fixture failures are not presented as evidence of a regression here.
+The complete browser run recorded 456 passes and 30 failures (15 per theme). Every
+failing category reproduces on the starting commit: old footer screenshots, a removed
+machine heading, and old deployment-read expectations. Eleven of twelve compared
+screenshots are byte-identical; the remaining one differs by five antialiasing pixels.
+Existing tests and screenshot expectations were not changed.
+
+`npm run verify` reaches Studio typechecking, then fails at four existing references to
+`LayoutQuality.crowding` in `test/island-composition.test.ts`. Earlier verification gates
+passed; gates after that failure did not execute. The user explicitly chose to keep
+layout repair separate. An existing Database diagram label also fails the page-wide
+light-theme contrast scan; Sightline's accessibility checks pass on the GraphQL page.
+Frontend TypeScript and `node docs/aws-studio-knowledge/check.mjs` pass. The production
+client and browser-gallery builds pass. No infrastructure synth, integration with real AWS,
+live database application or deployed check was run. The repository-wide green gate is
+therefore not claimed. Detailed commands/results and
+baseline comparisons are retained in the evidence directory.
+
+### Existing-file seams and removal
+
+| Existing file (under `framework-studio/src/views/` unless stated) | Change and reason |
+| --- | --- |
+| `GlobalActivity.tsx` | Lazy-load `AgentViews`; pass display-only conversation visibility to the existing chat owner so hidden replies remain unread. No route/Studio subscription |
+| `Isometric.tsx` | Publish lazy filter/search/view and existing island membership metadata |
+| `Database.tsx` | Publish tab/editor/selection, draft and value-free validation metadata |
+| `DatabaseHistory.tsx` | Publish selected migration identity and load state |
+| `DatabaseEvidence.tsx` | Publish selected target and already available observation statuses |
+| `DatabaseCloud.tsx` | Publish target, busy and review-open state |
+| `DatabaseSql.tsx` | Publish target, busy and review-open state, never SQL |
+| `Deploy.tsx` | Publish destination, finding codes/severity, review key and running job identities |
+| `AuthenticationWorkspace.tsx` | Publish subsection, destination and allowed declared/observed identity metadata |
+| `DomainsWorkspace.tsx` | Publish destination, input presence/pending-change flags and safe diagnostics from the workspace and its local controls |
+| `websockets/WebSockets.tsx` | Publish existing defaults-read availability |
+| `websockets/WebSocketTester.tsx` | Publish each panel's connection/configured/valid state |
+| `docs/aws-studio-knowledge/README.md` | Add canonical task routing row |
+| `docs/aws-studio-knowledge/reference/glossary.md` | Define Sightline and its read-only/debug-only boundary |
+| `docs/aws-studio-knowledge/studio/interface.md` | Document new display/publication ownership and lifecycle |
+| `docs/framework-studio/local-agent-lab.md` | Document the view, preserved conversation and unchanged model input |
+
+Remove `src/sightline/`, its new tests and canonical doc, undo the imports/publications in
+the table, restore the old lazy AgentPanel import/chat visibility, and remove the four doc
+additions to remove the feature. No provider, model, server, core declaration or generator
+needs repair. Workspaces retain their owners, setters, URL behavior and render triggers.
+Only the visible consumer receives publication notifications. The closed-view constant
+registration cost is the documented exception to a literal zero-instruction interpretation
+of “no work”; there is no closed-view projection, subscriber, polling or data read.
+
+The weakest part is maintaining safe adapters beside many local owners. Explicit typing,
+route coverage and canaries constrain drift, but cannot decide whether a newly introduced
+field is useful or safe. Sparse structured diagnostic metadata also limits explanations.
+Keep the future pull model small, and require a separate reviewed projection for every
+new detail surface. No current gap warrants changing a declaration for Sightline.

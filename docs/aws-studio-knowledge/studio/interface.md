@@ -20,6 +20,9 @@ source:
   - framework-studio/src/views/GlobalActivity.tsx
   - framework-studio/src/agent-chat.ts
   - framework-studio/src/views/agent/AgentPanel.tsx
+  - framework-studio/src/sightline/AgentViews.tsx
+  - framework-studio/src/sightline/useSightlineInputs.ts
+  - framework-studio/src/sightline/bridge.ts
   - framework-studio/src/views/deploy/DockerStatus.tsx
   - framework-studio/src/machine/docker.ts
   - framework-studio/shared/machine.ts
@@ -150,6 +153,7 @@ own exact-text session and navigation protection.
 | Docker availability | One Shell-mounted observer and shared query cache; Deploy, Map and Activity consume the same current host observation |
 | Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and operation reads; shared log storage and one global operation-event observer continue on every route. Execution belongs to the runner or the operation's legacy service |
 | Agent conversation | `useAgentChat` in the persistent shell owns provider, each provider's model selection, transcript, draft, pending request and unread state. These survive mode switches, collapse and navigation, and reset on page reload |
+| Sightline display and projection | `sightline/AgentViews.tsx` owns Conversation/Sightline display selection; the visible Sightline alone subscribes to route, Studio and cached evidence. Workspace owners register lazy typed readers in `sightline/bridge.ts`, removed on unmount; they never read the projection back. The agent receives none of it |
 | Shared deployment target resolution and observations | Pure mode-aware resolver and one persistent observer; TanStack Query owns data/errors/freshness. Consumer hooks subscribe without polling or issuing reads |
 | Specialized operational destination, inspection and approval | Owning workspace; shared deployment defaults never replace its explicit target, inspection action or review |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
@@ -191,7 +195,14 @@ see [local coding agents](../../framework-studio/local-agent-lab.md).
 `GlobalActivity` is memoized and consumes no route or Studio context, so navigation does
 not render it again. Open state, selected job, log DOM, and the reader's scroll position
 survive navigation. Job/log changes and tray interactions still update it normally.
-Opening it shrinks the workspace, except the map's canvas, which [runs beneath it](rendering.md).
+Inside Agent, **Sightline** opens a collapsible JSON debug view with Copy JSON and a
+character count. Conversation DOM, draft and scroll remain mounted while it is selected.
+Only the visible Sightline mounts its input subscriptions; opening it initiates no data
+reads. The existing JSON viewer loads lazily, with keyboard expansion controls and Studio
+theme tokens. [Sightline](../../framework-studio/sightline.md) defines the read-only
+contract, privacy allow-list, workspace state seams and current gaps. The conversation
+still receives only its existing bounded messages and fixed server overview.
+Opening the bottom panel shrinks the workspace, except the map's canvas, which [runs beneath it](rendering.md).
 The tray observes `/api/operations` through the shared operation transport and owns the
 global operation-event subscription. Deploy's event observer handles its plan-review/CloudFormation
 callbacks. Operations started from Deploy call `openActivity(job.id)` to reveal their job

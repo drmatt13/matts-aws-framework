@@ -24,6 +24,7 @@ For an engineering task, read this router, **one first page**, then only its rel
 | Framework architecture across subsystems | [Framework architecture](framework/architecture.md) | [Architecture map](ARCHITECTURE-MAP.md), [decisions](architecture/decisions.md) |
 | Architectural rationale or boundary changes | [Decision records](architecture/decisions.md) | [Source authority](architecture/contracts.md), [invariants](reference/invariants.md) |
 | First Studio walkthrough or visible action | [Interface](studio/interface.md) | [Backend authorities](studio/backend.md), [editing](studio/editing.md) |
+| Sightline: read-only projection of the current location, selection and available evidence; not yet received by the agent | [Sightline](../framework-studio/sightline.md) | [Interface](studio/interface.md), [source authority](architecture/contracts.md), [secrets](deployment/secrets.md) |
 | Server route, service or operational authority | [Backend](studio/backend.md) | [Operational lifecycle](deployment/lifecycle.md), [snapshots](studio/snapshots.md) |
 | Source save versus cloud, database or release action | [Operational lifecycle](deployment/lifecycle.md) | [Planning/safety](deployment/planning-and-safety.md), [operations](deployment/operations.md) |
 | Historical local performance, developer acceptance and lifecycle evidence | [Job 4 performance](../framework-studio/job4-performance-2026-10-23.md) | [Performance procedures](../framework-studio/performance.md), [Local execution](runtime/local-execution.md) |
