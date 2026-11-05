@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { DockerView, PrerequisiteView } from "../../shared/deploy";
+import type { DockerStatusView } from "../../shared/machine";
 import type { CommandResult, Runner, Tools } from "./process";
 
 /**
@@ -33,7 +34,7 @@ export function engineState(result: CommandResult): Pick<DockerView, "engine" | 
       platform: version.Server.Platform?.Name ? String(version.Server.Platform.Name) : undefined,
     };
   }
-  if (version || ENGINE_DOWN.test(result.stderr)) return { engine: "stopped", problem: "The Docker engine is not running." };
+  if (version?.Server === null || ENGINE_DOWN.test(result.stderr)) return { engine: "stopped", problem: "The Docker engine is not running." };
   return { engine: "unknown", problem: lastLine(result.stderr) || "Docker did not answer." };
 }
 
@@ -102,14 +103,37 @@ export function dependencyState(root: string): Omit<PrerequisiteView, "id" | "la
   return { status: "ok", summary: "Installed, and current with package-lock.json." };
 }
 
-export async function probePrerequisites(tools: Tools, run: Runner, env: NodeJS.ProcessEnv, root: string): Promise<{ prerequisites: PrerequisiteView[]; docker: DockerView }> {
+export async function probeDockerStatus(tools: Tools, run: Runner, env: NodeJS.ProcessEnv): Promise<Omit<DockerStatusView, "observedAt">> {
+  const docker = await probeDocker(tools, run, env);
+  const separateWatch = docker.composeVersion ? await watchesSeparately(tools, run, env) : false;
+  return { docker, checks: [
+    docker.engine === "running"
+      ? { id: "docker", label: "Docker", status: "ok", summary: `Engine ${docker.serverVersion ?? ""} running${docker.context ? ` (${docker.context})` : ""}.`.replace("  ", " ") }
+      : docker.engine === "missing"
+        ? { id: "docker", label: "Docker", status: "warn", summary: "Docker is not installed.", detail: "Local development runs in Docker, and deployments that build container images need it." }
+        : docker.engine === "unknown"
+          ? { id: "docker", label: "Docker", status: "unknown", summary: "Docker status is unavailable.", detail: docker.problem }
+          : {
+          id: "docker", label: "Docker", status: "warn",
+          summary: docker.desktop ? "Docker Desktop is not running." : "The Docker engine is not running.",
+          detail: "Local development needs it. A deployment needs it only to build container images not yet in ECR.",
+          ...(docker.desktop ? { remedy: { kind: "docker-start" as const, params: {} } } : {}),
+        },
+    !docker.composeVersion
+      ? { id: "compose", label: "Compose", status: docker.engine === "missing" || docker.engine === "unknown" ? "unknown" : "fail", summary: "Docker Compose is not available." }
+      : separateWatch
+        ? { id: "compose", label: "Compose", status: "ok", summary: `Compose ${docker.composeVersion}` }
+        : { id: "compose", label: "Compose", status: "warn", summary: `Compose ${docker.composeVersion} cannot watch a running stack.`, detail: "Update Docker Compose: Studio runs the stack detached and watches it with docker compose watch --no-up." },
+  ] };
+}
+
+export async function probePrerequisites(tools: Tools, run: Runner, env: NodeJS.ProcessEnv, root: string, observation = probeDockerStatus(tools, run, env)): Promise<{ prerequisites: PrerequisiteView[]; docker: DockerView }> {
   const npmCommand = tools.npm(["--version"], env);
-  const [npm, aws, docker] = await Promise.all([
+  const [npm, aws, machine] = await Promise.all([
     npmCommand ? run(npmCommand, { timeoutMs: 20_000 }) : Promise.resolve<CommandResult>({ code: null, stdout: "", stderr: "", missing: true }),
     env.FRAMEWORK_AWS_CLI ? Promise.resolve<CommandResult>({ code: 0, stdout: "", stderr: "" }) : run(tools.aws(["--version"], env), { timeoutMs: 20_000 }),
-    probeDocker(tools, run, env),
+    observation,
   ]);
-  const separateWatch = docker.composeVersion ? await watchesSeparately(tools, run, env) : false;
 
   const nodeMajor = major(process.versions.node);
   const npmVersion = npm.code === 0 ? firstLine(npm.stdout) : undefined;
@@ -132,21 +156,7 @@ export async function probePrerequisites(tools: Tools, run: Runner, env: NodeJS.
           ? { id: "aws-cli", label: "AWS CLI", status: "ok", summary: `AWS CLI ${awsVersion ?? ""}`.trim() }
           : { id: "aws-cli", label: "AWS CLI", status: "warn", summary: `AWS CLI ${awsVersion}: version 2 is needed for SSO sign-in.` },
     { id: "dependencies", label: "Dependencies", ...dependencyState(root) },
-    docker.engine === "running"
-      ? { id: "docker", label: "Docker", status: "ok", summary: `Engine ${docker.serverVersion ?? ""} running${docker.context ? ` (${docker.context})` : ""}.`.replace("  ", " ") }
-      : docker.engine === "missing"
-        ? { id: "docker", label: "Docker", status: "warn", summary: "Docker is not installed.", detail: "Local development runs in Docker, and deployments that build container images need it." }
-        : {
-          id: "docker", label: "Docker", status: "warn",
-          summary: docker.desktop ? "Docker Desktop is not running." : "The Docker engine is not running.",
-          detail: "Local development needs it. A deployment needs it only to build container images not yet in ECR.",
-          ...(docker.desktop ? { remedy: { kind: "docker-start" as const, params: {} } } : {}),
-        },
-    !docker.composeVersion
-      ? { id: "compose", label: "Compose", status: docker.engine === "missing" ? "unknown" : "fail", summary: "Docker Compose is not available." }
-      : separateWatch
-        ? { id: "compose", label: "Compose", status: "ok", summary: `Compose ${docker.composeVersion}` }
-        : { id: "compose", label: "Compose", status: "warn", summary: `Compose ${docker.composeVersion} cannot watch a running stack.`, detail: "Update Docker Compose: Studio runs the stack detached and watches it with docker compose watch --no-up." },
+    ...machine.checks,
   ];
-  return { prerequisites, docker };
+  return { prerequisites, docker: machine.docker };
 }

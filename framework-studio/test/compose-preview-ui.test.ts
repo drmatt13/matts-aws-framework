@@ -2,7 +2,7 @@ import assert from "./support/assert";
 import { createRequire } from "node:module";
 import { afterEach, before, beforeEach, test } from "node:test";
 import { createElement as h } from "react";
-import { overview } from "./browser/support/scenarios";
+import { overview, dockerStatus } from "./browser/support/scenarios";
 import type { DockerView, JobView } from "../shared/deploy";
 
 const require = createRequire(import.meta.url);
@@ -11,6 +11,11 @@ let view: typeof import("../src/views/map/ComposePreview");
 let api: typeof import("../src/deploy/api").deployApi;
 let docker: DockerView;
 let operations: string[];
+let query: typeof import("@tanstack/react-query");
+let machine: typeof import("../src/machine/docker");
+let client: import("@tanstack/react-query").QueryClient;
+let outcome: JobView["status"];
+let readDocker: () => Promise<ReturnType<typeof dockerStatus>>;
 
 before(async () => {
   const { JSDOM } = require("jsdom");
@@ -20,6 +25,14 @@ before(async () => {
   }
   // JSDOM hides native popovers but does not implement showing them. Browser tests cover dismissal/focus.
   dom.window.HTMLElement.prototype.showPopover = function () { this.style.display = "block"; };
+  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} removeEventListener() {} close() {} } });
+  Object.defineProperty(globalThis, "fetch", { configurable: true, value: async (input: string) => {
+    if (input.startsWith("/api/machine/docker")) return new Response(JSON.stringify(await readDocker()));
+    if (input === "/api/operations") return new Response(JSON.stringify(client.getQueryData(["operations"]) ?? { jobs: [] }));
+    throw new Error(`Unscripted ${input}`);
+  } });
+  query = require("@tanstack/react-query");
+  machine = await import("../src/machine/docker");
   ui = require("@testing-library/react");
   view = await import("../src/views/map/ComposePreview");
   api = (await import("../src/deploy/api")).deployApi;
@@ -28,21 +41,25 @@ before(async () => {
 beforeEach(() => {
   docker = { engine: "running", desktop: true };
   operations = [];
+  outcome = "succeeded";
+  readDocker = async () => dockerStatus(docker);
+  client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { gcTime: 0 } } });
   api.overview = async () => ({ ...overview(), local: { ...overview().local, docker } });
   api.operate = async (kind) => {
     operations.push(kind);
-    return { id: "docker-job", kind, title: "Start Docker Desktop", params: {}, status: "running", startedAt: "2026-11-04T00:00:00Z", lastSeq: 0 };
-  };
-  api.log = async () => {
-    docker = { engine: "running", desktop: true };
-    return { lines: [], job: { id: "docker-job", kind: "docker-start", title: "Start Docker Desktop", params: {}, status: "succeeded", startedAt: "2026-11-04T00:00:00Z", lastSeq: 0 } };
+    const started: JobView = { id: `docker-job-${operations.length}`, kind, title: "Start Docker Desktop", params: {}, status: "running", startedAt: new Date(Date.now() + operations.length).toISOString(), lastSeq: 0 };
+    setTimeout(() => {
+      if (outcome === "succeeded") docker = { engine: "running", desktop: true };
+      client.setQueryData(["operations"], { jobs: [{ ...started, status: outcome, ...(outcome === "failed" ? { summary: "Docker Desktop could not start." } : {}) }] });
+    }, 10);
+    return started;
   };
 });
 
-afterEach(() => ui.cleanup());
+afterEach(() => { ui.cleanup(); client.clear(); });
 
 const mount = (motion: boolean) => {
-  ui.render(h(view.ComposePreview, { motion }));
+  ui.render(h(query.QueryClientProvider, { client }, h(machine.GlobalDockerStatus), h(view.ComposePreview, { motion })));
   return ui.screen.getByRole("switch", { name: "Local runtime" });
 };
 const status = (control: HTMLElement) =>
@@ -132,26 +149,25 @@ test("Docker without Desktop offers manual instructions and a fresh check", asyn
 
 test("a failed Docker start stays off and can be retried", async () => {
   docker = { engine: "stopped", desktop: true };
-  const log = api.log;
-  api.log = async () => ({ lines: [], job: { id: "docker-job", status: "failed", summary: "Docker Desktop could not start." } as JobView });
+  outcome = "failed";
   const control = mount(false);
   ui.fireEvent.click(control);
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Start Docker Desktop" }));
   await ui.screen.findByRole("alert");
   assert.equal(control.getAttribute("aria-checked"), "false");
-  api.log = log;
+  outcome = "succeeded";
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Start Docker Desktop" }));
   await ui.screen.findByText("Docker is ready");
   assert.equal(control.getAttribute("aria-checked"), "false");
 });
 
 test("closing while detection is pending ignores the late response", async () => {
-  let finish!: (value: ReturnType<typeof overview>) => void;
-  api.overview = () => new Promise((resolve) => { finish = resolve; });
+  let finish!: (value: ReturnType<typeof dockerStatus>) => void;
+  readDocker = () => new Promise((resolve) => { finish = resolve; });
   const control = mount(false);
   ui.fireEvent.click(control);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close Docker help" }));
-  await ui.act(async () => { finish(overview()); });
+  await ui.act(async () => { finish(dockerStatus()); });
   assert.equal(control.getAttribute("aria-checked"), "false");
   assert.equal(ui.screen.queryByRole("dialog"), null);
 });

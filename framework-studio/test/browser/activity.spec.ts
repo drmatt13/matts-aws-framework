@@ -234,7 +234,7 @@ test("Activity loading and failed reads remain visible and recover through retry
   const toggle = activity.getByRole("button", { name: /^Activity/ });
   await expect(toggle).toContainText("Reading activity");
   await toggle.click();
-  await expect(activity.getByRole("status")).toBeVisible();
+  await expect(activity.getByRole("status").filter({ hasText: "Reading activity…" })).toBeVisible();
   release();
   await expect(activity.getByRole("alert")).toContainText("Fixture activity history is unavailable", { timeout: 15_000 });
   fail = false;
@@ -253,7 +253,7 @@ test("uncertain operations expose recovery and a workspace link without offering
   await studio.goto("/graphql");
   const activity = page.getByRole("region", { name: "Activity", exact: true });
   await activity.getByRole("button", { name: /^Activity/ }).click();
-  await expect(activity.getByRole("status")).toHaveText(uncertain.recovery!);
+  await expect(activity.getByRole("status").filter({ hasText: uncertain.recovery! })).toBeVisible();
   await expect(activity).toContainText("Outcome uncertain");
   await expect(activity.getByRole("button", { name: /Cancel|Stop command|Retry operation/ })).toHaveCount(0);
   const link = activity.getByRole("link", { name: "Open workspace" });
@@ -273,9 +273,9 @@ test("unavailable process observation is visible and clears when host inspection
   await studio.goto("/graphql");
   const activity = page.getByRole("region", { name: "Activity", exact: true });
   await activity.getByRole("button", { name: /^Activity/ }).click();
-  await expect(activity.getByRole("status")).toHaveText(observed.observationProblem!);
+  await expect(activity.getByRole("status").filter({ hasText: observed.observationProblem! })).toBeVisible();
   await studio.emit("operation-job", { ...observed, observationProblem: undefined });
-  await expect(activity.getByRole("status")).toHaveCount(0);
+  await expect(activity.getByRole("status").filter({ hasText: observed.observationProblem! })).toHaveCount(0);
   await expect(activity.getByLabel("Log", { exact: true })).toContainText("Fixture activity line 1");
   expect(studio.requests.filter(request => request.method === "POST")).toEqual([]);
 });

@@ -6,13 +6,15 @@ import { RUNNER_KINDS } from "../operations/adapter";
 import { listAwsProfiles } from "../../../scripts/aws-profiles";
 import { isAwsProfileName } from "../../shared/aws-connections";
 import { repositoryTargets } from "@repo/framework/deploy/node";
-import type { DeployOverview, DockerView, DriftView, JobView, ManagedProcessView, OperationRequest, PrerequisiteView } from "../../shared/deploy";
+import type { DeployOverview, DriftView, JobView, ManagedProcessView, OperationRequest, PrerequisiteView } from "../../shared/deploy";
 import { JobManager } from "./jobs";
 import { LocalEnvironment } from "./local";
 import { AwsObserver, type Observation } from "./observe";
 import { PlanStore, TeardownStore } from "./plans";
 import { Preferences } from "./preferences";
-import { probeDocker, probePrerequisites } from "./prereqs";
+import { probeDockerStatus, probePrerequisites } from "./prereqs";
+import { DockerStatus } from "../machine/docker";
+import { withDockerStatus } from "../../shared/machine";
 import { runCommand, Tools, type Runner } from "./process";
 import { buildOperation, exportDirectory, managedSpec, OperationError, type ManagedCommands, type OperationContext, type RepositoryTarget } from "./registry";
 import type { AwsConnectionsService } from "../aws-connections/service";
@@ -45,8 +47,8 @@ export class DeployService {
   private readonly run: Runner;
   private readonly env: NodeJS.ProcessEnv;
   private readonly drift = new Map<string, DriftView>();
-  private prerequisites?: { at: number; promise: Promise<{ prerequisites: PrerequisiteView[]; docker: DockerView }> };
-  private docker?: { at: number; promise: Promise<DockerView> };
+  private prerequisites?: { at: number; promise: Promise<PrerequisiteView[]> };
+  readonly dockerStatus: DockerStatus;
   private readonly context: OperationContext;
   private connections?: Pick<AwsConnectionsService, "catalog" | "check" | "startAuthentication">;
   private readonly operationsClient?: OperationsClient;
@@ -65,6 +67,7 @@ export class DeployService {
     this.env = options.env ?? process.env;
     this.run = options.run ?? runCommand;
     this.tools = new Tools(root, this.env);
+    this.dockerStatus = new DockerStatus(() => probeDockerStatus(this.tools, this.run, this.env), status => this.broadcast("machine-docker", status));
     // FRAMEWORK_STUDIO_STATE_DIRECTORY keeps a test run's jobs and plans apart from yours.
     const state = options.stateDirectory ?? (this.env.FRAMEWORK_STUDIO_STATE_DIRECTORY ? path.resolve(this.env.FRAMEWORK_STUDIO_STATE_DIRECTORY) : path.join(root, ".cache", "framework-studio"));
     this.state = state;
@@ -89,7 +92,7 @@ export class DeployService {
       jobs: this.jobs, plans: this.plans, teardowns: this.teardowns, local: this.local, observer: this.observer,
       profiles: () => this.observer.profiles(),
       targets: () => this.targets(),
-      probeDocker: () => this.probeDocker(true),
+      probeDocker: () => this.dockerStatus.read(true).then(status => status.docker),
       managed: options.managed ?? {},
       startManaged: (kind, profile) => this.jobs.holder(kind) ?? this.jobs.start(managedSpec(this.context, kind, profile)),
       stopManaged: async () => {
@@ -102,7 +105,8 @@ export class DeployService {
       changed: (profile, deployment) => {
         this.observer.invalidate(profile);
         this.prerequisites = undefined;
-        this.docker = undefined;
+        this.dockerStatus.invalidate();
+        if (!this.disposed) void this.dockerStatus.read(true).catch(() => {});
         this.broadcast("deploy-changed", { profile: profile ?? null, deployment: deployment ?? null });
       },
     };
@@ -128,18 +132,11 @@ export class DeployService {
     }
   }
 
-  private probeDocker(force = false): Promise<DockerView> {
-    if (!force && this.docker && Date.now() - this.docker.at < 5000) return this.docker.promise;
-    const promise = probeDocker(this.tools, this.run, this.env);
-    this.docker = { at: Date.now(), promise };
-    return promise;
-  }
-
   private probe(force: boolean) {
     if (!force && this.prerequisites && Date.now() - this.prerequisites.at < 15_000) return this.prerequisites.promise;
-    const promise = probePrerequisites(this.tools, this.run, this.env, this.root);
+    const promise = probePrerequisites(this.tools, this.run, this.env, this.root, this.dockerStatus.read(force))
+      .then(result => result.prerequisites.filter(check => check.id !== "docker" && check.id !== "compose"));
     this.prerequisites = { at: Date.now(), promise };
-    this.docker = { at: Date.now(), promise: promise.then((result) => result.docker) };
     return promise;
   }
 
@@ -151,10 +148,11 @@ export class DeployService {
   }
 
   async overview(force = false): Promise<DeployOverview> {
-    const [{ prerequisites, docker }, profiles] = await Promise.all([this.probe(force), this.observer.profiles(force)]);
+    const [prerequisites, profiles, machine] = await Promise.all([this.probe(force), this.observer.profiles(force), this.dockerStatus.read(force)]);
+    const docker = machine.docker;
     const local = await this.local.view(docker, { watch: this.managed("local-watch"), client: this.managed("local-client") });
     const { targets, problem } = this.listTargets();
-    return { targets, ...(problem ? { targetsProblem: problem } : {}), prerequisites, local, jobs: await this.listOperations(), preferences: this.preferences.read(), profiles };
+    return withDockerStatus({ targets, ...(problem ? { targetsProblem: problem } : {}), prerequisites, local, jobs: await this.listOperations(), preferences: this.preferences.read(), profiles }, machine);
   }
 
   async requireProfile(name: unknown): Promise<string> {
@@ -217,6 +215,10 @@ export class DeployService {
   private async performAdmitted(request: OperationRequest): Promise<JobView> {
     if (this.disposed) throw new OperationError(503, "Studio has stopped accepting operations.");
     if (!request || typeof request.kind !== "string") throw new OperationError(400, "An operation has a kind.");
+    if (request.kind === "docker-start") {
+      const running = this.jobs.holder("docker");
+      if (running) return running;
+    }
     if (request.kind === "aws-login") throw new OperationError(400, "Authentication uses AWS connection management. Open Configure AWS profiles.");
     if (this.operationsClient && RUNNER_KINDS.has(request.kind)) {
       if (this.jobs.running().some(job => !["local-watch", "local-client"].includes(job.kind))) throw new OperationError(409, "A local workspace operation is running. Wait for it before starting independent work.");

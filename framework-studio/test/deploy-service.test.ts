@@ -116,6 +116,31 @@ test("the overview names this repository's targets, this machine's tools and the
   assert.doesNotMatch(JSON.stringify(body), /sentinel/);
 });
 
+test("a fresh shared Docker observation overrides cached prerequisites and redundant starts are skipped", async () => {
+  const original = readFileSync(dockerState, "utf8");
+  try {
+    writeFileSync(dockerState, JSON.stringify({ ...JSON.parse(original), engine: "running" }));
+    const machine = await service.dockerStatus.read(true);
+    assert.equal(machine.docker.engine, "running");
+    const overview = (await get<DeployOverview>("/overview")).body;
+    assert.equal(overview.local.docker.engine, "running");
+    assert.equal(overview.prerequisites.find(item => item.id === "docker")?.status, "ok");
+    const calls = () => readFileSync(`${dockerState}.calls.jsonl`, "utf8").split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+    const launches = calls().filter(call => call.args.join(" ") === "desktop start").length;
+    const first = await service.perform({ kind: "docker-start", params: {} });
+    const second = await service.perform({ kind: "docker-start", params: {} });
+    assert.equal(first.id, second.id, "both entry points adopt the same running host operation");
+    const completed = await service.jobs.wait(first.id);
+    assert.equal(completed.status, "succeeded");
+    assert.equal(completed.steps?.[0]?.status, "skipped");
+    assert.equal(calls().filter(call => call.args.join(" ") === "desktop start").length, launches);
+  } finally {
+    writeFileSync(dockerState, original);
+    service.dockerStatus.invalidate();
+    await service.dockerStatus.read(true);
+  }
+});
+
 test("discovery resolves the profile's account and finds every deployment by its own records, reading only", async () => {
   const { body } = await get<{ ok: boolean; value: DiscoveryView }>("/discover?profile=dev");
   assert.equal(body.ok, true);

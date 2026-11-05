@@ -7,6 +7,7 @@ import type { OperationRequest, PrerequisiteView } from "../../../shared/deploy"
 
 /** Machine checks stay local; the global Source menu owns AWS connection details. */
 export function AccountBar(props: {
+  readonly dockerStarting?: boolean;
   readonly prerequisites: readonly PrerequisiteView[];
   readonly onRemedy: (request: OperationRequest) => void;
 }) {
@@ -79,10 +80,11 @@ export function AccountBar(props: {
                         buttonClasses({ variant: "link", size: "regular" }),
                         "text-caption",
                       )}
+                      disabled={item.remedy.kind === "docker-start" && props.dockerStarting}
                       onClick={() => props.onRemedy(item.remedy!)}
                     >
                       {item.remedy.kind === "docker-start"
-                        ? "Start"
+                        ? props.dockerStarting ? "Starting…" : "Start"
                         : item.remedy.kind === "deps-install"
                           ? "Install"
                           : "Fix"}

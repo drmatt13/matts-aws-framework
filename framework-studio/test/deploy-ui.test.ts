@@ -111,6 +111,10 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
     "/frontend-release/settings": { settings: DEFAULT_FRONTEND_RELEASE, hash: "settings-review-hash" },
     "/frontend-release/history": [],
     ...scripted };
+  const machineOverview = scripted["/deploy/overview"] as DeployOverview | undefined;
+  answers["/machine/docker"] ??= { docker: machineOverview?.local.docker ?? overview().local.docker,
+    checks: machineOverview?.prerequisites.filter(item => item.id === "docker" || item.id === "compose") ?? overview().prerequisites,
+    observedAt: "2026-11-04T00:00:00.000Z" };
   if (Array.isArray(answers["/deploy/plans"])) answers["/deploy/plans"] = (answers["/deploy/plans"] as PlanSummaryView[]).map((plan) => ({ account: context.account, region: context.region, ...plan }));
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);

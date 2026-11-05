@@ -1,3 +1,5 @@
+import { useDockerStatus, useDockerStart } from "../machine/docker";
+import { withDockerStatus, unavailableDockerStatus } from "../../shared/machine";
 import {
   deploymentOverviewQuery,
   deploymentDiscoveryQuery,
@@ -61,7 +63,9 @@ export function Deploy() {
   currentConnection.current = connectionKey;
   const queryClient = useQueryClient();
   const overviewQuery = useQuery({ ...deploymentOverviewQuery(), staleTime: 30_000 });
-  const overview = overviewQuery.data;
+  const machineQuery = useDockerStatus();
+  const dockerStart = useDockerStart();
+  const overview = overviewQuery.data ? withDockerStatus(overviewQuery.data, machineQuery.status ?? unavailableDockerStatus("Checking Docker…")) : undefined;
   const refreshInFlight = useRef(false);
   const [reviewKey, setReviewKey] = useState<string>();
   const [teardown, setTeardown] = useState<{
@@ -241,7 +245,7 @@ export function Deploy() {
     ): Promise<JobView | undefined> => {
       try {
         const capturedConnection = currentConnection.current;
-        const job = await deployApi.operate(kind, params);
+        const job = kind === "docker-start" ? await dockerStart.start() : await deployApi.operate(kind, params);
         startedHere.current.add(job.id);
         startedConnections.current.set(job.id, capturedConnection);
         openActivity(job.id);
@@ -260,7 +264,7 @@ export function Deploy() {
         return undefined;
       }
     },
-    [queryClient, toast],
+    [queryClient, toast, dockerStart.start],
   );
 
   const refreshAll = async () => {
@@ -269,6 +273,7 @@ export function Deploy() {
     // Fetch through the query cache so pending/errors are observable and a failed
     // refresh keeps the last successful evidence on screen.
     await Promise.allSettled([
+      machineQuery.refresh(),
       queryClient.fetchQuery({ ...deploymentOverviewQuery(true), staleTime: 0 }),
       ...(profile
         ? [queryClient.fetchQuery({ ...deploymentDiscoveryQuery(profile, true), queryKey: discoveryKey, staleTime: 0 })]
@@ -427,7 +432,7 @@ export function Deploy() {
       </DeployState>
     );
 
-  const machine = <AccountBar prerequisites={overview.prerequisites} onRemedy={remedy} />;
+  const machine = <AccountBar prerequisites={overview.prerequisites} onRemedy={remedy} dockerStarting={dockerStart.starting} />;
   const readFeedback = readError || readNotice ? (
     <Notice className="flex flex-wrap items-center justify-between gap-3" role="alert">
       <span>{readError ? `Some information could not be refreshed. ${readError.message}` : readNotice}</span>

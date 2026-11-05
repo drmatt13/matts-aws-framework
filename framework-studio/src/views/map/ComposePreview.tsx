@@ -1,6 +1,7 @@
-import { useCallback, useId, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { cx } from "../../ui/classes";
 import { DockerStartPopover } from "./DockerStartPopover";
+import { useDockerStatus } from "../../machine/docker";
 
 /*
  * Motion. Every state change is a CSS transition with per-part delays, so a second
@@ -33,6 +34,7 @@ const timing = (on: boolean, whenOn: string, whenOff: string): CSSProperties => 
 
 /** Visual runtime prototype, gated by the real Docker prerequisite. It does not launch Compose. */
 export function ComposePreview({ motion }: { readonly motion: boolean }) {
+  const docker = useDockerStatus();
   const [on, setOn] = useState(false);
   const [dockerHelp, setDockerHelp] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -50,6 +52,9 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
     setDockerHelp(false);
     trigger.current?.focus({ preventScroll: true });
   }, []);
+  useEffect(() => {
+    if (docker.status?.docker.engine === "stopped" || docker.status?.docker.engine === "missing") setOn(false);
+  }, [docker.status?.docker.engine]);
   const closeHelp = useCallback(() => {
     setDockerHelp(false);
     // Light dismissal keeps focus on the clicked control; Escape and Close return to the switch.
@@ -74,6 +79,7 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
         data-motion={motion ? "on" : "off"}
         onClick={() => {
           if (on) setOn(false);
+          else if (docker.status?.docker.engine === "running" && !docker.isStale) enablePreview();
           else setDockerHelp((current) => !current);
         }}
         onPointerLeave={() => setArmed(true)}

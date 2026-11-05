@@ -1,3 +1,4 @@
+import { dockerStatus } from "./scenarios";
 import { test as base, expect, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { readFile } from "node:fs/promises";
@@ -68,6 +69,7 @@ export const test = base.extend<{ studio: StudioFixture }>({
         switch (`${request.method()} ${url.pathname}`) {
           case "GET /api/snapshot": value = response; break;
           case "GET /api/source-recovery": value = []; break;
+          case "GET /api/machine/docker": value = dockerStatus(); break;
           case "GET /api/deploy/overview": value = overview(); break;
           case "GET /api/operations": value = { jobs: [] }; break;
           case "GET /api/deploy/profiles": value = overview().profiles; break;

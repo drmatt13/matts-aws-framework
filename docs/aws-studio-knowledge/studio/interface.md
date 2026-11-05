@@ -14,6 +14,9 @@ source:
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
   - framework-studio/src/views/GlobalActivity.tsx
+  - framework-studio/src/views/deploy/DockerStatus.tsx
+  - framework-studio/src/machine/docker.ts
+  - framework-studio/shared/machine.ts
   - framework-studio/src/activity.ts
   - framework-studio/src/operations/live.ts
   - framework-studio/src/operations/api.ts
@@ -134,6 +137,7 @@ own exact-text session and navigation protection.
 | Latest snapshot and source-read evidence | TanStack Query; [snapshot.ts](../../../framework-studio/src/snapshot.ts) and feature query definitions retain existing keys and refresh policies |
 | Inspector return trail | In-memory accepted visits, with presentation retained separately per source mode; see [rendering](rendering.md) |
 | Prisma text, validation and diagram | Independent `DatabaseSession`, preserving editor identity/undo |
+| Docker availability | One Shell-mounted observer and shared query cache; Deploy, Map and Activity consume the same current host observation |
 | Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and operation reads; shared log storage and one global operation-event observer continue on every route. Execution belongs to the runner or the operation's legacy service |
 | Deployment target and observations | Owning operational workspace; separate from source mode and source-save approval |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
@@ -144,6 +148,13 @@ Query definitions share read identity without selecting a deployment or performi
 an explicit AWS inspection. Page components keep observation/error state and action
 approval flows. Use the [source ownership map](../REPOSITORY-MAP.md#where-to-change-studio)
 to locate the rendering, state, transport and tests for a change.
+
+Docker availability is observed through `/api/machine/docker`, reusing Deploy's host
+probe and derived Docker/Compose readiness checks. One Shell observer refreshes every
+five seconds while visible, on focus/reconnect and after Docker startup settles. Changed
+observations share the existing event stream; older HTTP observations cannot replace newer
+ones. Missing, stopped and unavailable/unknown remain distinct. This lightweight read does
+not inspect AWS or deployment state.
 
 ## Shared Activity
 
@@ -161,6 +172,16 @@ failures remain explicit and retryable. Operations with an origin link offer **O
 workspace**; uncertainty, unverified outcomes and recovery instructions remain visible
 separately from command completion.
 
+The tray bar always shows Docker's current state beside the headline, on every route and
+whichever job is selected. `dockerPresence` in `shared/machine.ts` derives it from the shared
+machine observation and the running startup, never from a past job, and gives each state one
+remedy: **Start** (the shared startup operation, in place), **Check again**, an install link,
+or the restart/reload instruction when the running server or page is out of date. Startups
+leave the headline because the status reports them; only the latest failed or interrupted
+startup stays, while Docker is still not running, to explain why. A finished startup's detail
+says only how it relates to the present ("Docker has since stopped."), so a past success never
+reads as the current state. Stored job results and logs remain unchanged.
+
 Deployment plan/apply/discard, deletion, drift, export and the fixed framework-check
 operation use independent host workers. Their logs continue through Studio shutdown and
 can be read after restart. Legacy local development and host-remedy jobs retain their
@@ -173,7 +194,11 @@ guarantees and the current macOS/Linux boundary.
 Resource and connection counts sit at the map's top right. In Development, the
 lower-left **Docker Compose** switch is a visual
 prototype. Its on/off state is local to the mounted map and resets when leaving
-Development; it neither observes nor starts/stops containers. Whale motion follows
+Development. The shared Docker observation gates activation: a fresh running engine enables
+the preview directly; otherwise the existing Docker-help popover offers explicit startup
+or rechecking. Confirmed engine shutdown/missing Docker turns the preview off. Starting
+Docker never automatically enables the preview, and the switch does not start/stop app
+containers. Deploy and the popup share the same startup action and pending operation. Whale motion follows
 the map's motion control and the system's reduced-motion preference. Production
 does not show the switch.
 

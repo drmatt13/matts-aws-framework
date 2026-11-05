@@ -1,3 +1,5 @@
+import type { DockerStatusView } from "../../../shared/machine";
+import type { DockerView } from "../../../shared/deploy";
 import type { SnapshotResponse, BatchPlanResponse } from "../../../shared/api";
 import type { DatabaseWorkbench } from "../../../shared/database-workbench";
 import type { DeclaredSchema } from "../../../shared/database";
@@ -58,4 +60,12 @@ export function deploymentPlan(): PlanView {
   return { key: "browser-plan", planId: "browser-plan-id", expired: false, profile: "browser", createdAt: NOW, expiresAt: "2026-10-29T12:00:00.000Z", status: "ready", review: "template",
     identity: { deployment: "browser-dev", mode: "dev", account: "123456789012", region: "us-east-1" }, guard: "absent", stacks: [], secrets: [], dockerImages: [], iamBroadening: false,
     confirmation: { level: "name", reasons: ["Fixture typed confirmation"] }, uncertainties: ["Application health is verified separately."] };
+}
+
+export function dockerStatus(docker: DockerView = overview().local.docker, observedAt = NOW): DockerStatusView {
+  return { docker, observedAt, checks: [{ id: "docker", label: "Docker",
+    status: docker.engine === "running" ? "ok" : docker.engine === "unknown" ? "unknown" : "warn",
+    summary: docker.engine === "running" ? "Fixture engine ready" : docker.engine === "stopped" ? "Docker Desktop is not running." : docker.engine === "missing" ? "Docker is not installed." : "Docker status is unavailable.",
+    ...(docker.engine === "stopped" && docker.desktop ? { remedy: { kind: "docker-start", params: {} } } : {}),
+  }] };
 }

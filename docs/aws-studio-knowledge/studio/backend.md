@@ -6,6 +6,8 @@ read_when:
   - Extending a source writer or operational endpoint
 source:
   - framework-studio/server/server.ts
+  - framework-studio/server/machine/docker.ts
+  - framework-studio/shared/machine.ts
   - framework-studio/server/guards.ts
   - framework-studio/server/edits/batch.ts
   - framework-studio/server/edits/journal.ts
@@ -102,6 +104,7 @@ All prefixes in this table are relative to `/api`.
 | `/infrastructure` | Read inventory; explicit `/synthesize` |
 | `/database/workbench`, `/database/history` | Source validation/format/review/save; history compare/plan/install/discard |
 | `/database/application`, `/database/cloud`, `/database/sql` | Separate target review/application and SQL operations |
+| `/machine/docker` | Shared host Docker/Compose observation and timestamp, without AWS discovery; one in-flight probe/cache feeds readiness and Docker-dependent operations |
 | `/deploy` | `server/deploy/routes.ts`: target discovery, plans, approvals, operations and local runtime |
 | `/operations` | `server/server.ts`: shared operation list/submission, `/:id/log?after=<seq>` replay and `/:id/cancel`; adapter-specific approval stays with its owning workspace |
 | `/aws-connections` | `server/aws-connections`: catalog, protected connection checks, ephemeral authentication, configuration, deletion and logout reviews |

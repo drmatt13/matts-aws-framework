@@ -14,9 +14,11 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
+import type { DockerPresence } from "../../../shared/machine";
 import type { JobView } from "../../../shared/operations";
 import { useOperationLog } from "../../operations/live";
 import { Link } from "@tanstack/react-router";
+import { DockerStatus } from "./DockerStatus";
 import { relativeTime } from "./format";
 
 /** stderr lines that read as a failure, rather than one of the notices tools write there. */
@@ -38,6 +40,19 @@ function statusLabel(job: JobView): string {
   if (job.execution === "accepted") return "Accepted";
   if (job.execution === "dispatching") return "Starting";
   return STATUS_LABEL[job.status];
+}
+
+/** A startup records the past; only the live status says whether Docker is running now. */
+function summary(job: JobView, docker: DockerPresence): string | undefined {
+  if (job.kind !== "docker-start" || job.status !== "succeeded") return job.summary;
+  return docker.engine === "stopped" ? "Docker has since stopped." : undefined;
+}
+
+/** The Docker status covers startups, except the latest failure explaining why Docker is still off. */
+function coveredByDockerStatus(job: JobView, jobs: readonly JobView[], docker: DockerPresence): boolean {
+  if (job.kind !== "docker-start") return false;
+  const unresolved = (job.status === "failed" || job.status === "interrupted") && docker.engine !== "running";
+  return !unresolved || job !== jobs.find((entry) => entry.kind === "docker-start");
 }
 
 function StepIcon({ status }: { readonly status: string }) {
@@ -71,7 +86,10 @@ export function Activity(props: {
   readonly problem?: string;
   readonly retrying?: boolean;
   readonly onRetry?: () => void;
-  readonly cancelError?: string;
+  readonly actionError?: string;
+  readonly docker: DockerPresence;
+  readonly onStartDocker: () => void;
+  readonly onCheckDocker: () => Promise<unknown>;
 }) {
   const job = props.jobs.find((entry) => entry.id === props.selected) ?? props.jobs[0];
   const replay = useOperationLog(props.open ? job?.id : undefined, job?.lastSeq);
@@ -86,55 +104,66 @@ export function Activity(props: {
     (entry) =>
       entry.status === "running" && entry.kind !== "local-watch" && entry.kind !== "local-client",
   );
-  const headline = running[0] ?? job;
+  const headlines = (entry: JobView) => !coveredByDockerStatus(entry, props.jobs, props.docker);
+  const headline = running.find(headlines) ?? (job && headlines(job) ? job : props.jobs.find(headlines));
 
   return (
     <section className="min-h-0 min-w-0 border-t border-rule-strong bg-sheet" aria-label="Activity">
-      <button
-        className="flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-2 text-left text-inherit hover:bg-wash"
-        onClick={props.onToggle}
-        aria-expanded={props.open}
-      >
-        <strong className="flex-none">Activity</strong>
-        {headline ? (
-          <span
-            className={cx(
-              "block min-w-0 items-center gap-[6px] overflow-hidden text-step-minus1 text-ellipsis whitespace-nowrap",
-              headline.status === "failed" && "text-refuse",
-            )}
-          >
-            {headline.status === "running" ? (
-              <LoaderCircle
-                size={13}
-                className="mr-1.5 animate-spin align-[-2px] motion-reduce:animate-none"
-                aria-hidden
-              />
-            ) : null}
-            {headline.title}
-            {headline.steps?.length ? (
-              <span className="text-graphite">
-                {" "}
-                ·{" "}
-                {headline.steps
-                  .map((step) => step.label)
-                  .find((_label, index) => headline.steps![index]!.status === "running") ??
-                  statusLabel(headline)}
+      {/* The toggle spans the bar; the Docker control sits over its reserved column, never inside a button. */}
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 vp-480:grid-cols-[minmax(0,1fr)_auto]">
+        <button
+          className="col-span-full row-start-1 grid min-h-9 min-w-0 cursor-pointer grid-cols-subgrid items-center border-0 bg-transparent px-4 py-2 text-left text-inherit hover:bg-wash"
+          onClick={props.onToggle}
+          aria-expanded={props.open}
+        >
+          <span className="col-start-1 flex min-w-0 items-center gap-3">
+            <strong className="flex-none">Activity</strong>
+            {headline ? (
+              <span
+                className={cx(
+                  "block min-w-0 items-center gap-[6px] overflow-hidden text-step-minus1 text-ellipsis whitespace-nowrap",
+                  headline.status === "failed" && "text-refuse",
+                )}
+              >
+                {headline.status === "running" ? (
+                  <LoaderCircle
+                    size={13}
+                    className="mr-1.5 animate-spin align-[-2px] motion-reduce:animate-none"
+                    aria-hidden
+                  />
+                ) : null}
+                {headline.title}
+                {headline.steps?.length ? (
+                  <span className="text-graphite">
+                    {" "}
+                    ·{" "}
+                    {headline.steps
+                      .map((step) => step.label)
+                      .find((_label, index) => headline.steps![index]!.status === "running") ??
+                      statusLabel(headline)}
+                  </span>
+                ) : null}
+                {summary(headline, props.docker) && headline.status !== "running" ? (
+                  <span className="text-graphite"> · {summary(headline, props.docker)}</span>
+                ) : null}
               </span>
-            ) : null}
-            {headline.summary && headline.status !== "running" ? (
-              <span className="text-graphite"> · {headline.summary}</span>
-            ) : null}
+            ) : props.jobs.length ? null : (
+              <span className="text-graphite">{props.problem ? "Activity unavailable" : props.loading ? "Reading activity…" : "Nothing has run yet."}</span>
+            )}
           </span>
-        ) : (
-          <span className="text-graphite">{props.problem ? "Activity unavailable" : props.loading ? "Reading activity…" : "Nothing has run yet."}</span>
-        )}
-        <span className="flex-1" />
-        {props.open ? (
-          <ChevronDown size={15} className="flex-none" aria-hidden />
-        ) : (
-          <ChevronUp size={15} className="flex-none" aria-hidden />
-        )}
-      </button>
+          {props.open ? (
+            <ChevronDown size={15} className="col-start-3 flex-none vp-480:col-start-2" aria-hidden />
+          ) : (
+            <ChevronUp size={15} className="col-start-3 flex-none vp-480:col-start-2" aria-hidden />
+          )}
+        </button>
+        <DockerStatus
+          presence={props.docker}
+          onStart={props.onStartDocker}
+          onCheck={props.onCheckDocker}
+          className="col-start-2 row-start-1 vp-480:col-span-full vp-480:col-start-1 vp-480:row-start-2 vp-480:px-4 vp-480:pb-2"
+        />
+      </div>
       {props.open && props.problem ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-4 py-2" role="alert">
           <span>{props.problem}</span>
@@ -142,8 +171,11 @@ export function Activity(props: {
             disabled={props.retrying} onClick={props.onRetry}>Retry activity</button>
         </div>
       ) : null}
-      {props.open && props.cancelError ? (
-        <p className="m-0 border-t border-rule px-4 py-2 text-refuse" role="alert">{props.cancelError}</p>
+      {props.open && props.actionError ? (
+        <p className="m-0 border-t border-rule px-4 py-2 text-refuse" role="alert">{props.actionError}</p>
+      ) : null}
+      {props.open && props.docker.detail ? (
+        <p className="m-0 border-t border-rule px-4 py-2 text-caption text-graphite wrap-anywhere">{props.docker.detail}</p>
       ) : null}
       {props.open ? (
         <div className="grid h-[min(340px,42dvh)] grid-cols-[260px_minmax(0,1fr)] border-t border-rule vp-900:grid-cols-1 vp-900:grid-rows-[minmax(0,1fr)_minmax(0,2fr)]">
@@ -190,8 +222,8 @@ export function Activity(props: {
                     {statusLabel(job)}
                   </span>
                   {job.origin ? <Link to={job.origin} className={buttonClasses({ variant: "link", className: "mt-1 block w-fit text-caption" })}>Open workspace</Link> : null}
-                  {job.summary ? (
-                    <p className="mt-1 mb-0 text-caption text-graphite">{job.summary}</p>
+                  {summary(job, props.docker) ? (
+                    <p className="mt-1 mb-0 text-caption text-graphite">{summary(job, props.docker)}</p>
                   ) : null}
                 </div>
                 {job.status === "running" && job.execution !== "lost" ? (

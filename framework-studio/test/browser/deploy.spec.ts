@@ -1,3 +1,4 @@
+import { dockerStatus } from "./support/scenarios";
 import { test, expect, assertAccessible } from "./support/test";
 import { discovery, overview, NOW } from "./support/scenarios";
 import { connectionCatalogFixture } from "./support/aws-connections";
@@ -82,6 +83,7 @@ for (const width of [1440, 390])
 
 for (const width of [1440, 320])
   test(`Deploy aligns machine readiness to the right with Docker remediation first at ${width}px`, async ({ page, studio }, testInfo) => {
+    studio.reply("GET", "/api/machine/docker", route => route.fulfill({ json: dockerStatus({ engine: "stopped", desktop: true }) }));
     studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: {
       ...overview(), prerequisites: [
         ...Array.from({ length: 5 }, (_, index) => ({ id: `check-${index}`, label: `Tool ${index + 1}`, status: "ok", summary: "Available" })),
@@ -199,11 +201,12 @@ test("idle polling runs quietly at slower intervals and job events still update 
   await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
   const count = (path: string) => studio.requests.filter(request => request.path.startsWith(path)).length;
   await expect.poll(() => count("/api/deploy/status?")).toBeGreaterThan(0);
-  const before = { overview: count("/api/deploy/overview"), status: count("/api/deploy/status?"), discovery: count("/api/deploy/discover?") };
+  const before = { overview: count("/api/deploy/overview"), docker: count("/api/machine/docker"), status: count("/api/deploy/status?"), discovery: count("/api/deploy/discover?") };
   await page.clock.fastForward(29_000);
   expect(count("/api/deploy/overview")).toBe(before.overview);
   await page.clock.fastForward(2_000);
-  await expect.poll(() => count("/api/deploy/overview")).toBeGreaterThan(before.overview);
+  await expect.poll(() => count("/api/machine/docker")).toBeGreaterThan(before.docker);
+  expect(count("/api/deploy/overview")).toBe(before.overview);
   expect(count("/api/deploy/status?")).toBe(before.status);
   expect(count("/api/deploy/discover?")).toBe(before.discovery);
   await page.clock.fastForward(90_000);

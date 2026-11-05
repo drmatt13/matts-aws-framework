@@ -1,7 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { LoaderCircle, X } from "lucide-react";
-import type { DockerView, JobView } from "../../../shared/deploy";
-import { deployApi } from "../../deploy/api";
+import { useDockerStart, useDockerStatus } from "../../machine/docker";
 import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
 
@@ -17,10 +16,12 @@ export function DockerStartPopover({ id, anchor, onEnablePreview, onClose }: {
   const titleId = useId();
   const descriptionId = useId();
   const [position, setPosition] = useState({ left: 12, bottom: 12 });
-  const [request, setRequest] = useState({ kind: "check", attempt: 0 });
-  const [phase, setPhase] = useState<"checking" | "blocked" | "starting" | "ready" | "error">("checking");
-  const [docker, setDocker] = useState<DockerView>();
+  const machine = useDockerStatus();
+  const startup = useDockerStart();
+  const docker = machine.status?.docker;
+  const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string>();
+  const [attemptedStart, setAttemptedStart] = useState(false);
 
   useLayoutEffect(() => {
     const positionPanel = () => {
@@ -42,52 +43,32 @@ export function DockerStartPopover({ id, anchor, onEnablePreview, onClose }: {
 
   useEffect(() => {
     let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const run = async () => {
-      let job: JobView | undefined;
-      if (request.kind === "start") {
-        job = await deployApi.operate("docker-start", {});
-      } else {
-        const overview = await deployApi.overview(true);
-        if (!active) return;
-        setDocker(overview.local.docker);
-        if (overview.local.docker.engine === "running") {
-          // Only the original switch click can enable the preview. Rechecking Docker is separate.
-          if (request.attempt === 0) onEnablePreview();
-          else setPhase("ready");
-          return;
-        }
-        // Dismissing the popup does not cancel an explicitly requested Docker start.
-        job = overview.jobs.find((item) => item.kind === "docker-start" && item.status === "running");
-        if (!job) { setPhase("blocked"); return; }
-        setPhase("starting");
-      }
-      while (active && job.status === "running") {
-        job = (await deployApi.log(job.id)).job;
-        if (active && job.status === "running") await new Promise<void>((resolve) => { timer = setTimeout(resolve, 1000); });
-      }
-      if (!active) return;
-      if (job.status !== "succeeded") throw new Error(job.summary || "Docker Desktop could not start. Open it from your applications, then check again.");
-      const overview = await deployApi.overview(true);
-      if (!active) return;
-      setDocker(overview.local.docker);
-      if (overview.local.docker.engine !== "running") throw new Error("Docker is still unavailable. Open Docker Desktop and wait for its engine, then check again.");
-      setPhase("ready");
-    };
-    void run().catch((problem: unknown) => {
-      if (!active) return;
-      setError(problem instanceof Error ? problem.message : "Could not check Docker. Try again.");
-      setPhase("error");
-    });
-    return () => { active = false; clearTimeout(timer); };
-  }, [request, onEnablePreview]);
+    const startingAtOpen = startup.starting;
+    void machine.refresh().then(status => {
+      if (active && !startingAtOpen && status.docker.engine === "running") onEnablePreview();
+    }).catch(problem => { if (active) setError(problem instanceof Error ? problem.message : "Could not check Docker. Try again."); })
+      .finally(() => { if (active) setChecking(false); });
+    return () => { active = false; };
+  }, [onEnablePreview]);
 
-  const busy = phase === "checking" || phase === "starting";
-  const retry = (kind: "check" | "start") => {
+  const retry = async (kind: "check" | "start") => {
     setError(undefined);
-    setPhase(kind === "start" ? "starting" : "checking");
-    setRequest((current) => ({ kind, attempt: current.attempt + 1 }));
+    if (kind === "start") {
+      setAttemptedStart(true);
+      try { await startup.start(); } catch (problem) { setError(problem instanceof Error ? problem.message : "Docker could not start."); }
+    } else {
+      setAttemptedStart(false);
+      setChecking(true);
+      try { await machine.refresh(); } catch (problem) { setError(problem instanceof Error ? problem.message : "Could not check Docker. Try again."); }
+      finally { setChecking(false); }
+    }
   };
+  const jobError = attemptedStart && !startup.starting && startup.job && startup.job.status !== "succeeded" && startup.job.status !== "running"
+    ? startup.job.summary ?? "Docker startup stopped. Check Docker before trying again." : undefined;
+  const problem = docker?.engine === "running" ? undefined : error ?? jobError ?? (machine.error ? "Could not check Docker. Try again." : undefined);
+  const phase = checking ? "checking" : startup.starting ? "starting" : docker?.engine === "running" ? "ready" : problem ? "error" : "blocked";
+  const busy = phase === "checking" || phase === "starting";
+
   const title = phase === "checking" ? "Checking Docker…"
     : phase === "starting" ? "Starting Docker Desktop…"
     : phase === "ready" ? "Docker is ready"
@@ -126,7 +107,7 @@ export function DockerStartPopover({ id, anchor, onEnablePreview, onClose }: {
           {phase === "starting" ? "Waiting for the Docker engine. This may take a minute." : "Checking whether the Docker engine is available."}
         </p>
       ) : null}
-      {error ? <p role="alert" className="mt-3 mb-0 text-caption leading-relaxed text-map-error-text wrap-anywhere">{error}</p> : null}
+      {problem ? <p role="alert" className="mt-3 mb-0 text-caption leading-relaxed text-map-error-text wrap-anywhere">{problem}</p> : null}
       {!busy && phase !== "ready" && !docker?.desktop ? (
         <p className="mt-3 mb-0 text-caption leading-relaxed text-map-muted">
           {docker?.engine === "missing" ? "Install Docker Desktop, open it and finish setup, then check again."

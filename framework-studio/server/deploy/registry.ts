@@ -406,13 +406,15 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     return {
       kind: "docker-start", title: "Start Docker Desktop", params: {}, locks: ["docker"],
       steps: [
-        { label: "Start Docker Desktop", command: () => context.tools.docker(["desktop", "start"], studioEnvironment(context.env)) },
+        { label: "Start Docker Desktop", run: async () => {
+          if ((await context.probeDocker()).engine === "running") return "Docker is already running; no startup is needed.";
+        }, command: () => context.tools.docker(["desktop", "start"], studioEnvironment(context.env)) },
         {
           label: "Wait for the engine",
           run: async (step) => {
             for (let attempt = 0; attempt < 60; attempt++) {
               if (step.signal.aborted) throw new Error("Cancelled.");
-              if ((await context.probeDocker()).engine === "running") { step.setSummary("Docker is running."); return; }
+              if ((await context.probeDocker()).engine === "running") { step.setSummary("Docker startup completed."); return; }
               await new Promise((resolve) => setTimeout(resolve, Number(context.env.FRAMEWORK_POLL_MS ?? 2000)));
             }
             throw new Error("Docker did not start within two minutes. Open Docker Desktop to see why.");

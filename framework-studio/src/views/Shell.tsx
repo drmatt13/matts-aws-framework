@@ -17,6 +17,7 @@ import { navigationItemClasses, NavigationStrip } from "./NavigationStrip";
 import { AppNameMenu } from "./AppName";
 import { SourceEnvironment } from "./SourceContext";
 import { GlobalActivity } from "./GlobalActivity";
+import { GlobalDockerStatus } from "../machine/docker";
 
 function Drawer(props: {
   readonly title: string;
@@ -239,6 +240,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
           : "grid-rows-[var(--bar)_minmax(0,1fr)_auto]",
       )}
     >
+      <GlobalDockerStatus />
       <header
         data-ui="bar"
         className="grid min-h-(--bar) min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-rule bg-sheet px-4 vp-1200:gap-3 vp-760:grid-cols-[minmax(0,1fr)_auto] vp-760:gap-2 vp-760:py-2"

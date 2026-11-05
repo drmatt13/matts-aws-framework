@@ -516,6 +516,7 @@ async function configureServer(
     }),
   );
 
+  api.get("/machine/docker", (request, response) => send(response, () => deploy.dockerStatus.read(request.query.force === "1")));
   api.use("/deploy", deployRouter(deploy));
   api.get("/operations", (_request, response) => send(response, async () => ({ jobs: await deploy.listOperations() })));
   api.post("/operations", (request, response) => send(response, () => deploy.perform(request.body)));

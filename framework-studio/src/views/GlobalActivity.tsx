@@ -6,6 +6,8 @@ import { operationsApi } from "../operations/api";
 import { useOperationsLive } from "../operations/live";
 import { operationsQuery } from "../operations/queries";
 import { Activity } from "./deploy/Activity";
+import { useDockerStart, useDockerStatus } from "../machine/docker";
+import { dockerPresence } from "../../shared/machine";
 
 const NO_JOBS: readonly JobView[] = [];
 const selectJobs = (overview: { jobs: readonly JobView[] }) => overview.jobs;
@@ -13,18 +15,20 @@ const selectJobs = (overview: { jobs: readonly JobView[] }) => overview.jobs;
 /** Route-independent state and subscriptions; navigation does not render this tray. */
 export const GlobalActivity = memo(function GlobalActivity() {
   const queryClient = useQueryClient();
+  const docker = useDockerStatus();
+  const { start, starting } = useDockerStart();
   const overview = useQuery({
     ...operationsQuery(),
     select: selectJobs,
     staleTime: 30_000,
-    refetchInterval: 30_000,
+    refetchInterval: query => query.state.data?.jobs.some(job => job.kind === "docker-start" && job.status === "running") ? 1000 : 30_000,
     retry: false,
     notifyOnChangeProps: ["data", "error", "isPending"],
   });
   useOperationsLive();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string>();
-  const [cancelError, setCancelError] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
   const [retrying, setRetrying] = useState(false);
   useEffect(() => {
     const reveal = (event: Event) => {
@@ -39,8 +43,17 @@ export const GlobalActivity = memo(function GlobalActivity() {
     return () => window.removeEventListener(OPEN_ACTIVITY_EVENT, reveal);
   }, [queryClient]);
   const toggle = useCallback(() => setOpen(value => !value), []);
+  const startDocker = useCallback(async () => {
+    setActionError(undefined);
+    try {
+      setSelected((await start()).id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+      setOpen(true);
+    }
+  }, [start]);
   const cancel = useCallback(async (id: string) => {
-    setCancelError(undefined);
+    setActionError(undefined);
     try {
       const job = await operationsApi.cancel(id);
       queryClient.setQueryData<{ jobs: readonly JobView[] }>(operationsQuery().queryKey, current => {
@@ -51,12 +64,16 @@ export const GlobalActivity = memo(function GlobalActivity() {
         return { jobs: [latest, ...(current?.jobs ?? []).filter(entry => entry.id !== id)].sort((a, b) => b.startedAt.localeCompare(a.startedAt)) };
       });
     } catch (error) {
-      setCancelError(error instanceof Error ? error.message : String(error));
+      setActionError(error instanceof Error ? error.message : String(error));
     }
   }, [queryClient]);
 
   return <Activity
     jobs={overview.data ?? NO_JOBS}
+    docker={dockerPresence({ status: docker.status, problem: docker.error, starting })}
+    onStartDocker={startDocker}
+    // A failed read is already the status this reports.
+    onCheckDocker={() => docker.refresh().catch(() => undefined)}
     selected={selected}
     onSelect={setSelected}
     open={open}
@@ -69,6 +86,6 @@ export const GlobalActivity = memo(function GlobalActivity() {
       setRetrying(true);
       void overview.refetch().finally(() => setRetrying(false));
     }}
-    cancelError={cancelError}
+    actionError={actionError}
   />;
 });
