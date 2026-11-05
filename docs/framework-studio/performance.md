@@ -85,6 +85,26 @@ independent review and the remaining large-graph rasterization boundary.
 
 ## Remaining opportunities
 
+### Inspector connection availability — November 5, 2026
+
+The Connections disclosure previously built both complete model indexes for every
+row. It now builds a fresh pair once during each nonempty `Relations` render and
+passes them to the existing availability helper. Nothing is retained across renders;
+edge lookup order, missing endpoints, mode-specific lanes and absent stack ownership
+keep their existing results. The helper's other caller retains its original path.
+
+Seven alternating warm samples compared the original helper path with the actual
+implementation in one Node process, including index construction. The current
+Cognito inspector's 45 rows fell from 2.644 ms to 0.156 ms median. A synthetic
+500-entity graph with 332 connections to one stack fell from 113.265 ms to 1.731 ms.
+Complete availability arrays matched in every sample. Additional tests cover fresh
+indexes after model changes and first-match behavior for duplicate edge IDs.
+
+These numbers measure availability computation, excluding React, DOM and paint.
+They do not establish a page-load or FPS improvement. The campaign's reproducible
+harness, samples and broader verification limits are recorded in
+`output/optimization-audit.md` and its local evidence directory.
+
 - **GPU painting is still the main cost.** Shadows, glow, text and SVG draws
   retain their original quality. A future layer or sprite cache needs visual
   comparisons at fractional camera positions and each pixel ratio; bitmap

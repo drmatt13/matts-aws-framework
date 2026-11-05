@@ -2,7 +2,7 @@ import type { ModelEdge } from "../../../shared/model";
 import { presentRelationship } from "../../connection-presentation";
 import { edgeAvailability } from "../../connections";
 import { inspectorRelationListClasses, inspectorRelationRowClasses } from "../../inspector-ui";
-import { endpointLabel } from "../../lookup";
+import { endpointLabel, indexModel } from "../../lookup";
 import { useStudio } from "../../studio";
 import { buttonClasses } from "../../ui/Button";
 import { cx } from "../../ui/classes";
@@ -23,6 +23,7 @@ export function Relations(props: { readonly id: string }) {
     ).values(),
   ];
   if (edges.length === 0) return null;
+  const indexes = { dev: indexModel(snapshot.models.dev), prod: indexModel(snapshot.models.prod) };
   const outgoing = edges.filter((edge) => owns(edge.from));
   const incoming = edges.filter((edge) => owns(edge.to) && !owns(edge.from));
   // The connection leads, as on the map; the other end is its supporting line.
@@ -43,7 +44,7 @@ export function Relations(props: { readonly id: string }) {
       </button>
       <EnvironmentPills
         className="col-start-2 col-span-1 row-start-1 inspector-300:col-span-full inspector-300:row-auto"
-        availability={edgeAvailability(edge, snapshot.models)}
+        availability={edgeAvailability(edge, snapshot.models, indexes)}
       />
       <span
         className="col-span-full text-graphite wrap-anywhere text-caption"

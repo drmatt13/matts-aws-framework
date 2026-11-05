@@ -115,7 +115,7 @@ Generated files remain exact. Import-only edits emit byte-identical JS.
 Tester JS: 437,746 -> 423,286 bytes; gzip 140,183 -> 132,113; CSS 16,671 -> 13,767.
 Client built assets remain byte-identical. No startup/FPS speedup claimed.
 
-Dependency cleanup (commit being recorded): 46 unused direct declarations across
+`f3c4af6` — dependency cleanup: 46 unused direct declarations across
 19 manifests removed. npm 11.20 offline lockfile-only resolution removed 27 package
 records (1,331 -> 1,304), added none and changed no retained version. All 128
 OS/CPU/libc-specific records are byte-identical; root/CDK esbuild pins remain.
@@ -123,3 +123,13 @@ The running checkout node_modules is deliberately not replaced. Exact removal
 ledger and lockfile proof are in output/optimization/. Required verify has only
 the baseline TypeScript errors; both synths still match after normalizing only
 container asset image digests. Generated files are unchanged.
+
+Inspector availability optimization (commit being recorded): one fresh dev/prod
+index pair per nonempty Relations render replaces two whole-model derivations per
+row. No retained cache, event reordering or changed output. Three new equivalence
+checks pass; all existing assertions stay intact. Seven alternating quiet-window
+samples of the actual implementation give current45-row median 2.644 -> 0.156 ms,
+and synthetic500-entity/332-row median 113.265 -> 1.731 ms. Every availability array
+matches. This measures computation, not total UI latency or FPS. Verify retains
+only baseline TS2339. Full Chromium light: 218/233 passed; 15 failures are being
+compared to the exact starting tree before attribution. Goldens unchanged.

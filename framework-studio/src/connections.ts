@@ -2,12 +2,12 @@ import { drawnAs } from "./drawn-as";
 import { CDK_ENVIRONMENT_ID } from "../shared/deployment-inputs";
 import type { Mode, ModeModel, ModelEdge, Snapshot } from "../shared/model";
 import { availabilityBadge, connectionDisabledEndpoints, type Availability, type DeploymentBadgeKind } from "./deployment";
-import { CATEGORY_LABEL, edgeCategory, indexModel, type EdgeCategory } from "./lookup";
+import { CATEGORY_LABEL, edgeCategory, indexModel, type EdgeCategory, type ModelIndex } from "./lookup";
 
-export function edgeAvailability(edge: ModelEdge, models: Snapshot["models"]): Availability {
+export function edgeAvailability(edge: ModelEdge, models: Snapshot["models"], indexes?: Readonly<Record<Mode, ModelIndex>>): Availability {
   const enabled = (mode: Mode) => {
     const version = models[mode].edges.find((candidate) => candidate.id === edge.id);
-    return !!version && connectionDisabledEndpoints(indexModel(models[mode]), mode, version).length === 0;
+    return !!version && connectionDisabledEndpoints(indexes?.[mode] ?? indexModel(models[mode]), mode, version).length === 0;
   };
   return { dev: enabled("dev"), prod: enabled("prod") };
 }
