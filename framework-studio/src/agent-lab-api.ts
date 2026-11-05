@@ -1,6 +1,7 @@
 import { call } from "./http";
+import type { AgentLabModels, AgentLabProvider } from "../shared/agent-lab";
 
-export type AgentLabProvider = "codex" | "claude";
+export type { AgentLabModel, AgentLabModels, AgentLabProvider } from "../shared/agent-lab";
 
 export interface AgentLabStatus {
   readonly providers: readonly {
@@ -26,6 +27,8 @@ export interface AgentLabPlan {
 
 export const agentLabApi = {
   status: () => call<AgentLabStatus>("/agent-lab/status"),
+  models: (provider: AgentLabProvider, signal?: AbortSignal, refresh = false) =>
+    call<AgentLabModels>(`/agent-lab/models?provider=${provider}${refresh ? "&refresh=1" : ""}`, undefined, signal),
   plan: (provider: AgentLabProvider, prompt: string) =>
     call<AgentLabPlan>("/agent-lab/plan", { provider, prompt }),
   apply: (id: string) => call<{ applied: true; message: string }>("/agent-lab/apply", { id }),

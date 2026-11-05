@@ -14,6 +14,8 @@ source:
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
   - framework-studio/src/views/GlobalActivity.tsx
+  - framework-studio/src/agent-chat.ts
+  - framework-studio/src/views/agent/AgentPanel.tsx
   - framework-studio/src/views/deploy/DockerStatus.tsx
   - framework-studio/src/machine/docker.ts
   - framework-studio/shared/machine.ts
@@ -139,6 +141,7 @@ own exact-text session and navigation protection.
 | Prisma text, validation and diagram | Independent `DatabaseSession`, preserving editor identity/undo |
 | Docker availability | One Shell-mounted observer and shared query cache; Deploy, Map and Activity consume the same current host observation |
 | Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and operation reads; shared log storage and one global operation-event observer continue on every route. Execution belongs to the runner or the operation's legacy service |
+| Agent conversation | `useAgentChat` in the persistent shell owns provider, each provider's model selection, transcript, draft, pending request and unread state. These survive mode switches, collapse and navigation, and reset on page reload |
 | Deployment target and observations | Owning operational workspace; separate from source mode and source-save approval |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
 | Camera, hover, filters and disclosures | Local view state; never persisted as framework configuration |
@@ -159,6 +162,20 @@ not inspect AWS or deployment state.
 ## Shared Activity
 
 The bottom **Activity** tray belongs to `Shell` and is mounted once for every route.
+Its **Activity** and **Agent** tabs choose operation history or a question-and-answer
+conversation. Selecting a tab preserves the panel's open or closed state; the separate
+summary/chevron control opens and closes it. Arrow keys and Home/End select tabs;
+Escape collapses the panel. The drawer slides with an interruptible 280ms
+`cubic-bezier(.22,1,.36,1)` transition, disabled under reduced motion. A registered CSS
+length on the shell drives both drawer height and map compensation in the same frame.
+The occlusion marker remains until
+closing finishes; collapsed contents are inert and hidden from accessibility navigation.
+Agent offers editable suggestions, a pinned multiline composer, Codex/Claude and model selection,
+Markdown answers, copy, stop, retry and confirmed New chat. Replies can finish while
+Activity is selected without changing modes; a new-reply dot marks the Agent tab.
+Explicit `openActivity(job.id)` switches back to Activity. The initial agent provides
+general Q&A with a fixed Studio overview, without reading live source/graph/log context;
+see [local coding agents](../../framework-studio/local-agent-lab.md).
 `GlobalActivity` is memoized and consumes no route or Studio context, so navigation does
 not render it again. Open state, selected job, log DOM, and the reader's scroll position
 survive navigation. Job/log changes and tray interactions still update it normally.

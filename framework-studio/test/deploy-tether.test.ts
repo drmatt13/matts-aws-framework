@@ -20,7 +20,7 @@ function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
-test("a tethered program and what it started stop when Studio is killed outright", async () => {
+for (const forwardInput of [false, true]) test(`a tethered program and what it started stop when Studio is killed outright (forward input: ${forwardInput})`, async () => {
   mkdirSync(scratchRoot, { recursive: true });
   const directory = mkdtempSync(path.join(scratchRoot, "studio-tether-"));
   const pids: number[] = [];
@@ -32,7 +32,7 @@ test("a tethered program and what it started stop when Studio is killed outright
     // npm: starts Vite, then keeps writing to its output, which reaches Studio.
     const program = `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(grandchild)}], { stdio: "ignore" }); setInterval(() => process.stdout.write("tick\\n"), 50);`;
     // Studio: reads the tether's output through a pipe, as the job manager does.
-    const studio = `const child = require("node:child_process").spawn(process.execPath, [${JSON.stringify(TETHER)}, process.execPath, "-e", ${JSON.stringify(program)}], { stdio: ["pipe", "pipe", "pipe"] }); child.stdout.resume(); child.stderr.resume(); setInterval(() => {}, 1000);`;
+    const studio = `const child = require("node:child_process").spawn(process.execPath, [${JSON.stringify(TETHER)}, ...${JSON.stringify(forwardInput ? ["--forward-input"] : [])}, process.execPath, "-e", ${JSON.stringify(program)}], { stdio: ["pipe", "pipe", "pipe"] }); child.stdout.resume(); child.stderr.resume(); setInterval(() => {}, 1000);`;
     parent = spawn(process.execPath, ["-e", studio], { stdio: "ignore" });
     for (let attempt = 0; attempt < 100 && !existsSync(marker); attempt++) await new Promise((resolve) => setTimeout(resolve, 50));
     const pid = Number(readFileSync(marker, "utf8"));

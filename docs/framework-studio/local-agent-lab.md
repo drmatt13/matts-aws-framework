@@ -1,4 +1,36 @@
-# Local coding-agent experiment
+# Local coding agents
+
+## Agent panel
+
+Choose **Agent** beside **Activity** in the bottom bar on any Studio page, then use
+the summary or chevron to open the panel. Mode buttons preserve its open or closed
+state. The panel slides open and closed, with instant changes under reduced motion.
+The question-and-answer conversation uses the selected standalone Codex or Claude CLI
+and its saved login. Starter questions fill the composer so they can be edited before
+sending. Enter sends; Shift+Enter adds a line. Answers support Markdown, code examples
+and copying. **Stop** cancels the active request; failed or stopped replies can be retried.
+
+The model selector lists the choices reported by the selected CLI using its saved
+login. **CLI default** leaves the choice to that CLI; explicit choices are remembered
+separately for Codex and Claude until reload. Catalog discovery initializes a session
+without asking a model to generate a reply. If discovery fails, the default remains
+usable and **Refresh models** retries. The server validates explicit choices against
+the CLI catalog and passes them through its `--model` option.
+
+Activity and Agent keep their state when switching modes, collapsing the panel or
+navigating. A background answer marks the Agent tab without switching modes. Explicit
+operation launches still reveal Activity. Escape collapses the panel and returns focus
+to its mode tab. **New chat** asks before clearing the conversation and preserves a
+draft. Conversation state lasts until the page reloads; it is not stored on disk.
+
+This first version provides general guidance with a short built-in Studio overview.
+It does not inspect the current graph, source files or operation logs. The request
+contains a bounded recent conversation; the agent has no tools or source-write access.
+`src/agent-chat.ts` owns session state, `views/agent/AgentPanel.tsx` owns chat presentation,
+and `POST /api/agent-lab/chat` uses the existing bounded CLI runner. The request is
+aborted when the browser stops it or disconnects. No API-key setup is required.
+
+## Fixed-message experiment
 
 Open `http://127.0.0.1:4590/test` or **Agent test** in Studio. The dropdown
 uses the installed `codex` and `claude` CLIs and their saved login. It does not

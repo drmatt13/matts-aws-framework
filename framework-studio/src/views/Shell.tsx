@@ -234,7 +234,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
     <div
       data-ui="shell"
       className={cx(
-        "grid h-full vp-760:[--bar:89px] vp-560:[--bar:129px]",
+        "grid h-full vp-760:[--bar:89px] vp-560:[--bar:129px] transition-[--activity-drawer-visible] duration-280 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         props.notice || watchProblem
           ? "grid-rows-[var(--bar)_auto_minmax(0,1fr)_auto]"
           : "grid-rows-[var(--bar)_minmax(0,1fr)_auto]",

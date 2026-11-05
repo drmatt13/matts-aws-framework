@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JobView } from "../../shared/operations";
 import { OPEN_ACTIVITY_EVENT } from "../activity";
@@ -8,6 +8,8 @@ import { operationsQuery } from "../operations/queries";
 import { Activity } from "./deploy/Activity";
 import { useDockerStart, useDockerStatus } from "../machine/docker";
 import { dockerPresence } from "../../shared/machine";
+import { useAgentChat } from "../agent-chat";
+const AgentPanel = lazy(() => import("./agent/AgentPanel").then(module => ({ default: module.AgentPanel })));
 
 const NO_JOBS: readonly JobView[] = [];
 const selectJobs = (overview: { jobs: readonly JobView[] }) => overview.jobs;
@@ -27,6 +29,10 @@ export const GlobalActivity = memo(function GlobalActivity() {
   });
   useOperationsLive();
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"activity" | "agent">("activity");
+  const [agentVisited, setAgentVisited] = useState(false);
+  const agentVisible = open && mode === "agent";
+  const chat = useAgentChat(agentVisible);
   const [selected, setSelected] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [retrying, setRetrying] = useState(false);
@@ -35,6 +41,7 @@ export const GlobalActivity = memo(function GlobalActivity() {
       const job = (event as CustomEvent<unknown>).detail;
       if (typeof job !== "string") return;
       setSelected(job);
+      setMode("activity");
       setOpen(true);
       // A durable acceptance response can arrive while the live stream is disconnected.
       void queryClient.invalidateQueries({ queryKey: operationsQuery().queryKey });
@@ -49,6 +56,7 @@ export const GlobalActivity = memo(function GlobalActivity() {
       setSelected((await start()).id);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error));
+      setMode("activity");
       setOpen(true);
     }
   }, [start]);
@@ -78,6 +86,12 @@ export const GlobalActivity = memo(function GlobalActivity() {
     onSelect={setSelected}
     open={open}
     onToggle={toggle}
+    mode={mode}
+    onModeChange={value => { setMode(value); if (value === "agent") setAgentVisited(true); }}
+    agent={agentVisited ? <Suspense fallback={<p role="status" className="m-auto text-caption text-graphite">Opening agent…</p>}><AgentPanel chat={chat} visible={agentVisible} /></Suspense> : <></>}
+    agentPending={chat.pending}
+    agentUnread={chat.unread}
+    agentSummary={chat.pending ? `${chat.provider === "codex" ? "Codex" : "Claude"} is thinking…` : chat.unread ? chat.problem ? "Response needs attention" : "Reply ready" : chat.messages.length ? "Continue your conversation" : "A question, an idea, a next step"}
     onCancel={cancel}
     loading={overview.isPending}
     problem={overview.error?.message}

@@ -90,7 +90,11 @@ const mapPlacement = (page: Page) => page.evaluate(() => {
   const landscape = (window as unknown as { __studioLandscape: {
     camera(): unknown; viewport(): unknown; connections(): readonly { id: string; midpoint: unknown }[];
   } }).__studioLandscape;
-  return { camera: landscape.camera(), viewport: landscape.viewport(), connections: landscape.connections().map(({ id, midpoint }) => ({ id, midpoint })) };
+  // Resize-observer compensation can round-trip equivalent coordinates by a few
+  // floating-point ULPs. Keep subpixel drift visible without comparing that noise;
+  // the screenshot assertion below still requires pixel-for-pixel equality.
+  return JSON.parse(JSON.stringify({ camera: landscape.camera(), viewport: landscape.viewport(), connections: landscape.connections().map(({ id, midpoint }) => ({ id, midpoint })) },
+    (_key, value: unknown) => typeof value === "number" ? Math.round(value * 1e9) / 1e9 : value));
 });
 
 for (const width of [1440, 700]) test(`Opening and closing Activity leaves the map exactly where it was at ${width}px`, async ({ page, studio }) => {
@@ -122,6 +126,65 @@ for (const width of [1440, 700]) test(`Opening and closing Activity leaves the m
   await expect(controls).toBeVisible();
   // Every pixel the open tray left showing is the pixel the closed map draws there.
   expect((await page.screenshot({ clip })).equals(open)).toBe(true);
+});
+
+for (const width of [1440, 700]) test(`The map stays in place throughout the panel animation at ${width}px`, async ({ page, studio }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await studio.goto("/");
+  const frames = await page.evaluate(async () => {
+    const tray = document.querySelector<HTMLElement>('section[aria-label="Activity"]')!;
+    const toggle = tray.querySelector<HTMLButtonElement>('button[aria-expanded]')!;
+    const canvas = document.querySelector<HTMLElement>('[data-ui="landscape-canvas"]')!;
+    const shell = document.querySelector<HTMLElement>('[data-ui="shell"]')!;
+    const drawer = document.querySelector<HTMLElement>('#studio-activity-drawer')!;
+    const landscape = (window as unknown as { __studioLandscape: {
+      camera(): { x: number; y: number; zoom: number };
+      connections(): readonly { id: string; midpoint: { x: number; y: number } }[];
+    } }).__studioLandscape;
+    const capture = () => {
+      const box = canvas.getBoundingClientRect();
+      return { tray: tray.getBoundingClientRect().height, drawer: drawer.getBoundingClientRect().height,
+        compensation: getComputedStyle(shell).getPropertyValue("--activity-drawer-visible"),
+        canvas: { x: box.x, y: box.y, width: box.width, height: box.height },
+        camera: landscape.camera(), connections: landscape.connections().map(({ id, midpoint }) => ({ id, midpoint })) };
+    };
+    const original = capture();
+    const sample = () => new Promise<ReturnType<typeof capture>[]>(resolve => {
+      const frames: ReturnType<typeof capture>[] = [], started = performance.now();
+      const next = () => requestAnimationFrame(() => {
+        // Observe the painted geometry after the drawer's ResizeObserver has
+        // synchronized the map compensation for this animation frame.
+        setTimeout(() => {
+          frames.push(capture());
+          if (performance.now() - started >= 500) resolve(frames);
+          else next();
+        }, 0);
+      });
+      next();
+    });
+    toggle.click();
+    const opening = await sample();
+    toggle.click();
+    const closing = await sample();
+    return { original, opening, closing };
+  });
+  await test.info().attach("drawer-map-animation-frames", { body: JSON.stringify(frames, null, 2), contentType: "application/json" });
+  const expanded = Math.max(...frames.opening.map(frame => frame.tray));
+  expect(expanded).toBeGreaterThan(frames.original.tray + 100);
+  expect(frames.opening.some(frame => frame.tray > frames.original.tray + 2 && frame.tray < expanded - 2)).toBe(true);
+  expect(frames.closing.some(frame => frame.tray > frames.original.tray + 2 && frame.tray < expanded - 2)).toBe(true);
+  for (const frame of [...frames.opening, ...frames.closing]) {
+    expect(frame.canvas).toEqual(frames.original.canvas);
+    expect(frame.camera.x).toBeCloseTo(frames.original.camera.x, 6);
+    expect(frame.camera.y).toBeCloseTo(frames.original.camera.y, 6);
+    expect(frame.camera.zoom).toBeCloseTo(frames.original.camera.zoom, 6);
+    expect(frame.connections.map(connection => connection.id)).toEqual(frames.original.connections.map(connection => connection.id));
+    frame.connections.forEach((connection, index) => {
+      expect(connection.midpoint.x).toBeCloseTo(frames.original.connections[index]!.midpoint.x, 6);
+      expect(connection.midpoint.y).toBeCloseTo(frames.original.connections[index]!.midpoint.y, 6);
+    });
+  }
 });
 
 test("A notice in the open tray does not change how much of the map it covers", async ({ page, studio }) => {

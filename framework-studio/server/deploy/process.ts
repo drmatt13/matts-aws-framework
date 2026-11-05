@@ -29,8 +29,8 @@ export interface CommandSpec {
 export const TETHER = path.join(__dirname, "tether.mjs");
 
 /** The same command, run so that it cannot outlive Studio. */
-export function tethered(spec: CommandSpec): CommandSpec {
-  return { ...spec, file: process.execPath, args: [TETHER, spec.file, ...spec.args], tethered: true };
+export function tethered(spec: CommandSpec, options: { readonly forwardInput?: boolean } = {}): CommandSpec {
+  return { ...spec, file: process.execPath, args: [TETHER, ...(options.forwardInput ? ["--forward-input"] : []), spec.file, ...spec.args], tethered: true };
 }
 
 export interface CommandResult {

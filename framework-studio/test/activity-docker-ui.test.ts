@@ -160,9 +160,10 @@ test("Check again forces a fresh read and an unclear answer can resolve", async 
 test("the reason for an unclear state is readable without hovering once the tray is open", async () => {
   docker = { engine: "unknown", desktop: true, problem: "permission denied" };
   const { tray, toggle } = await renderTray();
-  assert.equal(tray.queryByText("permission denied"), null);
+  const collapsedDetail = tray.queryByText("permission denied");
+  assert.ok(!collapsedDetail || collapsedDetail.closest("[hidden]"), "the collapsed panel does not expose diagnostic details");
   ui.fireEvent.click(toggle());
-  await tray.findByText("permission denied");
+  assert.equal((await tray.findByText("permission denied")).closest("[hidden]"), null);
 });
 
 test("missing Docker links to installation instead of offering Start", async () => {

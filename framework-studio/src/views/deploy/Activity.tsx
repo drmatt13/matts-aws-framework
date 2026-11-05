@@ -5,15 +5,16 @@ import { logClasses } from "./DeployUI";
 
 import {
   Check,
-  ChevronDown,
   ChevronUp,
   CircleDot,
   LoaderCircle,
+  ListTodo,
   Minus,
+  Sparkles,
   Square,
   X,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { DockerPresence } from "../../../shared/machine";
 import type { JobView } from "../../../shared/operations";
 import { useOperationLog } from "../../operations/live";
@@ -90,7 +91,53 @@ export function Activity(props: {
   readonly docker: DockerPresence;
   readonly onStartDocker: () => void;
   readonly onCheckDocker: () => Promise<unknown>;
+  readonly mode?: "activity" | "agent";
+  readonly onModeChange?: (mode: "activity" | "agent") => void;
+  readonly agent?: ReactNode;
+  readonly agentSummary?: string;
+  readonly agentPending?: boolean;
+  readonly agentUnread?: boolean;
 }) {
+  const mode = props.mode ?? "activity";
+  const drawer = useRef<HTMLDivElement>(null);
+  const motionRoot = useRef<HTMLElement | undefined>(undefined);
+  const [revealed, setRevealed] = useState(props.open);
+  const visible = props.open || revealed;
+  // Keep contents mounted for the closing motion, but remove their focus/accessibility
+  // surface immediately. Reduced motion settles both layout and visibility together.
+  useLayoutEffect(() => {
+    if (props.open) { setRevealed(true); return; }
+    if (!window.matchMedia || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setRevealed(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setRevealed(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [props.open]);
+  useLayoutEffect(() => {
+    const element = drawer.current;
+    if (!element) return;
+    const root = element.closest<HTMLElement>('[data-ui="shell"]') ?? element;
+    motionRoot.current = root;
+    const previous = root.style.getPropertyValue("--activity-drawer-visible");
+    return () => {
+      if (previous) root.style.setProperty("--activity-drawer-visible", previous);
+      else root.style.removeProperty("--activity-drawer-visible");
+      motionRoot.current = undefined;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const root = motionRoot.current;
+    if (!root) return;
+    const finish = (event: TransitionEvent) => {
+      if (event.target === root && event.propertyName === "--activity-drawer-visible" && !props.open) setRevealed(false);
+    };
+    root.addEventListener("transitionend", finish);
+    // One typed CSS length animates on the common ancestor. The drawer and map
+    // inherit the same value in the same frame; no resize observer can lag behind.
+    root.style.setProperty("--activity-drawer-visible", props.open ? "var(--activity-drawer)" : "0px");
+    return () => root.removeEventListener("transitionend", finish);
+  }, [props.open]);
   const job = props.jobs.find((entry) => entry.id === props.selected) ?? props.jobs[0];
   const replay = useOperationLog(props.open ? job?.id : undefined, job?.lastSeq);
   const lines = replay.lines;
@@ -108,17 +155,43 @@ export function Activity(props: {
   const headline = running.find(headlines) ?? (job && headlines(job) ? job : props.jobs.find(headlines));
 
   return (
-    <section className="min-h-0 min-w-0 border-t border-rule-strong bg-sheet" aria-label="Activity">
-      {/* The toggle spans the bar; the Docker control sits over its reserved column, never inside a button. */}
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 vp-480:grid-cols-[minmax(0,1fr)_auto]">
+    <section className="min-h-0 min-w-0 border-t border-rule-strong bg-sheet" aria-label="Activity" onKeyDown={event => {
+      if (event.key === "Escape" && props.open && props.agent) {
+        event.preventDefault(); props.onToggle();
+        event.currentTarget.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`)?.focus();
+      }
+    }}>
+      {/* Modes and collapse are separate actions; Docker is never nested in either. */}
+      <div className={cx("grid min-w-0 items-center gap-x-3", props.agent ? "grid-cols-[auto_minmax(0,1fr)_auto_32px] pl-3 vp-480:pl-2" : "grid-cols-[minmax(0,1fr)_auto_auto] vp-480:grid-cols-[minmax(0,1fr)_auto]")}>
+        {props.agent ? <div className="col-start-1 row-start-1 flex items-center gap-1 py-1" role="tablist" aria-label="Panel mode"
+          onKeyDown={event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? "activity" : event.key === "End" ? "agent" : mode === "activity" ? "agent" : "activity";
+            props.onModeChange?.(next);
+            event.currentTarget.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus();
+          }}>
+          {(["activity", "agent"] as const).map(value => <button key={value} type="button" role="tab" data-mode={value}
+            id={`studio-${value}-tab`} aria-label={value === "activity" ? "Activity" : "Agent"} aria-controls={`studio-${value}-panel`} aria-selected={mode === value} tabIndex={mode === value ? 0 : -1}
+            onClick={() => props.onModeChange?.(value)}
+            className={cx("inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-3 py-1 text-label transition-colors vp-480:px-2", mode === value ? "border-rule-strong bg-wash font-semibold text-ink" : "border-transparent bg-transparent text-graphite hover:bg-wash hover:text-ink")}>
+            {value === "activity" ? <ListTodo size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
+            {value === "activity" ? "Activity" : "Agent"}
+            {value === "activity" && running.length ? <span className="rounded-sm bg-paper px-1.5 text-meta" aria-label={`${running.length} running`}>{running.length}</span> : null}
+            {value === "agent" && props.agentPending ? <LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" aria-label="Thinking" /> : null}
+            {value === "agent" && props.agentUnread && !props.agentPending ? <span className="size-1.5 rounded-full bg-accept" aria-label="New reply" /> : null}
+          </button>)}
+        </div> : null}
         <button
-          className="col-span-full row-start-1 grid min-h-9 min-w-0 cursor-pointer grid-cols-subgrid items-center border-0 bg-transparent px-4 py-2 text-left text-inherit hover:bg-wash"
+          className={cx("row-start-1 grid min-h-9 min-w-0 cursor-pointer grid-cols-subgrid items-center border-0 bg-transparent py-2 text-left text-inherit hover:bg-wash", props.agent ? "col-start-2 -col-end-1 pr-3" : "col-span-full px-4")}
           onClick={props.onToggle}
           aria-expanded={props.open}
+          aria-controls="studio-activity-drawer"
+          aria-label={props.agent ? `${mode === "activity" ? "Activity" : "Agent"}: ${props.open ? "collapse" : "expand"} panel` : undefined}
         >
-          <span className="col-start-1 flex min-w-0 items-center gap-3">
-            <strong className="flex-none">Activity</strong>
-            {headline ? (
+          <span className={cx("col-start-1 flex min-w-0 items-center gap-3", !!props.agent && "pl-3 vp-480:invisible")}>
+            {!props.agent ? <strong className="flex-none">Activity</strong> : null}
+            {mode === "agent" ? <span className="truncate text-caption text-graphite">{props.agentSummary ?? "Ask a question"}</span> : headline ? (
               <span
                 className={cx(
                   "block min-w-0 items-center gap-[6px] overflow-hidden text-step-minus1 text-ellipsis whitespace-nowrap",
@@ -151,22 +224,22 @@ export function Activity(props: {
               <span className="text-graphite">{props.problem ? "Activity unavailable" : props.loading ? "Reading activity…" : "Nothing has run yet."}</span>
             )}
           </span>
-          {props.open ? (
-            <ChevronDown size={15} className="col-start-3 flex-none vp-480:col-start-2" aria-hidden />
-          ) : (
-            <ChevronUp size={15} className="col-start-3 flex-none vp-480:col-start-2" aria-hidden />
-          )}
+          <ChevronUp size={15} className={cx("col-start-3 flex-none transition-transform duration-280 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none", props.open && "rotate-180", !props.agent && "vp-480:col-start-2")} aria-hidden />
         </button>
         <DockerStatus
           presence={props.docker}
           onStart={props.onStartDocker}
           onCheck={props.onCheckDocker}
-          className="col-start-2 row-start-1 vp-480:col-span-full vp-480:col-start-1 vp-480:row-start-2 vp-480:px-4 vp-480:pb-2"
+          className={cx("row-start-1 vp-480:col-span-full vp-480:col-start-1 vp-480:row-start-2 vp-480:px-2 vp-480:pb-2", props.agent ? "col-start-3" : "col-start-2")}
         />
       </div>
-      {props.open ? (
-        // One height whatever it holds: the map runs beneath exactly this much of the tray.
-        <div data-ui="activity-drawer" className="flex h-(--activity-drawer) flex-col overflow-y-auto">
+      <div ref={drawer} id="studio-activity-drawer" data-ui={visible ? "activity-drawer" : undefined}
+        aria-hidden={!props.open} inert={!props.open}
+        className="h-(--activity-drawer-visible) min-h-0 overflow-hidden">
+        {/* Fixed-height contents slide as a unit instead of squeezing during motion. */}
+        <div hidden={!visible} className="flex h-(--activity-drawer) min-h-0 flex-col border-t border-rule">
+          {props.agent ? <div id="studio-agent-panel" role="tabpanel" aria-labelledby="studio-agent-tab" hidden={mode !== "agent"} className="flex min-h-0 flex-1 flex-col">{props.agent}</div> : null}
+          <div id={props.agent ? "studio-activity-panel" : undefined} role={props.agent ? "tabpanel" : undefined} aria-labelledby={props.agent ? "studio-activity-tab" : undefined} hidden={mode !== "activity"} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {props.problem ? (
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-4 py-2" role="alert">
               <span>{props.problem}</span>
@@ -311,8 +384,9 @@ export function Activity(props: {
               </p>
             )}
           </div>
+          </div>
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

@@ -1175,7 +1175,7 @@ export function Isometric() {
             "relative flex-1 overflow-hidden bg-map-ground text-map-ink",
             // Activity opens over the map: the canvas keeps its height and runs on beneath the
             // tray, so nothing here moves. A panel stacked under a narrow map sits in between.
-            "activity-open:h-[calc(100%+var(--activity-drawer))]",
+            "activity-open:h-[calc(100%+var(--activity-drawer-visible,var(--activity-drawer)))]",
             view === "closed" && "activity-open:vp-800:flex-none",
             // Keep the dock clear of wrapped connection filters when a phone panel opens.
             model.mode === "dev" ? "min-h-50 vp-800:min-h-70" : "min-h-0 vp-800:min-h-45",

@@ -2,6 +2,13 @@
  * including OS themes and editor integrations. Tailwind aliases resolve at use.
  * Scene material/geometry palettes remain in TypeScript; map DOM tokens are
  * available at the document root so portal content shares the same palette. */
+/* The shell animates one length shared by the drawer and the map beneath it. */
+@property --activity-drawer-visible {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 :root {
   --paper: #edefea;
   --sheet: #f7f8f5;

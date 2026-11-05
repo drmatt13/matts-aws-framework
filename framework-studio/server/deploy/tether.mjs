@@ -11,13 +11,21 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 
-const [file, ...args] = process.argv.slice(2);
+const command = process.argv.slice(2);
+const forwardInput = command[0] === "--forward-input";
+if (forwardInput) command.shift();
+const [file, ...args] = command;
 if (!file) {
   process.stderr.write("tether.mjs needs a program to run.\n");
   process.exit(2);
 }
 
-const child = spawn(file, args, { stdio: ["ignore", "inherit", "inherit"], windowsHide: true, detached: process.platform !== "win32" });
+const child = spawn(file, args, { stdio: [forwardInput ? "pipe" : "ignore", "inherit", "inherit"], windowsHide: true, detached: process.platform !== "win32" });
+if (forwardInput) {
+  // Protocol clients keep this pipe open: EOF still tears down the owned process tree.
+  child.stdin.on("error", () => {});
+  process.stdin.pipe(child.stdin);
+}
 let stopping = false;
 
 function stop() {

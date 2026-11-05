@@ -135,7 +135,7 @@ attributes, never presentation classes or assertions about utility strings.
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
 | Actions | `Button`, `IconButton` and their recipes; destructive actions use `tone="danger"` |
 | Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors; entity problems through `IssueNotice`, `IssueChips` and `HoverIssues` |
-| Motion | State changes are instant. Loading and busy indicators may pulse with `animate-deploy-pulse`, off under reduced motion. The one transition exception is the map's Local runtime switch (`views/map/ComposePreview.tsx`): interruptible transitions on the `--spring` and `--spring-bounce` curves plus its `compose-*` keyframes in `styles/theme.css`, all off under reduced motion and the map's Motion toggle |
+| Motion | State changes are instant except explicit spatial transitions. The bottom Activity/Agent drawer uses an interruptible 280ms `cubic-bezier(.22,1,.36,1)` slide, disabled under reduced motion. Loading and busy indicators may pulse with `animate-deploy-pulse`, off under reduced motion. The map's Local runtime switch (`views/map/ComposePreview.tsx`) uses interruptible transitions on the `--spring` and `--spring-bounce` curves plus its `compose-*` keyframes in `styles/theme.css`, all off under reduced motion and the map's Motion toggle |
 | Density | 4px within a group (label, control, support; identifier and source), 8px action-to-note, 12px heading-to-content, 16px sections; use container gaps rather than stacked paragraph margins |
 
 ## Navigation and workspace rhythm
