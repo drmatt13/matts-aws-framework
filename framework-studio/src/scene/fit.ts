@@ -47,8 +47,8 @@ export function fitScene(scene: Scene, viewport: Viewport, padding = 40): Camera
   // the landscape right when a wide viewport has space to center the artwork.
   // Keep the fitted zoom and constrain the horizontal move to the full label bounds.
   // A small screen-space lift balances the overview vertically, retaining at least
-  // half the top padding (32 px with the default 40 px padding).
-  camera = { ...camera, y: camera.y + Math.min(8, padding / 2) / camera.zoom };
+  // half the top padding (24 px with the default 40 px padding).
+  camera = { ...camera, y: camera.y + Math.min(16, padding / 2) / camera.zoom };
   let left = Infinity, right = -Infinity;
   const include = (x: number) => { left = Math.min(left, x); right = Math.max(right, x); };
   for (const slab of slabs) { include(slab.bounds.minX); include(slab.bounds.maxX); }

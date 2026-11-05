@@ -209,8 +209,8 @@ render preparation and map picking metadata. It does not change routes or hit to
 `fitScene` in `scene/fit.ts` includes left-side title allowances when choosing zoom.
 It then centers the painted terrain, frames, icons and wires within spare horizontal
 room, clamping the camera so the full title bounds retain their horizontal padding.
-A small vertical lift uses half the padding, capped at 8 screen pixels:
-the default 40 px padding gives an 8 px lift and retains 32 px at the top. Fit preserves
+A small vertical lift uses half the padding, capped at 16 screen pixels:
+the default 40 px padding gives a 16 px lift and retains 24 px at the top. Fit preserves
 zoom; no island, node or connection geometry changes.
 
 | Stage | Source / important behavior |

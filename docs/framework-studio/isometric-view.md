@@ -595,7 +595,7 @@ tweening. A still picture draws nothing.
   - Pinch uses two pointers.
 - **Fit** shows the bounds with 40 px of padding, capped at 1.2×. It reserves room
   for left-side titles, then uses spare horizontal room to center the painted terrain,
-  icons and wires. A gentle 8-screen-pixel lift leaves 32 px of top clearance with
+  icons and wires. A gentle 16-screen-pixel lift leaves 24 px of top clearance with
   the default padding. These camera corrections preserve zoom and all world positions;
   horizontal centering stops before any title would lose its padding.
 - **Tweens** take 450 ms, ease in and out, and interpolate zoom in log space. With reduced

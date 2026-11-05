@@ -18,8 +18,8 @@ test("Fit centers painted geometry and gives the overview a small screen-space l
   assert.ok(old.x < 0, "the reserved title margin previously pushed the artwork right");
   assert.equal(worldToScreen(camera, viewport, { x: 0, y: 0 }).x, viewport.width / 2);
   assert.equal(camera.zoom, old.zoom);
-  assert.equal(worldToScreen(camera, viewport, { x: 0, y: 0 }).y, viewport.height / 2 - 8);
-  assert.ok(worldToScreen(camera, viewport, { x: 0, y: scene.bounds.minY }).y >= 32);
+  assert.equal(worldToScreen(camera, viewport, { x: 0, y: 0 }).y, viewport.height / 2 - 16);
+  assert.ok(worldToScreen(camera, viewport, { x: 0, y: scene.bounds.minY }).y >= 24);
   const label = worldToScreen(camera, viewport, { x: scene.bounds.minX, y: 0 });
   assert.ok(label.x >= 40, "centering retains room for the entire title");
 });
@@ -33,7 +33,7 @@ test("Fit limits its horizontal correction when a narrow viewport needs the titl
     assert.ok(left >= 40 - 1e-8 && right <= width - 40 + 1e-8);
     assert.equal(camera.zoom, fitBounds(scene.bounds, viewport, 40).zoom);
     const old = fitBounds(scene.bounds, viewport, 40);
-    assert.ok(Math.abs((camera.y - old.y) * camera.zoom - 8) < 1e-8, "the lift stays eight screen pixels at every zoom");
+    assert.ok(Math.abs((camera.y - old.y) * camera.zoom - 16) < 1e-8, "the lift stays sixteen screen pixels at every zoom");
   }
 });
 
