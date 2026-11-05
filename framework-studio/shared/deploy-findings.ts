@@ -157,12 +157,12 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
         actions: [cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "primary" })],
       });
     } else if (plan.expired) {
-      findings.push({ code: "PLAN_EXPIRED", severity: "info", scope: "aws", title: "An expired plan", detail: "Discarding it removes any change sets it prepared.", actions: [cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "quiet" })] });
-    } else if (plan.status !== "no-changes" || plan.retainedStacks) {
+      findings.push({ code: "PLAN_EXPIRED", severity: "info", scope: "aws", title: "Plan expired", detail: "Synthesize again to prepare current changes. Discarding this plan removes any change sets it prepared.", actions: [cloud({ id: "review-plan", label: "Review plan", plan: plan.key }), cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "quiet" })] });
+    } else {
       findings.push({
-        code: "PLAN_WAITING", severity: "attention", scope: "aws",
-        title: plan.retainedStacks ? `${plan.retainedStacks} deployed stack${plan.retainedStacks === 1 ? " is" : "s are"} kept outside current source` : plan.status === "blocked" ? "Deployment analysis is incomplete" : plan.status === "needs-secrets" ? "A plan needs new secrets created" : "A reviewed plan is waiting",
-        detail: plan.status === "needs-secrets" ? "A change set can only reference a secret that exists." : `Made ${new Date(plan.createdAt).toLocaleString()}.`,
+        code: "PLAN_WAITING", severity: plan.status === "no-changes" ? "info" : "attention", scope: "aws",
+        title: plan.retainedStacks ? `${plan.retainedStacks} deployed stack${plan.retainedStacks === 1 ? " is" : "s are"} kept outside current source` : plan.status === "blocked" ? "Deployment analysis is incomplete" : plan.status === "needs-secrets" ? "A plan needs new secrets created" : plan.status === "no-changes" ? "No deployment changes" : plan.synthesis?.current === false ? "Plan needs synthesis" : "Plan ready for review",
+        detail: plan.status === "needs-secrets" ? "A change set can only reference a secret that exists." : `Made ${new Date(plan.createdAt).toLocaleString()}.${plan.synthesis?.current === false ? ` ${plan.synthesis.reason ?? "Source changed. Synthesize again before deploying."}` : ""}`,
         actions: [cloud({ id: "review-plan", label: "Review plan", plan: plan.key, tone: "primary" }), cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "quiet" })],
       });
     }

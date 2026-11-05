@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { OperationStore, canonicalRequest } from "../server/operations/store";
 import { identityAlive, processIdentity } from "../server/operations/identity";
 import { StreamingRedactor, redactText } from "../server/operations/redaction";
+import { summaryText } from "../server/deploy/jobs";
 import type { ExecutionIdentity, OperationIntent } from "../shared/operations";
 
 function intent(overrides: Partial<OperationIntent> = {}): OperationIntent {
@@ -281,6 +282,14 @@ test("redaction withholds secrets across every streaming and UTF-8 boundary", ()
   assert.equal(redactText("AWS_SESSION_TOKEN=unknown-token password: 'also private'", []), "AWS_SESSION_TOKEN=[redacted] password: [redacted]");
   assert.equal(redactText('password: "escaped\\"private" tail', []), 'password: [redacted] tail');
   assert.equal(redactText("client_secret='escaped\\'private' tail", []), "client_secret=[redacted] tail");
+});
+
+test("computed summary counts stay readable while string values retain complete redaction", () => {
+  const redact = (text: string) => redactText(text, ["6", "fixture-private"]);
+  assert.equal(summaryText(["Synthesis ready: ", 65, " resource changes to review."], redact), "Synthesis ready: 65 resource changes to review.");
+  assert.equal(summaryText(["Secret 6: fixture-", "private; count ", 65], redact), "Secret [redacted]: [redacted]; count 65");
+  assert.equal(summaryText("Synthesis ready: 65 resource changes to review.", redact), "Synthesis ready: [redacted]5 resource changes to review.", "freeform values never acquire the computed-count exception");
+  assert.equal(redact("6"), "[redacted]", "even a one-character actual private value stays protected");
 });
 
 test("redaction recognizes credential assignments split between writes and bounds long output", () => {

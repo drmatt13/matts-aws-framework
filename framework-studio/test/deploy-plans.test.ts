@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync }
 import path from "node:path";
 import { test } from "node:test";
 import { PlanStore } from "../server/deploy/plans";
+import { buildOperation, type OperationContext } from "../server/deploy/registry";
 
 /** Plan directories Studio cleans up, and the ones it must leave alone. */
 
@@ -62,4 +63,91 @@ test("live deployment journals remain active; stopped and unreadable outcomes st
     writeFileSync(path.join(directory, "result.json"), "broken");
     assert.equal(plans.list()[0]?.applied, "unverified", "corrupt results must not hide an uncertain release from history");
   } finally { rmSync(state, { recursive: true, force: true }); }
+});
+
+function synthesisStore() {
+  const { state } = store();
+  const checkout = path.join(state, "checkout");
+  mkdirSync(path.join(checkout, "cdk-app/lambda_functions/event_functions/example"), { recursive: true });
+  writeFileSync(path.join(checkout, "framework.config.ts"), "export default {};\n");
+  writeFileSync(path.join(checkout, "cdk-app/.env.dev"), "PRIVATE_INPUT=fixture-private-input\n");
+  const handler = path.join(checkout, "cdk-app/lambda_functions/event_functions/example/index.ts");
+  writeFileSync(handler, "export const handler = () => 1;\n");
+  const config = path.join(state, "aws-config"), credentials = path.join(state, "aws-credentials");
+  writeFileSync(config, "[profile dev]\nregion=us-east-1\n");
+  writeFileSync(credentials, "[dev]\naws_access_key_id=fixture-private-credential\n");
+  const env = { ...process.env, AWS_CONFIG_FILE: config, AWS_SHARED_CREDENTIALS_FILE: credentials };
+  const plans = new PlanStore(state, checkout, env);
+  const key = "my-aws-app-current1";
+  const before = () => plans.captureSynthesis("dev", "dev");
+  const save = () => {
+    mkdirSync(plans.path(key), { recursive: true });
+    writeFileSync(path.join(plans.path(key), "plan.json"), JSON.stringify({
+      planId: "plan-current-abcdef", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      status: "ready", review: "template", profile: "dev", target: { inputsFile: path.join(checkout, "cdk-app/.env.dev") },
+      identity: { deployment: "my-aws-app-dev", mode: "dev", account: "734849394764", region: "us-east-1" },
+    }));
+  };
+  return { state, checkout, plans, key, before, save, handler, credentials, env };
+}
+
+test("reusable synthesis covers handler bytes, private inputs and connection changes without exposing fingerprints", () => {
+  const f = synthesisStore();
+  try {
+    const before = f.before(); f.save(); f.plans.recordSynthesis(f.key, before);
+    assert.deepEqual(f.plans.read(f.key)?.synthesis, { current: true });
+    assert.deepEqual(f.plans.list()[0]?.synthesis, { current: true });
+    const original = "export const handler = () => 1;\n";
+    writeFileSync(f.handler, "export const handler = () => 2;\n");
+    assert.equal(f.plans.read(f.key)?.synthesis?.current, false, "implementation changes matter even without a declaration graph change");
+    writeFileSync(f.handler, original);
+    assert.equal(f.plans.read(f.key)?.synthesis?.current, true);
+    writeFileSync(path.join(f.checkout, "cdk-app/.env.dev"), "PRIVATE_INPUT=changed-private-input\n");
+    assert.equal(f.plans.read(f.key)?.synthesis?.current, false);
+    writeFileSync(path.join(f.checkout, "cdk-app/.env.dev"), "PRIVATE_INPUT=fixture-private-input\n");
+    writeFileSync(f.credentials, "[dev]\naws_access_key_id=changed-private-credential\n");
+    assert.equal(f.plans.read(f.key)?.synthesis?.current, false);
+    const publicEvidence = JSON.stringify({ plan: f.plans.read(f.key), summaries: f.plans.list() });
+    assert.doesNotMatch(publicEvidence, /fingerprint|fixture-private-input|fixture-private-credential|changed-private/);
+  } finally { rmSync(f.state, { recursive: true, force: true }); }
+});
+
+test("sources changed during synthesis never produce a reusable assembly, even after source is restored", () => {
+  const f = synthesisStore();
+  try {
+    const before = f.before();
+    writeFileSync(f.handler, "export const handler = () => 2;\n");
+    f.save(); f.plans.recordSynthesis(f.key, before);
+    assert.match(f.plans.read(f.key)?.synthesis?.reason ?? "", /during synthesis/);
+    writeFileSync(f.handler, "export const handler = () => 1;\n");
+    assert.equal(f.plans.read(f.key)?.synthesis?.current, false);
+  } finally { rmSync(f.state, { recursive: true, force: true }); }
+});
+
+test("synthesis freshness follows the host's explicit inputs override", () => {
+  const f = synthesisStore();
+  try {
+    const inputs = path.join(f.state, "explicit-inputs.env");
+    writeFileSync(inputs, "PRIVATE_INPUT=explicit-private-input\n");
+    const plans = new PlanStore(f.state, f.checkout, { ...f.env, FRAMEWORK_INPUTS_FILE: inputs });
+    const before = plans.captureSynthesis("dev", "dev");
+    f.save(); plans.recordSynthesis(f.key, before);
+    assert.equal(plans.read(f.key)?.synthesis?.current, true);
+    writeFileSync(inputs, "PRIVATE_INPUT=changed-explicit-input\n");
+    assert.equal(plans.read(f.key)?.synthesis?.current, false);
+  } finally { rmSync(f.state, { recursive: true, force: true }); }
+});
+
+test("normal deployment rejects stale synthesis while explicit saved-assembly recovery stays available", async () => {
+  const f = synthesisStore();
+  try {
+    const before = f.before(); f.save(); f.plans.recordSynthesis(f.key, before);
+    const context = { plans: f.plans, env: f.env, profiles: async () => [{ name: "dev" }] } as unknown as OperationContext;
+    const request = { kind: "deploy-apply" as const, params: { plan: f.key, profile: "dev", currentSource: true } };
+    assert.equal((await buildOperation(context, request)).params.currentSource, true);
+    writeFileSync(f.handler, "export const handler = () => 2;\n");
+    await assert.rejects(buildOperation(context, request), /sources or connection changed/);
+    assert.equal((await buildOperation(context, { ...request, params: { plan: f.key, profile: "dev" } })).kind, "deploy-apply");
+    assert.equal(existsSync(path.join(f.plans.path(f.key), "operation.json")), false, "refusal performs no deployment attempt");
+  } finally { rmSync(f.state, { recursive: true, force: true }); }
 });

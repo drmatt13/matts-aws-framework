@@ -34,8 +34,11 @@ buttons retain their explicit danger treatment.
 `TextInput`, `Select` and `Textarea` retain native props/events/refs;
 `controlSize` is separate from the native `size`; `controlSize="panel"` follows the
 inspector or dialog control-height token. `UnitInput` draws a numeric unit inside the
-input's trailing edge; callers keep the unit in the accessible label. `Card` and `Notice`
-cover shared surfaces. `Notice` does not invent an ARIA role.
+input's trailing edge; callers keep the unit in the accessible label. `Select`'s
+`appearance="quiet"` is for a setting inside another control's frame, such as the model
+beside the Agent composer: no box until pointed at, as wide as its value, and the caller
+bounds its width. `Card` and `Notice` cover shared surfaces. `Notice` does not invent an
+ARIA role.
 `InspectorUI`, `FieldRow`, `NavigationStrip`, `WorkspacePanel`, `WorkbenchUI` and
 `DocumentCard` remain the higher-level owners. `cx` joins complete static class strings;
 it does not resolve conflicting utilities, and JSX class order is not CSS precedence.
@@ -202,6 +205,14 @@ content, including on narrow screens. The map canvas is the one exception: it ke
 and runs beneath the tray, so opening it moves nothing on the map. `--activity-drawer` is the
 drawer's one height, notices included, and the `activity-open` variant styles anything that
 depends on the tray.
+The Agent panel spends the drawer on its transcript. Its Conversation and Sightline views
+are a second tier in the bar, unbordered beside the bordered Activity/Agent modes, and they
+replace the panel's summary while it is open. Heading, suggestions, composer and helper line
+share one left edge in a 752px column, using the document title and support roles. The empty
+state centres in the transcript; a conversation starts at its top and takes a rule above the
+composer. The composer is one 46px row that wraps at 650px, its focus border is `--faint`
+rather than the near-white `--graphite`, and whatever stops a question from being sent takes
+the helper line's place, in the warning or error colour.
 Shared `DocumentCard` and its native child controls
 own 6px corners, 16px padding (12px at 720px and below) and 12px spacing between content
 groups. Page-level cards are 12px apart; avoid per-route card overrides.

@@ -18,7 +18,7 @@ import type { OperationRecord } from "../../shared/operations";
 export const RUNNER_KINDS = new Set(["deploy-plan", "deploy-apply", "deploy-discard", "destroy", "drift", "export", "framework-check"]);
 const PARAMETERS: Readonly<Record<string, readonly string[]>> = {
   "deploy-plan": ["deployment", "profile", "region", "review", "createSecrets", "autoApply"],
-  "deploy-apply": ["plan", "profile", "confirm"], "deploy-discard": ["plan", "profile"],
+  "deploy-apply": ["plan", "profile", "confirm", "currentSource"], "deploy-discard": ["plan", "profile"],
   destroy: ["deployment", "mode", "profile", "region", "confirm", "review", "retainFailed"],
   drift: ["deployment", "profile", "region"], export: ["deployment", "profile", "region"], "framework-check": [],
 };
@@ -37,7 +37,7 @@ export function validateRequest(request: OperationRequest): void {
 function contextFor(root: string, state: string, planId?: string, note: (text: string, stream?: JobLogLine["stream"]) => void = () => {}, emit: (event: "deploy-stacks" | "deploy-event", data: unknown) => void = () => {}) {
   const env = process.env;
   const tools = new Tools(root, env);
-  const plans = new PlanStore(state);
+  const plans = new PlanStore(state, root, env);
   if (planId) plans.allocate = () => planId;
   const observer = new AwsObserver(tools, runCommand, env);
   const context: OperationContext = {

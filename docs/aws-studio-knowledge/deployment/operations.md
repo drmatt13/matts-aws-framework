@@ -13,6 +13,8 @@ source:
   - framework-studio/server/operations/worker.ts
   - framework-studio/server/operations/store.ts
   - framework-studio/server/operations/adapter.ts
+  - framework-studio/server/operations/client.ts
+  - framework-studio/server/operations/summaries.ts
   - framework-studio/src/operations/live.ts
   - framework-studio/server/infrastructure.ts
   - scripts/deployment-status.ts
@@ -37,8 +39,14 @@ expired or missing credentials replace
 it with a red **AWS sign-in required** link that opens profile configuration. Login failures
 do not add a separate action button or findings card. Narrow layouts keep machine readiness
 on its own row so target-name length does not change the header height. The page
-has no subnav bar, deployment rail, Repository/AWS cards, stage-creation form or direct
-template-comparison/change-set controls. The full-width This machine, frontend-release and
+has no subnav bar, deployment rail, Repository/AWS cards, stage-creation form or separate
+template-comparison/change-set controls. **Synthesize** saves a prepared assembly and
+template review. It is the header's only deployment action. The current plan card owns
+**Review plan** and **Discard**; the deployment action is inside the review. The newest
+pending plan is current for its exact destination, while **Earlier plans** retains older
+reviews without automatic deletion. Synthesis never applies a plan; deployment requires
+explicit confirmation inside its review.
+Activity owns preparation progress, logs and CloudFormation events. The full-width This machine, frontend-release and
 stateful-retention cards are also absent; their underlying services remain intact. Machine
 overview polls every 30 seconds; idle AWS discovery
 and target status poll every two minutes, while in-progress jobs retain four-second status
@@ -101,6 +109,14 @@ oversized log lines carry a truncation marker, and oversized observation events 
 explicitly. The browser deduplicates committed logs and replays gaps, including the
 missed tail after reconnect. Secret values and encoded
 forms are redacted before durable logging, including transport chunk boundaries.
+Computed numerical summaries, such as a plan's resource count, use typed number
+segments so a short private input cannot partially redact a public count. All adjacent
+freeform string segments are combined and sanitized with the same secret rules; raw
+command output retains its existing redaction behavior.
+For older successful synthesis records with a partially redacted count, the operations
+client can project that count from the matching saved plan. Missing or mismatched
+artifacts preserve the recorded summary; this read-only projection changes neither
+the operation journal nor raw logs.
 Authentication output and private SQL parameters do not belong to this log protocol.
 Drift reports retain their account/region/deployment scope in separate private artifacts.
 

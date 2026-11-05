@@ -86,7 +86,7 @@ export class DeployService {
       this.operationPoll.unref();
       void this.refreshOperations().catch(() => {});
     }
-    this.plans = new PlanStore(state);
+    this.plans = new PlanStore(state, root, this.env);
     this.teardowns = new TeardownStore(state);
     this.local = new LocalEnvironment(root, this.tools, this.run, this.env, exportDirectory(root, this.env), state, options.disabledLocalServices);
     this.observer = new AwsObserver(this.tools, this.run, this.env);

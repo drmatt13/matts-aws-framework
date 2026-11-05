@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { OperationsClient } from "../server/operations/client";
 import { privateEndpoint } from "../server/operations/ipc";
 import { PlanStore } from "../server/deploy/plans";
+import { OperationStore } from "../server/operations/store";
 import { ACCOUNT, fakeAccount, frameworkStack, READ_VERB, REGION } from "../../cdk-app/test/support/fake-aws-state";
 import type { JobView } from "../shared/operations";
 
@@ -33,12 +34,13 @@ test("independent deployment uses the real reviewed CLI, preserves approvals and
     "framework:targets": { prod: { mode: "prod", account: ACCOUNT, region: REGION } },
   } }));
   writeFileSync(path.join(root, "framework.config.ts"), `import { defaults } from ${JSON.stringify(path.join(repository, "framework-config/defaults.ts"))}; export default { defaults, http:{}, webSocket:{}, events:{}, services:{} };`);
-  const stack = frameworkStack(deployment, "Current", "prod", { template: { Resources: { CurrentBucket: { Type: "AWS::S3::Bucket" } } } });
+  const stack = frameworkStack(deployment, "Current", "prod", { template: { Resources: Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`Bucket${index}`, { Type: "AWS::S3::Bucket" }])) } });
+  writeFileSync(path.join(root, "cdk-app/.env.prod"), "PRIVATE_SHORT_VALUE=6\n");
   const manifest = { artifacts: { Current: { type: "aws:cloudformation:stack", environment: `aws://${ACCOUNT}/${REGION}`, properties: { stackName: stack.StackName, templateFile: "Current.template.json" } } } };
   const mini = path.join(root, "mini-cdk.mjs");
-  writeFileSync(mini, `import {mkdirSync,writeFileSync} from 'node:fs'; import {spawnSync} from 'node:child_process';
+  writeFileSync(mini, `import {mkdirSync,writeFileSync,appendFileSync} from 'node:fs'; import {spawnSync} from 'node:child_process';
 const args=process.argv.slice(2);
-if(args[0]==='synth') { const directory=args[args.indexOf('--output')+1]; mkdirSync(directory,{recursive:true});
+if(args[0]==='synth') { appendFileSync(${JSON.stringify(path.join(root, "synth-calls"))}, 'synth\\n'); const directory=args[args.indexOf('--output')+1]; mkdirSync(directory,{recursive:true});
 writeFileSync(directory+'/manifest.json',${JSON.stringify(JSON.stringify(manifest))});
 writeFileSync(directory+'/Current.template.json',${JSON.stringify(JSON.stringify(stack.Template))});
 } else { const result=spawnSync(process.execPath,[${JSON.stringify(path.join(repository, "cdk-app/test/support/fake-cdk.mjs"))},...args],{env:process.env,stdio:'inherit'}); process.exit(result.status??1); }
@@ -50,17 +52,36 @@ writeFileSync(directory+'/Current.template.json',${JSON.stringify(JSON.stringify
     const done = await finish(client, planned.id);
     const planLog = (await client.log(done.id)).lines.map(line => line.text).join("\n");
     assert.equal(done.status, "succeeded", planLog);
-    const plans = new PlanStore(state);
+    assert.equal(done.summary, `Synthesis ready: 65 resource changes to review; applying needs the name ${deployment}.`, "private input substrings never corrupt computed resource counts");
+    assert.match(planLog, /\[redacted\]/, "raw output keeps its existing private-value redaction");
+    const plans = new PlanStore(state, root, env);
     const reviewed = plans.read(done.planId!)!;
     assert.equal(reviewed.confirmation.level, "name");
     assert.equal(reviewed.result, undefined);
+    assert.equal(reviewed.synthesis?.current, true, `standalone synthesis prepares a reusable assembly: ${reviewed.synthesis?.reason ?? ""}`);
+    const journal = new OperationStore(path.join(state, "operations"));
+    try {
+      const masked = `Synthesis ready: [redacted]5 resource changes to review; applying needs the name ${deployment}.`;
+      journal.update(done.id, { summary: masked });
+      assert.equal((await client.list()).find(job => job.id === done.id)?.summary, done.summary);
+      assert.equal((await client.get(done.id))?.view.summary, done.summary);
+      const historical = await client.log(done.id);
+      assert.equal(historical.job.summary, done.summary);
+      assert.equal(historical.lines.map(line => line.text).join("\n"), planLog, "historical raw logs are never rewritten");
+      assert.equal(journal.get(done.id)?.view.summary, masked, "read projection leaves the stored operation untouched");
+    } finally { journal.close(); }
     assert.deepEqual(account.calls().filter(call => !READ_VERB.test(call.key)), [], "template planning makes no cloud mutation, even in the fake account");
     await assert.rejects(client.submit({ kind: "deploy-apply", params: { plan: done.planId, profile: "dev" }, requestKey: "missing-approval-request" }), /Type runner-fixture-prod/);
-    const applyRequest = { kind: "deploy-apply" as const, params: { plan: done.planId, profile: "dev", confirm: deployment }, requestKey: "real-cli-apply-request" };
+    const source = path.join(root, "framework.config.ts"), originalSource = readFileSync(source, "utf8");
+    writeFileSync(source, originalSource + "\n// deployment sources changed after synthesis\n");
+    await assert.rejects(client.submit({ kind: "deploy-apply", params: { plan: done.planId, profile: "dev", confirm: deployment, currentSource: true }, requestKey: "stale-synthesis-request" }), /sources or connection changed/);
+    writeFileSync(source, originalSource);
+    const applyRequest = { kind: "deploy-apply" as const, params: { plan: done.planId, profile: "dev", confirm: deployment, currentSource: true }, requestKey: "real-cli-apply-request" };
     const applying = await client.submit(applyRequest);
     const applied = await finish(client, applying.id);
     assert.equal(applied.status, "succeeded", (await client.log(applied.id)).lines.map(line => line.text).join("\n"));
     assert.equal(applied.outcome, "confirmed");
+    assert.equal(readFileSync(path.join(root, "synth-calls"), "utf8"), "synth\n", "deployment reuses the reviewed assembly without another synthesis");
     const directory = plans.path(done.planId!);
     assert.ok(existsSync(path.join(directory, "operation.json")), "the CLI's own operation journal remains authoritative");
     assert.equal(JSON.parse(readFileSync(path.join(directory, "result.json"), "utf8")).verification.verified, true);

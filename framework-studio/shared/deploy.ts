@@ -197,6 +197,8 @@ export interface ResourceChangeView {
 }
 
 export interface PlanView {
+  /** Whether this saved assembly still represents the current deployment sources and connection. */
+  readonly synthesis?: { readonly current: boolean; readonly reason?: string };
   readonly inputsFile?: string;
   readonly sourceRevision?: { readonly commit?: string; readonly dirty: boolean };
   /** Studio's name for the plan: its directory under .cache/framework-studio/plans. */
@@ -278,6 +280,7 @@ export interface DeployOverview {
 }
 
 export interface PlanSummaryView {
+  readonly synthesis?: PlanView["synthesis"];
   readonly account?: string;
   readonly region?: string;
   readonly profile?: string;

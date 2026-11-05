@@ -144,21 +144,24 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     const directory = context.plans.path(key);
     const env = studioEnvironment(context.env, { profile: credentials.name });
     let stopFollowing: (() => void) | undefined;
+    let synthesisFingerprint: string | undefined;
     const steps: JobStep[] = [
       {
         label: review === "change-set" ? "Synthesize and prepare change sets in AWS" : "Synthesize and compare AWS templates (read-only)",
+        run: async () => { synthesisFingerprint = context.plans.captureSynthesis(declared.mode, credentials.name, declared.inputs); },
         command: () => context.tools.script("scripts/deploy.ts", [
           "--all", ...cdkContext(name, declared.mode), ...awsArguments(credentials.name, regionName),
           "--plan", directory, ...(review ? ["--review", review] : []), ...(createSecrets ? ["--create-secrets"] : []),
         ], env),
         after: (_result, step) => {
+          context.plans.recordSynthesis(key, synthesisFingerprint);
           const plan = context.plans.read(key);
           if (!plan) throw new Error("The plan finished without writing plan.json.");
           step.setPlanId(key);
           const changes = plan.stacks.reduce((count, stack) => count + stack.changes.length, 0);
-          step.setSummary(plan.status === "no-changes" ? "No changes: AWS already holds this." : plan.status === "needs-secrets"
+          step.setSummary(plan.synthesis && !plan.synthesis.current ? `Synthesis complete. ${plan.synthesis.reason}` : plan.status === "no-changes" ? "Synthesis complete: no deployment changes." : plan.status === "needs-secrets"
             ? "New secrets must exist before CloudFormation can prepare change sets."
-            : `${changes} resource change${changes === 1 ? "" : "s"} to review${plan.confirmation.level === "name" ? `; applying needs the name ${name}` : ""}.`);
+            : ["Synthesis ready: ", changes, ` resource change${changes === 1 ? "" : "s"} to review${plan.confirmation.level === "name" ? `; applying needs the name ${name}` : ""}.`]);
         },
       },
     ];
@@ -181,7 +184,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
       });
     }
     return {
-      kind: "deploy-plan", title: `${autoApply ? "Deploy" : "Plan"} ${name}`, params: { deployment: name, profile: credentials.name, ...(review ? { review } : {}), ...(createSecrets ? { createSecrets } : {}), ...(autoApply ? { autoApply } : {}) },
+      kind: "deploy-plan", title: `${autoApply ? "Deploy" : review === "template" ? "Synthesize" : "Plan"} ${name}`, params: { deployment: name, profile: credentials.name, ...(review ? { review } : {}), ...(createSecrets ? { createSecrets } : {}), ...(autoApply ? { autoApply } : {}) },
       deployment: name, planId: key, locks: [`deployment:${name}`, ...(autoApply ? ["exports"] : [])], steps,
       cancelNote: "Stopped planning. Change sets it had already prepared stay listed as an unfinished plan: discard it to remove them.",
       onSettled: (job) => {
@@ -205,13 +208,15 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     if (plan.status === "no-changes") throw new OperationError(409, "This plan changes nothing.");
     if (plan.status === "needs-secrets") throw new OperationError(409, "This plan could not prepare change sets until its new secrets exist. Plan again, creating them.");
     if (plan.status === "blocked" || plan.reviewEvidence?.problems.length) throw new OperationError(409, "Analysis is incomplete. Resolve its errors and plan again.");
+    const currentSource = flag(params, "currentSource");
+    if (currentSource && !plan.synthesis?.current) throw new OperationError(409, plan.synthesis?.reason ?? "The saved assembly does not represent the current deployment sources. Synthesize again.");
     const confirm = text(params, "confirm");
     if (plan.confirmation.level === "name" && confirm !== name) throw new OperationError(428, `Type ${name} to apply this plan: ${plan.confirmation.reasons.join("; ")}.`);
     if (confirm !== undefined && confirm !== name) throw new OperationError(400, `${confirm} does not name ${name}.`);
     const env = studioEnvironment(context.env, { profile: credentials.name });
     let stopFollowing: (() => void) | undefined;
     return {
-      kind: "deploy-apply", title: `Apply plan to ${name}`, params: { plan: key, deployment: name, profile: credentials.name },
+      kind: "deploy-apply", title: currentSource ? `Deploy ${name}` : `Apply plan to ${name}`, params: { plan: key, deployment: name, profile: credentials.name, ...(currentSource ? { currentSource } : {}) },
       deployment: name, planId: key, locks: [`deployment:${name}`, ...(plan.identity.mode === "dev" ? ["exports"] : [])], cancelNote: CLOUD_CANCEL_NOTE,
       steps: [{
         label: plan.review === "change-set" ? "Execute change sets and verify" : "Deploy and verify",

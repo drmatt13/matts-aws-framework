@@ -13,10 +13,11 @@ import type {
   JobView,
   OperationKind,
   OperationRequest,
+  PlanSummaryView,
   PlanView,
   StackEventView,
 } from "../../shared/deploy";
-import { deploymentFindings, nextAction, type Action } from "../../shared/deploy-findings";
+import { deploymentFindings, type Action } from "../../shared/deploy-findings";
 import { ApiError } from "../http";
 import { deployApi } from "../deploy/api";
 import { useDeployEvents } from "../deploy/live";
@@ -66,7 +67,13 @@ export function Deploy() {
   const dockerStart = useDockerStart();
   const overview = overviewQuery.data ? withDockerStatus(overviewQuery.data, machineQuery.status ?? unavailableDockerStatus("Checking Docker…")) : undefined;
   const refreshInFlight = useRef(false);
-  const [reviewKey, setReviewKey] = useState<string>();
+  const [review, setReview] = useState<{ key: string; currentSource: boolean }>();
+  const reviewKey = review?.key;
+  const reviewCurrentSource = review?.currentSource ?? false;
+  const synthesizeButton = useRef<HTMLButtonElement>(null);
+  const reviewButton = useRef<HTMLButtonElement | null>(null);
+  const [preparing, setPreparing] = useState<string>();
+  const preparingConnection = useRef<string | undefined>(undefined);
   const [teardown, setTeardown] = useState<{
     deployment: string;
     mode: "dev" | "prod";
@@ -87,7 +94,7 @@ export function Deploy() {
   }, []);
 
   useEffect(() => {
-    setReviewKey(undefined);
+    setReview(undefined);
     setTeardown(undefined);
     // Follow-up actions must not acquire a new actor after their starting context changes.
     afterSuccess.current.clear();
@@ -140,6 +147,9 @@ export function Deploy() {
   }, [overview?.targets, discovery, status]);
   const row = rows.find((entry) => entry.name === selectedName);
   const plansQuery = useQuery(deploymentPlansQuery());
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: deploymentPlansQuery().queryKey });
+  }, [queryClient, observation.scope.sourceRevision]);
   const driftQuery = useQuery({
     queryKey: ["deploy", "drift", selectedContext?.account, selectedContext?.region, row?.name, connectionKey],
     queryFn: () => deployApi.drift(row!.name, selectedContext?.account, selectedContext?.region),
@@ -152,17 +162,6 @@ export function Deploy() {
       const then = afterSuccess.current.get(job.id);
       afterSuccess.current.delete(job.id);
       if (then && job.status === "succeeded") then();
-      if (
-        startedHere.current.has(job.id) &&
-        startedConnections.current.get(job.id) === connectionKey &&
-        job.status === "succeeded" &&
-        job.kind === "deploy-plan" &&
-        job.planId
-      ) {
-        const applied = job.params.autoApply && job.steps?.[1]?.status === "done";
-        // Opened for review, unless another plan is already being reviewed: never swapped under the reader.
-        if (!applied) setReviewKey((current) => current ?? job.planId);
-      }
       if (startedHere.current.has(job.id) && job.status === "failed")
         toast(`${job.title} failed: ${job.summary ?? "see Activity"}`);
       if (
@@ -218,6 +217,29 @@ export function Deploy() {
     [queryClient, toast, dockerStart.start, observation.scope.repository, observation.scope.sourceRevision],
   );
 
+  const sameDestination = (plan: PlanSummaryView) => plan.deployment === selectedName
+    && plan.mode === declarationMode && plan.profile === profile
+    && plan.account === selectedContext?.account && plan.region === selectedContext?.region;
+  const pendingPlans = [...(plansQuery.data ?? [])].filter(plan => sameDestination(plan) && !plan.applied)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.key.localeCompare(a.key));
+  // A completed synthesis becomes the current proposal. Unfinished and older artifacts remain recoverable.
+  const currentPlan = pendingPlans.find(plan => plan.status !== "unfinished") ?? pendingPlans[0];
+  const pending = preparing === connectionKey;
+  const activeJob = runningFor(selectedName);
+
+  const synthesize = async () => {
+    if (!row || !profile || preparingConnection.current === connectionKey || activeJob) return;
+    const connection = connectionKey;
+    preparingConnection.current = connection;
+    setPreparing(connection);
+    try {
+      await operate("deploy-plan", { deployment: row.name, profile, review: "template" });
+    } finally {
+      if (preparingConnection.current === connection) preparingConnection.current = undefined;
+      setPreparing(current => current === connection ? undefined : current);
+    }
+  };
+
   const refreshAll = async () => {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
@@ -266,13 +288,19 @@ export function Deploy() {
       jobs,
     ],
   );
-  const visibleFindings = findings.map(finding => ({
+  const planFinding = (finding: typeof findings[number]) => ["PLAN_WAITING", "PLAN_EXPIRED", "PLAN_UNFINISHED"].includes(finding.code);
+  const shownFindings = findings.map(finding => ({
     ...finding,
     actions: finding.actions.filter(action => action.id !== "deploy" && action.id !== "plan"),
   }));
-  const next = nextAction(visibleFindings);
+  const visibleFindings = shownFindings.filter(finding => !planFinding(finding)
+    || finding.actions.some(action => action.plan === currentPlan?.key));
+  const earlierFindings = shownFindings.filter(finding => planFinding(finding)
+    && !finding.actions.some(action => action.plan === currentPlan?.key));
+  const blocked = !profile || !selectedContext || !awsKnown || Boolean(problem)
+    || findings.some(finding => finding.severity === "blocking" && finding.scope !== "local" && finding.code !== "OPERATION_UNVERIFIED");
 
-  const act = (action: Action) => {
+  const act = (action: Action, trigger?: HTMLButtonElement) => {
     if (!row || !profile) return;
     const name = row.name;
     switch (action.id) {
@@ -283,13 +311,14 @@ export function Deploy() {
         refreshAll();
         break;
       case "deploy":
-        void operate("deploy-plan", { deployment: name, profile, review: "template" });
+        void synthesize();
         break;
       case "plan":
-        void operate("deploy-plan", { deployment: name, profile, review: "template" });
+        void synthesize();
         break;
       case "review-plan":
-        setReviewKey(action.plan);
+        reviewButton.current = trigger ?? synthesizeButton.current;
+        setReview(action.plan ? { key: action.plan, currentSource: action.plan === currentPlan?.key && currentPlan.synthesis !== undefined } : undefined);
         break;
       case "discard-plan":
         void operate("deploy-discard", { plan: action.plan, profile });
@@ -417,12 +446,21 @@ export function Deploy() {
                 awsKnown={awsKnown}
                 connectionMissing={!profile}
                 onChooseConnection={openAwsProfileConfiguration}
-                next={next}
+                earlierFindings={earlierFindings}
                 events={events}
                 drift={driftQuery.data}
                 onAction={act}
                 machine={machine}
                 notice={readFeedback}
+                actions={(
+                  <div aria-label="Deployment actions">
+                    <button ref={synthesizeButton} className={buttonClasses({ variant: "quiet", size: "regular" })}
+                      disabled={blocked || pending || Boolean(activeJob)}
+                      onClick={() => void synthesize()}>
+                      {pending || activeJob?.kind === "deploy-plan" ? "Synthesizing…" : "Synthesize"}
+                    </button>
+                  </div>
+                )}
               />
             ) : (
               <DeployState title="Deploy & Run" machine={machine}>
@@ -440,21 +478,24 @@ export function Deploy() {
           key={reviewKey}
           planKey={reviewKey}
           busy={reviewBusy}
-          onClose={() => setReviewKey(undefined)}
+          currentSource={reviewCurrentSource}
+          returnFocusRef={reviewButton}
+          onClose={() => setReview(undefined)}
           onApply={(plan: PlanView, confirm) => {
-            setReviewKey(undefined);
+            setReview(undefined);
             void operate("deploy-apply", {
               plan: plan.key,
               profile,
+              ...(reviewCurrentSource ? { currentSource: true } : {}),
               ...(confirm ? { confirm } : {}),
             });
           }}
           onDiscard={(plan) => {
-            setReviewKey(undefined);
+            setReview(undefined);
             void operate("deploy-discard", { plan: plan.key, profile });
           }}
           onReplan={(plan, createSecrets) => {
-            setReviewKey(undefined);
+            setReview(undefined);
             if (plan.result) {
               void operate("deploy-plan", {
                 deployment: plan.identity.deployment,

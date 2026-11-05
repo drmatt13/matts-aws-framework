@@ -178,11 +178,11 @@ export function Activity(props: {
             id={`studio-${value}-tab`} aria-label={value === "activity" ? "Activity" : "Agent"} aria-controls={`studio-${value}-panel`} aria-selected={mode === value} tabIndex={mode === value ? 0 : -1}
             onClick={() => props.onModeChange?.(value)}
             className={cx("inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-3 py-1 text-label font-medium transition-colors vp-480:px-2", mode === value ? "border-rule-strong bg-wash text-ink" : "border-transparent bg-transparent text-graphite hover:bg-wash hover:text-ink")}>
-            {value === "activity" ? <ListTodo size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
+            {/* The agent's state takes the icon's place and corner, so the views beside it never shift. */}
+            {value === "activity" ? <ListTodo size={14} aria-hidden /> : props.agentPending ? <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" aria-label="Thinking" />
+              : <span className="relative flex"><Sparkles size={14} aria-hidden />{props.agentUnread ? <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accept" aria-label="New reply" /> : null}</span>}
             {value === "activity" ? "Activity" : "Agent"}
             {value === "activity" && running.length ? <span className="rounded-sm bg-paper px-1.5 text-meta" aria-label={`${running.length} running`}>{running.length}</span> : null}
-            {value === "agent" && props.agentPending ? <LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" aria-label="Thinking" /> : null}
-            {value === "agent" && props.agentUnread && !props.agentPending ? <span className="size-1.5 rounded-full bg-accept" aria-label="New reply" /> : null}
           </button>)}
         </div> : null}
         {agentViews ? <div className="relative z-1 col-start-2 row-start-1 flex items-center gap-3 justify-self-start vp-480:col-start-1 vp-480:row-start-2 vp-480:pb-1">

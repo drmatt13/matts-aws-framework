@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, wri
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import type { PlanSummaryView, PlanView, TeardownPlanView } from "../../shared/deploy";
+import { writeDeploymentRecordAtomic } from "../../../scripts/deployment-artifact";
+import { deploymentPreparationFingerprint } from "./preparation";
 
 /**
  * Reviewed plans, as deploy:resources --plan writes them: one directory each
@@ -17,8 +19,41 @@ export type PlanSummary = PlanSummaryView;
 export class PlanStore {
   readonly directory: string;
 
-  constructor(stateDirectory: string) {
+  constructor(stateDirectory: string, private readonly root?: string, private readonly env: NodeJS.ProcessEnv = process.env) {
     this.directory = path.join(stateDirectory, "plans");
+  }
+
+  /** Captured immediately before synthesis; never returned to the browser or placed in logs. */
+  captureSynthesis(mode: PlanView["identity"]["mode"], profile: string | undefined, inputsFile?: string): string | undefined {
+    return this.root ? deploymentPreparationFingerprint(this.root, mode, profile, inputsFile, this.env) : undefined;
+  }
+
+  recordSynthesis(key: string, before: string | undefined): void {
+    if (!before || !this.root) return;
+    const document = JSON.parse(readFileSync(path.join(this.path(key), "plan.json"), "utf8"));
+    const after = this.captureSynthesis(document.identity.mode, document.profile, document.target?.inputsFile);
+    writeDeploymentRecordAtomic(path.join(this.path(key), "studio-synthesis.json"), {
+      version: 1, planId: document.planId, fingerprint: before, stable: before === after,
+    });
+  }
+
+  private synthesis(key: string, document: any, fingerprints?: Map<string, string>): PlanView["synthesis"] {
+    if (!this.root) return undefined;
+    const stale = (reason: string) => ({ current: false, reason });
+    try {
+      const binding = JSON.parse(readFileSync(path.join(this.path(key), "studio-synthesis.json"), "utf8"));
+      if (binding.version !== 1 || binding.planId !== document.planId || typeof binding.fingerprint !== "string") return stale("Synthesize this deployment to prepare its current sources.");
+      if (!binding.stable) return stale("Deployment sources changed during synthesis. Synthesize again.");
+      if (Date.parse(document.expiresAt) < Date.now()) return stale("This synthesis expired. Synthesize again.");
+      if (existsSync(path.join(this.path(key), "operation.json")) || existsSync(path.join(this.path(key), "result.json"))) return stale("This assembly already has a deployment attempt. Synthesize again.");
+      const cacheKey = JSON.stringify([document.identity.mode, document.profile, document.target?.inputsFile]);
+      let current = fingerprints?.get(cacheKey);
+      if (!current) {
+        current = this.captureSynthesis(document.identity.mode, document.profile, document.target?.inputsFile)!;
+        fingerprints?.set(cacheKey, current);
+      }
+      return binding.fingerprint === current ? { current: true } : stale("Deployment sources or connection changed. Synthesize again.");
+    } catch { return stale("Synthesize this deployment to prepare its current sources."); }
   }
 
   /** A fresh directory name for a new plan; the deploy script creates it. */
@@ -32,7 +67,7 @@ export class PlanStore {
     return path.join(this.directory, key);
   }
 
-  read(key: string): PlanView | undefined {
+  read(key: string, fingerprints?: Map<string, string>): PlanView | undefined {
     const file = path.join(this.path(key), "plan.json");
     if (!existsSync(file)) return undefined;
     const document = JSON.parse(readFileSync(file, "utf8"));
@@ -57,6 +92,7 @@ export class PlanStore {
     }
     return {
       key,
+      ...(this.root ? { synthesis: this.synthesis(key, document, fingerprints) } : {}),
       planId: document.planId,
       createdAt: document.createdAt,
       expiresAt: document.expiresAt,
@@ -106,10 +142,11 @@ export class PlanStore {
   list(active: (key: string) => boolean = () => false): PlanSummary[] {
     if (!existsSync(this.directory)) return [];
     const summaries: PlanSummary[] = [];
+    const fingerprints = new Map<string, string>();
     for (const key of readdirSync(this.directory)) {
       if (!KEY.test(key)) continue;
       try {
-        const plan = this.read(key);
+        const plan = this.read(key, fingerprints);
         if (!plan) {
           const stopped = this.unfinished(key);
           if (stopped && !active(key)) {
@@ -123,6 +160,7 @@ export class PlanStore {
         summaries.push({
           key, deployment: plan.identity.deployment, mode: plan.identity.mode, status: plan.status, createdAt: plan.createdAt, expired: plan.expired,
           account: plan.identity.account, region: plan.identity.region, ...(plan.profile ? { profile: plan.profile } : {}), retainedStacks: plan.retainedStacks?.length ?? 0,
+          ...(plan.synthesis ? { synthesis: plan.synthesis } : {}),
           ...(plan.result ? { applied: plan.result.status, ...(plan.result.deferred.length ? { deferred: plan.result.deferred } : {}) } : {}),
         });
       } catch {

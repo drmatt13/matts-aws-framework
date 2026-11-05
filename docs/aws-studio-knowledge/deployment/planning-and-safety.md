@@ -4,6 +4,10 @@ summary: Exact deployment plan/apply gates, ownership enforcement, confirmation 
 read_when:
   - Fixing approval, ownership, change-set, staleness, or recovery behavior
 source:
+  - framework-studio/server/deploy/preparation.ts
+  - framework-studio/server/deploy/plans.ts
+  - framework-studio/server/deploy/registry.ts
+  - framework-studio/server/operations/adapter.ts
   - scripts/deploy.ts
   - scripts/deployment-plan.ts
   - scripts/deployment-guard.ts
@@ -48,6 +52,19 @@ Template comparison cannot determine replacement certainty or drift. Change-set 
 `plan` records `preparing.json` before preparing each change set, so interrupted preparation can be discarded. New stacks can remain `REVIEW_IN_PROGRESS`; expected plan-owned review stacks are handled specially. `discard` cleans prepared reviews, not an executed deployment. Missing secrets produce `needs-secrets` until explicit creation is allowed; creation must not update existing secrets. [Secret binding](secrets.md) defines the reviewed-value checks.
 
 `apply` deploys the **saved assembly without resynthesis or loading current declarations**. Discard also remains available with broken current source, shares the deployment lock, and targets exact saved StackIds; an ambiguous interrupted placeholder stays preserved for investigation. The saved target/inputs, STS account, ownership and secret guards still apply. Checks and account/ownership validation rerun. CloudFormation rollback governs infrastructure, but secret writes occur before stack changes and can already affect readers. Cancellation of a local CLI/job does not guarantee AWS cancellation or rollback. The wrapper reports updates already performed. `UPDATE_ROLLBACK_FAILED`/`DELETE_FAILED` need explicit recovery; some failed creates/paused updates are classified as CDK-recoverable. Never automate recovery by deleting identity checks.
+
+Studio's **Synthesize** action prepares a saved template review without applying it.
+The newest plan is offered for review on its own card; older plans remain in an explicit
+history disclosure. **Deploy development/production** appears inside the review and uses
+that saved assembly, without resynthesizing or automatically applying after synthesis.
+A private sidecar binds the saved plan to source,
+handler/asset bytes, dependencies, selected inputs and AWS configuration. Source changes
+during preparation make the result stale. Only freshness booleans and an explanatory
+message reach the browser. Normal deployment sends `currentSource: true`, checked both
+before operation acceptance and again by the worker. Explicit saved-review recovery
+retains the existing ability to deploy reviewed bytes with broken or newer current source;
+it does not claim to deploy the current declarations. Existing assembly integrity,
+ownership, principal, secret and AWS stack-fingerprint checks apply to both paths.
 
 Safeguards are local-tool contracts, not protection against a user bypassing the wrapper or tampering with all local artifacts. `assemblyDigest` in `scripts/deployment-integrity.ts` hashes every saved manifest, template and staged asset byte plus entry types, internal symlink targets and executable/file permissions and rejects links outside the assembly. Phase/result records use atomic writes and file fsync; an attempt without a terminal record is surfaced as interrupted, never blindly retried. Removed whole stacks are explicitly listed as retained outside the selected assembly; a no-change result covers current assembly templates only, not drift or full convergence. Stack fingerprints bind immutable StackIds plus observed status/timestamps, not a distributed lock or complete drift proof. [Operations](operations.md) owns status/drift and identity-scoped teardown.
 

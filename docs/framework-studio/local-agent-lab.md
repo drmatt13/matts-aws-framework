@@ -30,12 +30,13 @@ contains a bounded recent conversation; the agent has no tools or source-write a
 and `POST /api/agent-lab/chat` uses the existing bounded CLI runner. The request is
 aborted when the browser stops it or disconnects. No API-key setup is required.
 
-Choose **Sightline** inside the Agent panel to inspect what Studio can see from the
-current location and selection. This is a read-only JSON debug view; **the agent receives
+Choose **Sightline** beside **Conversation** in the bar of the open Agent panel to inspect
+what Studio can see from the current location and selection. This is a read-only JSON debug view; **the agent receives
 none of it**. Conversation, draft and scroll survive switching back. Expand/collapse and
 Copy JSON affect only its display/export. The JSON updates while visible from existing
 source, workspace and cached deployment/operation evidence, with no new data requests.
-`src/sightline/AgentViews.tsx` owns the display choice, `useSightlineInputs()` gathers
+`GlobalActivity` owns the display choice, `views/agent/AgentViewTabs.tsx` presents it in the
+bar, `src/sightline/AgentViews.tsx` shows the chosen view, `useSightlineInputs()` gathers
 existing inputs only while visible, and pure `buildSightline(inputs)` builds the bounded
 allow-listed object. Workspaces publish small fragments one way and remove them on
 unmount; they retain ownership of every selection and draft. See the canonical

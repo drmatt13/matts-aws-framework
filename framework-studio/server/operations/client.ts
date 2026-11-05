@@ -6,6 +6,7 @@ import path from "node:path";
 import type { JobLogLine, JobView, OperationRecord, OperationRequest } from "../../shared/operations";
 import { OPERATIONS_VERSION } from "../../shared/operations";
 import { callIpc, OperationsError, privateEndpoint, type CoordinatorInfo } from "./ipc";
+import { projectSynthesisSummary } from "./summaries";
 
 const loader = createRequire(path.join(__dirname, "../../package.json")).resolve("tsx");
 const coordinator = path.join(__dirname, "coordinator.ts");
@@ -66,9 +67,9 @@ export class OperationsClient {
   }
 
   ping(): Promise<CoordinatorInfo> { return this.call("/ping"); }
-  list(): Promise<JobView[]> { return this.call("/operations"); }
-  get(id: string): Promise<OperationRecord | undefined> { return this.call<OperationRecord | null>(`/operations/${encodeURIComponent(id)}`).then(record => record ?? undefined); }
-  log(id: string, after = 0): Promise<{ job: JobView; lines: JobLogLine[] }> { return this.call(`/operations/${encodeURIComponent(id)}/log?after=${Math.max(0, Math.floor(after))}`); }
+  list(): Promise<JobView[]> { return this.call<JobView[]>("/operations").then(jobs => jobs.map(job => projectSynthesisSummary(this.state, job))); }
+  get(id: string): Promise<OperationRecord | undefined> { return this.call<OperationRecord | null>(`/operations/${encodeURIComponent(id)}`).then(record => record ? { ...record, view: projectSynthesisSummary(this.state, record.view) } : undefined); }
+  log(id: string, after = 0): Promise<{ job: JobView; lines: JobLogLine[] }> { return this.call<{ job: JobView; lines: JobLogLine[] }>(`/operations/${encodeURIComponent(id)}/log?after=${Math.max(0, Math.floor(after))}`).then(page => ({ ...page, job: projectSynthesisSummary(this.state, page.job) })); }
   events(id: string, after = 0): Promise<{ events: { seq: number; event: string; data: unknown }[]; lastSeq: number }> { return this.call(`/operations/${encodeURIComponent(id)}/events?after=${Math.max(0, Math.floor(after))}`); }
   cancel(id: string): Promise<JobView> { return this.call(`/operations/${encodeURIComponent(id)}/cancel`, {}); }
   async submit(request: OperationRequest): Promise<JobView> {

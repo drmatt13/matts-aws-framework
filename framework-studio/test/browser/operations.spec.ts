@@ -81,8 +81,8 @@ test("baseline deployment review keeps typed confirmation and no implicit operat
   studio.reply("GET", "/api/deploy/plans/browser-plan", route => route.fulfill({ json: plan }));
   await studio.goto("/deploy");
   await page.getByRole("button", { name: "Review plan", exact: true }).first().click();
-  const dialog = page.getByRole("dialog", { name: /Review plan for browser-dev/ });
-  const apply = dialog.getByRole("button", { name: "Apply to 123456789012" });
+  const dialog = page.getByRole("dialog", { name: /Review deployment for browser-dev/ });
+  const apply = dialog.getByRole("button", { name: "Deploy development", exact: true });
   await expect(apply).toBeDisabled();
   await dialog.getByRole("textbox", { name: "Type browser-dev to apply" }).fill("browser-dev");
   await expect(apply).toBeEnabled();

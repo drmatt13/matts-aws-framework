@@ -103,10 +103,13 @@ for (const width of [1440, 320])
     const heading = page.getByRole("heading", { name: /^browser-dev/ });
     const headingBefore = await heading.boundingBox();
     await expect(toolbar.getByRole("button")).toHaveText(["Start", "This machine · 5 checks passed"]);
-    expect(before!.x + before!.width).toBeCloseTo(width - Math.max(0, (width - 1280) / 2) - 16, 0);
+    const actionGroup = await toolbar.locator("xpath=..").boundingBox();
+    const actions = await page.getByRole("button", { name: "Synthesize", exact: true }).boundingBox();
+    expect(actionGroup!.x + actionGroup!.width).toBeCloseTo(width - Math.max(0, (width - 1280) / 2) - 16, 0);
     if (width === 1440) {
       expect(before!.x).toBeGreaterThan(headingBefore!.x + headingBefore!.width);
       expect(before!.y + before!.height / 2).toBeCloseTo(headingBefore!.y + headingBefore!.height / 2, 0);
+      expect(before!.x + before!.width).toBeLessThan(actions!.x);
     } else {
       expect(before!.y).toBeGreaterThanOrEqual(headingBefore!.y + headingBefore!.height);
     }

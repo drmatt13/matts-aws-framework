@@ -126,7 +126,7 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
   answers["/machine/docker"] ??= { docker: machineOverview?.local.docker ?? overview().local.docker,
     checks: machineOverview?.prerequisites.filter(item => item.id === "docker" || item.id === "compose") ?? overview().prerequisites,
     observedAt: "2026-11-04T00:00:00.000Z" };
-  if (Array.isArray(answers["/deploy/plans"])) answers["/deploy/plans"] = (answers["/deploy/plans"] as PlanSummaryView[]).map((plan) => ({ account: context.account, region: context.region, ...plan }));
+  if (Array.isArray(answers["/deploy/plans"])) answers["/deploy/plans"] = (answers["/deploy/plans"] as PlanSummaryView[]).map((plan) => ({ account: context.account, region: context.region, profile: plan.mode === "prod" ? "prod" : "dev", ...plan }));
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
   const response = snapshotFixture();
@@ -262,7 +262,7 @@ test("a production plan is applied only with its name typed", async () => {
   await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
   ui.act(() => activeStudio.setMode("prod"));
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }, { timeout: 3000 }));
-  const apply = await ui.screen.findByRole("button", { name: `Apply to ${context.account}` });
+  const apply = await ui.screen.findByRole("button", { name: /Deploy (development|production)/ });
   assert.equal((apply as HTMLButtonElement).disabled, true, "no name, no apply");
   assert.ok(ui.screen.getByText(/OPENAI_API_KEY/), "secrets are listed by name");
   const disclosure = ui.screen.getByRole("button", { name: /CognitoStack/ });
@@ -321,17 +321,23 @@ test("a plan job finishing while another plan is under review does not replace i
   await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
   ui.act(() => activeStudio.setMode("prod"));
   ui.fireEvent.click((await ui.screen.findAllByRole("button", { name: "Review plan" }))[1]!);
-  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Plan current source" }));
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Synthesize again" }));
   await ui.waitFor(() => assert.equal(operations().length, 1));
   const started = `job-${posted.findIndex((entry) => entry.path === "/deploy/operations") + 1}`;
   ui.fireEvent.click(ui.screen.getAllByRole("button", { name: "Review plan" })[0]!);
   const review = () => ui.within(document.querySelector('dialog[data-ui="plan-review"]') as HTMLElement);
   await ui.waitFor(() => assert.ok(review().queryByText("CognitoStack")));
+  assert.ok(review().getByText(/previously saved templates and assets/), "the existing review explicitly permits saved-artifact recovery");
+  assert.equal((review().getByRole("button", { name: "Deploy production" }) as HTMLButtonElement).disabled, false);
   // The second plan finishes while the first is under review.
   ui.act(() => emit("deploy-job", { id: started, kind: "deploy-plan", title: "Plan my-aws-app-prod", params: {}, status: "succeeded", startedAt: "2026-10-17T12:00:00Z", endedAt: "2026-10-17T12:01:00Z", lastSeq: 3, planId: "my-aws-app-prod-xxxxxx", deployment: "my-aws-app-prod", steps: [{ label: "Plan", status: "done" }] }));
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.ok(review().queryByText("CognitoStack"), "the plan under review stays");
   assert.equal(review().queryByText("RdsStack"), null, "the other plan does not take its place");
+  assert.equal((review().getByRole("button", { name: "Deploy production" }) as HTMLButtonElement).disabled, false,
+    "completion cannot change the existing review's source policy or applicability");
+  ui.fireEvent.click(review().getByRole("button", { name: "Deploy production" }));
+  await ui.waitFor(() => assert.deepEqual(operations()[1], { kind: "deploy-apply", params: { plan: reviewed.key, profile: "prod" } }));
 });
 
 test("a target pinned to another region is read, and shown, from that region", async () => {
@@ -382,7 +388,7 @@ test("a failed plan read offers retry without keeping its loading message", asyn
   assert.ok(await ui.screen.findByRole("alert"));
   assert.equal(ui.screen.queryByText("Reading the plan…"), null);
   assert.ok(ui.screen.getByRole("button", { name: "Try again" }));
-  assert.equal(ui.screen.queryByRole("button", { name: /Apply to/ }), null);
+  assert.equal(ui.screen.queryByRole("button", { name: /Deploy (development|production)/ }), null);
 });
 
 test("refreshing container logs preserves a reader's position until they return to the bottom", async () => {
@@ -427,7 +433,7 @@ test("incomplete security analysis stays inside review and cannot be applied", a
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: summary.deployment } }, "/deploy/plans": [summary], [`/deploy/plans/${summary.key}`]: plan });
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
   assert.ok(await ui.screen.findByText("AccessDenied while inspecting IAM"));
-  assert.equal(ui.screen.queryByRole("button", { name: `Apply to ${context.account}` }), null);
+  assert.equal(ui.screen.queryByRole("button", { name: /Deploy (development|production)/ }), null);
   assert.equal(operations().length, 0);
 });
 
@@ -483,10 +489,122 @@ test("mode changes clear a pending operation review and refresh the matching tar
   const plan: PlanView = { key: summary.key, planId: "plan-actor-review", profile: "dev", createdAt: summary.createdAt, expiresAt: "2099-01-01T00:00:00Z", expired: false, status: "ready", review: "template", identity: { deployment: summary.deployment, mode: "dev", account: context.account, region: context.region }, guard: "ready", stacks: [], secrets: [], dockerImages: [], iamBroadening: false, confirmation: { level: "click", reasons: [] }, uncertainties: [] };
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: summary.deployment } }, "/deploy/plans": [summary], [`/deploy/plans/${summary.key}`]: plan });
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
-  await ui.screen.findByRole("button", { name: `Apply to ${context.account}` });
+  await ui.screen.findByRole("button", { name: /Deploy (development|production)/ });
   ui.act(() => activeStudio.setMode("prod"));
-  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("button", { name: `Apply to ${context.account}` }), null));
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("button", { name: /Deploy (development|production)/ }), null));
   assert.equal(activeStudio.awsProfile, "prod");
   await ui.waitFor(() => assert.ok(requested.some(url => url.startsWith("/deploy/status") && url.includes("deployment=my-aws-app-prod") && url.includes("profile=prod"))));
+  assert.equal(operations().length, 0);
+});
+
+function synthesizedPlan(): PlanView {
+  return {
+    key: "synthesized-dev", planId: "plan-synthesized-dev", profile: "dev",
+    createdAt: "2026-11-05T12:00:00Z", expiresAt: "2099-01-01T00:00:00Z", expired: false,
+    status: "ready", review: "template", synthesis: { current: true },
+    identity: { deployment: "my-aws-app", mode: "dev", account: context.account, region: context.region },
+    guard: "absent", stacks: [{ name: "my-aws-app-CognitoStack", fingerprint: { exists: false },
+      changes: [{ logicalId: "Pool", type: "AWS::Cognito::UserPool", action: "add", replacement: "False", stateful: true }],
+      exportsInUse: [], noChanges: false }],
+    secrets: [], dockerImages: [], iamBroadening: false,
+    confirmation: { level: "click", reasons: [] }, uncertainties: [],
+  };
+}
+
+function synthesisSummary(plan: PlanView): PlanSummaryView {
+  return { key: plan.key, deployment: plan.identity.deployment, mode: plan.identity.mode,
+    profile: plan.profile, account: plan.identity.account, region: plan.identity.region,
+    status: plan.status, createdAt: plan.createdAt, expired: false, synthesis: plan.synthesis };
+}
+
+function deploymentAnswers() {
+  return { "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() },
+    "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } };
+}
+
+test("synthesis produces a plan card whose review deploys the prepared assembly", async () => {
+  const plan = synthesizedPlan();
+  render({ ...deploymentAnswers(), [`/deploy/plans/${plan.key}`]: plan });
+  const synthesize = await ui.screen.findByRole("button", { name: "Synthesize" });
+  await ui.waitFor(() => assert.equal((synthesize as HTMLButtonElement).disabled, false));
+  ui.fireEvent.click(synthesize);
+  await ui.waitFor(() => assert.deepEqual(operations(), [{ kind: "deploy-plan", params: {
+    deployment: "my-aws-app", profile: "dev", review: "template",
+  } }]));
+  answers["/deploy/plans"] = [synthesisSummary(plan)];
+  ui.act(() => {
+    emit("deploy-job", { ...job("deploy-plan", {}), id: "job-1", deployment: "my-aws-app", status: "succeeded", planId: plan.key });
+    emit("deploy-changed", { profile: "dev", deployment: "my-aws-app" });
+  });
+  await ui.screen.findByText("Plan ready for review");
+  assert.equal(ui.screen.queryByRole("dialog"), null, "synthesis never asks to deploy automatically");
+  assert.equal(ui.screen.queryByRole("button", { name: "Deploy" }), null, "deployment is offered only inside the review");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review plan" }));
+  const confirm = await ui.screen.findByRole("button", { name: "Deploy development" });
+  assert.equal(operations().length, 1, "a current prepared assembly is reused without another synthesis");
+  ui.fireEvent.click(confirm);
+  await ui.waitFor(() => assert.deepEqual(operations()[1], { kind: "deploy-apply", params: {
+    plan: plan.key, profile: "dev", currentSource: true,
+  } }));
+});
+
+test("repeated clicks synthesize once and completion waits for an explicit plan review", async () => {
+  const plan = synthesizedPlan();
+  render({ ...deploymentAnswers(), [`/deploy/plans/${plan.key}`]: plan });
+  const synthesize = await ui.screen.findByRole("button", { name: "Synthesize" });
+  await ui.waitFor(() => assert.equal((synthesize as HTMLButtonElement).disabled, false));
+  ui.fireEvent.click(synthesize);
+  ui.fireEvent.click(synthesize);
+  await ui.waitFor(() => assert.equal(operations().length, 1));
+  assert.equal(operations()[0]!.kind, "deploy-plan");
+  answers["/deploy/plans"] = [synthesisSummary(plan)];
+  ui.act(() => {
+    emit("deploy-job", { ...job("deploy-plan", {}), id: "job-1", deployment: "my-aws-app", status: "succeeded", planId: plan.key });
+    emit("deploy-changed", { profile: "dev", deployment: "my-aws-app" });
+  });
+  await ui.screen.findByRole("button", { name: "Review plan" });
+  assert.equal(ui.screen.queryByRole("dialog"), null, "a generated plan never opens or applies itself");
+  assert.equal(operations().length, 1);
+});
+
+test("a current plan from older source remains inspectable but requires synthesis before deployment", async () => {
+  const plan = { ...synthesizedPlan(), synthesis: { current: false, reason: "Source changed." } };
+  render({ ...deploymentAnswers(), "/deploy/plans": [synthesisSummary(plan)], [`/deploy/plans/${plan.key}`]: plan });
+  await ui.screen.findByText("Plan needs synthesis");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review plan" }));
+  await ui.screen.findByRole("button", { name: "Synthesize again" });
+  assert.equal(ui.screen.queryByRole("button", { name: "Deploy development" }), null);
+  assert.ok(ui.screen.getAllByText(/Source changed/).length);
+  assert.equal(operations().length, 0, "reviewing a stale artifact neither resynthesizes nor applies it");
+});
+
+test("only the newest plan is current and every older plan keeps its own review and discard in history", async () => {
+  const older = { ...synthesizedPlan(), key: "older-dev", createdAt: "2026-11-05T11:00:00Z" };
+  const current = { ...synthesizedPlan(), key: "current-dev" };
+  const foreign = { ...synthesizedPlan(), key: "other-profile", profile: "prod", createdAt: "2026-11-05T13:00:00Z" };
+  render({ ...deploymentAnswers(), "/deploy/plans": [synthesisSummary(older), synthesisSummary(foreign), synthesisSummary(current)],
+    [`/deploy/plans/${older.key}`]: older, [`/deploy/plans/${current.key}`]: current });
+  await ui.screen.findByText("Earlier plans (1)");
+  const heading = document.getElementById("deployment-heading")!.closest("header")!;
+  assert.deepEqual(ui.within(heading).getAllByRole("button").map(button => button.textContent), ["This machine · 1 check passed", "Synthesize"]);
+  const history = document.querySelector('details[aria-label="Earlier plans"]')!;
+  assert.equal(history.hasAttribute("open"), false);
+  const currentCard = [...document.querySelectorAll("article")].find(card => !history.contains(card) && card.textContent?.includes("Plan ready for review"))!;
+  assert.deepEqual(ui.within(currentCard as HTMLElement).getAllByRole("button").map(button => button.textContent), ["Review plan", "Discard"]);
+  ui.fireEvent.click(history.querySelector("summary")!);
+  const olderReview = ui.within(history as HTMLElement).getByRole("button", { name: "Review plan" });
+  ui.fireEvent.click(olderReview);
+  const deploy = await ui.screen.findByRole("button", { name: "Deploy development" });
+  ui.fireEvent.click(deploy);
+  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "deploy-apply", params: { plan: older.key, profile: "dev" } }));
+});
+
+test("a no-change synthesis still has one inspectable plan card without a deployment action", async () => {
+  const plan = { ...synthesizedPlan(), status: "no-changes" as const, stacks: [] };
+  render({ ...deploymentAnswers(), "/deploy/plans": [synthesisSummary(plan)], [`/deploy/plans/${plan.key}`]: plan });
+  await ui.screen.findByText("No deployment changes");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review plan" }));
+  await ui.screen.findByText(/Nothing to apply/);
+  assert.equal(ui.screen.queryByRole("button", { name: "Deploy development" }), null);
   assert.equal(operations().length, 0);
 });

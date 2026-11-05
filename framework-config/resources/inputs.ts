@@ -6,11 +6,7 @@ export const openaiApiKey = resource.secret("OPENAI_API_KEY", {
   tags: { area: "examples" },
 });
 
-export const enableWebSocketApi = resource
-  .fromEnv("ENABLE_WEB_SOCKET_API", { tags: { area: "realtime" } })
-  .required()
-  .enum("true", "false")
-  .default("true");
+export const enableWebSocketApi = resource.fromEnv("ENABLE_WEB_SOCKET_API", { tags: { area: "realtime" } }).enum("true", "false").default("true");
 
 // Client URL recipes consume catalog inputs; only development has local servers,
 // so production holds none of these and its client fields built from them stay blank.

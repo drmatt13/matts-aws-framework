@@ -19,7 +19,7 @@ starts a read. Source mode and the deployment destination are separate fields.
 The feature lives in `framework-studio/src/sightline/`. Existing files supply small
 presentation seams. `GlobalActivity` stays memoized and consumes no route or Studio
 context. Conversation DOM, draft and scroll remain mounted when Sightline is shown;
-only Sightline mounts/unmounts its input hook. A display-only visibility callback keeps
+only Sightline mounts/unmounts its input hook. The display choice in `GlobalActivity` keeps
 replies unread while the conversation is hidden. Nothing reads workspace state from DOM.
 
 ### State inventory
@@ -774,7 +774,7 @@ baseline comparisons are retained in the evidence directory.
 
 | Existing file (under `framework-studio/src/views/` unless stated) | Change and reason |
 | --- | --- |
-| `GlobalActivity.tsx` | Lazy-load `AgentViews`; pass display-only conversation visibility to the existing chat owner so hidden replies remain unread. No route/Studio subscription |
+| `GlobalActivity.tsx` | Lazy-load `AgentViews`; own the display-only view choice, shown by `AgentViewTabs` in the bar, and pass its conversation visibility to the existing chat owner so hidden replies remain unread. No route/Studio subscription |
 | `Isometric.tsx` | Publish lazy filter/search/view and existing island membership metadata |
 | `Database.tsx` | Publish tab/editor/selection, draft and value-free validation metadata |
 | `DatabaseHistory.tsx` | Publish selected migration identity and load state |

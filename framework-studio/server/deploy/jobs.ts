@@ -14,11 +14,24 @@ import { lineSplitter, start, stopTree, type CommandSpec } from "./process";
  * interrupted, with its log, and whatever it started in AWS is observed again.
  */
 
+/** Numeric parts are computed public counts; private/freeform values remain strings. */
+export type StepSummary = string | readonly (string | number)[];
+
+export function summaryText(summary: StepSummary, sanitize: (text: string) => string = text => text): string {
+  const parts = typeof summary === "string" ? [summary] : summary;
+  let result = "", text = "";
+  for (const part of parts) {
+    if (typeof part === "string") text += part;
+    else { result += sanitize(text) + String(part); text = ""; }
+  }
+  return result + sanitize(text);
+}
+
 export interface StepContext {
   readonly job: string;
   readonly signal: AbortSignal;
   log(text: string, stream?: JobLogLine["stream"]): void;
-  setSummary(text: string): void;
+  setSummary(text: StepSummary): void;
   setPlanId(id: string): void;
 }
 
@@ -254,7 +267,7 @@ export class JobManager {
       job: job.view.id,
       signal: job.controller.signal,
       log: (text, stream = "info") => this.append(job, text, stream),
-      setSummary: (text) => this.update(job, { summary: text }),
+      setSummary: (text) => this.update(job, { summary: summaryText(text) }),
       setPlanId: (planId) => this.update(job, { planId }),
     };
   }

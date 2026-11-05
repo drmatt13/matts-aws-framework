@@ -96,6 +96,7 @@ export const http = {
     cloud: {
       bindings: [resources.cognito.userPool.grant("cognito-idp:AdminGetUser")],
     },
+
     tags: { area: "auth" },
   },
 
@@ -146,7 +147,9 @@ export const http = {
     timeoutSeconds: 15,
     deploy: "both",
     userPool: true,
-    environment: { TRUSTED_FRONTEND_ORIGINS: resources.cognito.trustedOriginsCsv },
+    environment: {
+      TRUSTED_FRONTEND_ORIGINS: resources.cognito.trustedOriginsCsv,
+    },
     cloud: { bindings: [startsWorkflow("invocation-test-workflow")] },
     tags: { area: "workflows" },
   },
@@ -162,7 +165,9 @@ export const http = {
     timeoutSeconds: 15,
     deploy: "both",
     userPool: true,
-    environment: { TRUSTED_FRONTEND_ORIGINS: resources.cognito.trustedOriginsCsv },
+    environment: {
+      TRUSTED_FRONTEND_ORIGINS: resources.cognito.trustedOriginsCsv,
+    },
     cloud: { bindings: [runsTask("invocation-test-task")] },
     tags: { area: "tasks" },
   },

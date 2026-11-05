@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { JobLogLine, JobView } from "../../shared/operations";
-import type { StepContext } from "../deploy/jobs";
+import { summaryText, type StepContext } from "../deploy/jobs";
 import { lineSplitter, start, stopTree, tethered, type CommandSpec } from "../deploy/process";
 import { domainOutcome, executionSpec, privateValues } from "./adapter";
 import { processIdentity } from "./identity";
@@ -59,7 +59,7 @@ export async function runWorker(root: string, state: string, id: string, token: 
     const { spec } = runtime;
     const context: StepContext = {
       job: id, signal: abort.signal, log: write,
-      setSummary: summary => update({ summary: sanitizer.redact(summary) }),
+      setSummary: summary => update({ summary: summaryText(summary, text => sanitizer.redact(text)) }),
       setPlanId: planId => update({ planId }),
     };
     let steps = spec.steps.map(step => ({ label: step.label, status: "pending" as "pending" | "running" | "done" | "failed" | "skipped" }));

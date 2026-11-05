@@ -21,7 +21,7 @@ import {
   PageToolbar, pageBodyClasses, pageTitleClasses, documentTitleClasses,
   documentProseClasses, documentSupportClasses,
 } from "../DocumentUI";
-import { callerName, eventTone, relativeTime, shortStack } from "./format";
+import { callerName, relativeTime, shortStack } from "./format";
 import type { RailRow } from "./Rail";
 
 const SEVERITY_ICON = {
@@ -32,29 +32,70 @@ const SEVERITY_ICON = {
 
 function ActionButton(props: {
   readonly action: Action;
-  readonly onAction: (action: Action) => void;
-  readonly primary?: boolean;
+  readonly onAction: (action: Action, trigger?: HTMLButtonElement) => void;
   readonly compact?: boolean;
 }) {
   const { action } = props;
   return (
     <button
       className={buttonClasses({
-        variant: props.primary ? "primary" : "quiet",
-        tone: !props.primary && action.tone === "danger" ? "danger" : "default",
+        variant: "quiet",
+        tone: action.tone === "danger" ? "danger" : "default",
         size: props.compact ? "custom" : "regular",
         className: cx(
-          props.primary &&
-            "vp-480:flex-1 group-data-[mode=prod]/detail:border-prod group-data-[mode=prod]/detail:bg-prod",
           props.compact && "min-h-7 px-3 py-1",
         ),
       })}
-      onClick={() => props.onAction(action)}
+      onClick={event => props.onAction(action, event.currentTarget)}
       disabled={Boolean(action.disabled)}
       title={action.disabled}
     >
       {action.label}
     </button>
+  );
+}
+
+function FindingCards({ findings, onAction }: {
+  readonly findings: readonly Finding[];
+  readonly onAction: (action: Action, trigger?: HTMLButtonElement) => void;
+}) {
+  return (
+    <>
+      {findings.map((finding) => (
+        <article
+          key={`${finding.code}-${finding.actions.find(action => action.plan)?.plan ?? finding.title}`}
+          data-severity={finding.severity}
+          className={cx(
+            "group/finding grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-md border border-l-[3px] border-rule px-4 py-3 vp-900:grid-cols-[auto_minmax(0,1fr)] detail-640:grid-cols-[auto_minmax(0,1fr)]",
+            finding.severity === "blocking"
+              ? "border-l-refuse bg-[color-mix(in_srgb,var(--refuse-wash)_70%,var(--sheet))]"
+              : finding.severity === "attention"
+                ? "border-l-local bg-sheet"
+                : "bg-sheet",
+          )}
+        >
+          <span className="pt-0.5 group-data-[severity=blocking]/finding:text-refuse group-data-[severity=attention]/finding:text-local group-data-[severity=info]/finding:text-graphite">
+            {SEVERITY_ICON[finding.severity]}
+          </span>
+          <div className="grid min-w-0 gap-1 wrap-anywhere">
+            <strong className="text-body font-semibold">{finding.title}</strong>
+            {finding.detail ? (
+              <p className={documentSupportClasses}>{finding.detail}</p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 vp-900:col-start-2 vp-900:justify-start detail-640:col-start-2 detail-640:justify-start">
+            {finding.actions.map((action) => (
+              <ActionButton
+                key={`${action.id}-${action.plan ?? ""}`}
+                action={action}
+                onAction={onAction}
+                compact
+              />
+            ))}
+          </div>
+        </article>
+      ))}
+    </>
   );
 }
 
@@ -71,17 +112,17 @@ export function Detail(props: {
   readonly awsKnown: boolean;
   readonly connectionMissing?: boolean;
   readonly onChooseConnection?: () => void;
-  readonly next?: Action;
+  readonly earlierFindings?: readonly Finding[];
   readonly events: readonly StackEventView[];
   readonly drift?: DriftView | null;
-  readonly onAction: (action: Action) => void;
+  readonly onAction: (action: Action, trigger?: HTMLButtonElement) => void;
   readonly machine?: ReactNode;
   readonly notice?: ReactNode;
+  readonly actions?: ReactNode;
 }) {
   const { row, context, status, record } = props;
   const authenticationFinding = props.findings.find((finding) => finding.code === "SIGNED_OUT");
   const findings = props.findings.filter((finding) => finding !== authenticationFinding);
-  const next = authenticationFinding ? undefined : props.next;
   const deployment = status ? status.detail : row.deployment;
   const contracts = deployment?.contracts.length
     ? deployment.contracts.map((value) => `contract ${value}`).join(" + ")
@@ -152,9 +193,7 @@ export function Detail(props: {
         </div>
         <div className="ml-auto flex min-h-8 min-w-0 max-w-full flex-wrap items-center justify-end gap-3 vp-720:w-full">
           {props.machine}
-          {next ? (
-            <ActionButton action={next} onAction={props.onAction} primary />
-          ) : null}
+          {props.actions}
         </div>
       </PageToolbar>
       <section className={cx(pageBodyClasses, "grid auto-rows-max gap-3 @container")} aria-labelledby="deployment-heading">
@@ -171,46 +210,16 @@ export function Detail(props: {
                 Reading what {context?.account ?? "the account"} holds…
               </Notice>
             ) : null}
-            {findings.map((finding) => (
-              <article
-                key={`${finding.code}-${finding.title}`}
-                data-severity={finding.severity}
-                className={cx(
-                  "group/finding grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-md border border-l-[3px] border-rule px-4 py-3 vp-900:grid-cols-[auto_minmax(0,1fr)] detail-640:grid-cols-[auto_minmax(0,1fr)]",
-                  finding.severity === "blocking"
-                    ? "border-l-refuse bg-[color-mix(in_srgb,var(--refuse-wash)_70%,var(--sheet))]"
-                    : finding.severity === "attention"
-                      ? "border-l-local bg-sheet"
-                      : "bg-sheet",
-                )}
-              >
-                <span className="pt-0.5 group-data-[severity=blocking]/finding:text-refuse group-data-[severity=attention]/finding:text-local group-data-[severity=info]/finding:text-graphite">
-                  {SEVERITY_ICON[finding.severity]}
-                </span>
-                <div className="grid min-w-0 gap-1 wrap-anywhere">
-                  <strong className="text-body font-semibold">{finding.title}</strong>
-                  {finding.detail ? (
-                    <p className={documentSupportClasses}>{finding.detail}</p>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap justify-end gap-2 vp-900:col-start-2 vp-900:justify-start detail-640:col-start-2 detail-640:justify-start">
-                  {finding.actions
-                    .filter(
-                      (action) =>
-                        !(next && action.id === next.id && action.plan === next.plan),
-                    )
-                    .map((action) => (
-                      <ActionButton
-                        key={`${action.id}-${action.plan ?? ""}`}
-                        action={action}
-                        onAction={props.onAction}
-                        compact
-                      />
-                    ))}
-                </div>
-              </article>
-            ))}
+            <FindingCards findings={findings} onAction={props.onAction} />
           </section>
+        ) : null}
+
+        {props.earlierFindings?.length ? (
+          <details className="grid min-w-0 gap-2" aria-label="Earlier plans">
+            <summary className="min-h-8 cursor-pointer py-1 text-caption text-graphite">Earlier plans ({props.earlierFindings.length})</summary>
+            <p className={documentSupportClasses}>Saved for history and recovery. Reviewing an earlier plan uses its saved templates and assets.</p>
+            <div className="mt-2 grid gap-2"><FindingCards findings={props.earlierFindings} onAction={props.onAction} /></div>
+          </details>
         ) : null}
 
         {props.drift ? (
@@ -232,37 +241,6 @@ export function Detail(props: {
               ))}
             </ul>
             <p className={documentSupportClasses}>{props.drift.note}</p>
-          </section>
-        ) : null}
-
-        {props.events.length ? (
-          <section className="grid gap-3" aria-label="CloudFormation events">
-            <h2 className={documentTitleClasses}>Events</h2>
-            <ol className="m-0 grid list-none overflow-hidden rounded-md border border-rule bg-sheet p-0 text-label">
-              {props.events.slice(0, 30).map((event) => (
-                <li
-                  key={event.id}
-                  data-tone={eventTone(event.status)}
-                  className="group/event grid grid-cols-[80px_repeat(3,minmax(0,1fr))] gap-x-3 gap-y-1 border-t border-rule px-3 py-2 wrap-anywhere first:border-t-0 vp-900:grid-cols-[70px_minmax(0,1fr)] detail-640:grid-cols-[80px_minmax(0,1fr)]"
-                >
-                  <time className="font-mono text-caption text-faint" dateTime={event.time}>
-                    {new Date(event.time).toLocaleTimeString()}
-                  </time>
-                  <span>{shortStack(event.stack, row.name)}</span>
-                  <span className="wrap-anywhere detail-640:col-start-2">
-                    {event.logicalId === event.stack ? "stack" : event.logicalId}
-                  </span>
-                  <span className="detail-640:col-start-2 group-data-[tone=busy]/event:text-local group-data-[tone=bad]/event:text-refuse">
-                    {event.status.replaceAll("_", " ").toLowerCase()}
-                  </span>
-                  {event.reason ? (
-                    <span className="col-[2/-1] text-graphite wrap-anywhere group-data-[tone=bad]/event:text-refuse">
-                      {event.reason}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
           </section>
         ) : null}
       </section>

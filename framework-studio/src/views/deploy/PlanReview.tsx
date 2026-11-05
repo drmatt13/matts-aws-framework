@@ -6,10 +6,6 @@ import {
   dialogTitleClasses,
   dialogBodyClasses,
   dialogFooterClasses,
-  checkGridClasses,
-  checkMessageClasses,
-  checkClasses,
-  checkTitleClasses,
 } from "../../inspector-ui";
 import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
@@ -20,7 +16,7 @@ import { flagClasses, sectionTitleClasses, logClasses, planBannerClasses } from 
 
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Check, ChevronRight, ShieldAlert } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { PlanView, ResourceChangeView } from "../../../shared/deploy";
 import { deployApi } from "../../deploy/api";
 import { DeploymentBadge } from "../DeploymentBadge";
@@ -126,6 +122,9 @@ export function PlanReview(props: {
   readonly onDiscard: (plan: PlanView) => void;
   readonly onReplan: (plan: PlanView, createSecrets: boolean) => void;
   readonly busy: string | undefined;
+  /** Ordinary Deploy follows current source; explicit saved-artifact recovery may inspect older bytes. */
+  readonly currentSource?: boolean;
+  readonly returnFocusRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [typed, setTyped] = useState("");
@@ -142,8 +141,13 @@ export function PlanReview(props: {
   });
   useEffect(() => {
     const element = dialog.current!;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     element.showModal();
-    return () => element.close();
+    return () => {
+      element.close();
+      const target = props.returnFocusRef?.current ?? opener;
+      if (target?.isConnected && !target.hasAttribute("disabled")) target.focus({ preventScroll: true });
+    };
   }, []);
 
   const changes = plan?.stacks.flatMap((stack) => stack.changes) ?? [];
@@ -154,7 +158,8 @@ export function PlanReview(props: {
   const secretsChanging = plan?.secrets.filter((secret) => secret.action !== "unchanged") ?? [];
   const name = plan?.identity.deployment ?? "";
   const needsName = plan?.confirmation.level === "name";
-  const applicable = plan && !plan.result && !plan.expired && plan.status === "ready";
+  const sourceChanged = props.currentSource && plan?.synthesis?.current !== true;
+  const applicable = plan && !plan.result && !plan.expired && !sourceChanged && plan.status === "ready";
 
   return (
     <dialog
@@ -179,32 +184,13 @@ export function PlanReview(props: {
           className={cx(dialogTitleClasses, "flex flex-wrap items-center gap-2 wrap-anywhere")}
           id="plan-title"
         >
-          Review plan for {name || "…"}{" "}
+          Review deployment for {name || "…"}{" "}
           {plan ? <DeploymentBadge kind={plan.identity.mode} /> : null}
         </h2>
         {plan ? (
           <p className={dialogSubtitleClasses}>
-            {plan.review === "change-set" ? "CloudFormation change sets" : "Template comparison"} ·{" "}
-            {plan.identity.account} · {plan.identity.region} · made {relativeTime(plan.createdAt)}
-            {plan.expired
-              ? " · expired"
-              : ` · expires ${new Date(plan.expiresAt).toLocaleString()}`}
+            {plan.identity.account} · {plan.identity.region}
             {plan.profile ? ` · profile ${plan.profile}` : ""}
-          </p>
-        ) : null}
-        {plan?.inputsFile ? (
-          <p className={dialogSubtitleClasses}>
-            Reviewed inputs: <code>{plan.inputsFile}</code>
-            {plan.sourceRevision?.commit ? (
-              <>
-                {" "}
-                · source{" "}
-                <code>
-                  {plan.sourceRevision.commit.slice(0, 7)}
-                  {plan.sourceRevision.dirty ? "+ local edits" : ""}
-                </code>
-              </>
-            ) : null}
           </p>
         ) : null}
       </header>
@@ -281,11 +267,16 @@ export function PlanReview(props: {
                 changed since.
               </p>
             ) : null}
-            <p className="text-caption text-graphite">
-              This review deploys saved templates and staged asset bytes. Newer source edits are not
-              included; plan current source to review them. Source application, database changes and
-              local startup are separate actions.
-            </p>
+            {sourceChanged && !plan.result && !plan.expired ? (
+              <p className={planBannerClasses("warn")} role="alert">
+                <AlertTriangle size={15} aria-hidden /> {plan.synthesis?.reason ?? "Source changed since synthesis. Synthesize again before deploying."}
+              </p>
+            ) : null}
+            {!props.currentSource && plan.synthesis?.current !== true && !plan.result ? (
+              <p className={planBannerClasses("warn")}>
+                <AlertTriangle size={15} aria-hidden /> This review deploys previously saved templates and assets; newer source is not included.
+              </p>
+            ) : null}
             {plan.result?.problem ? (
               <p className="border-l-[3px] border-refuse py-0.5 pl-[10px]" role="alert">
                 {plan.result.problem}
@@ -323,6 +314,13 @@ export function PlanReview(props: {
                 </ul>
               </section>
             ) : null}
+            <section className="grid gap-2" aria-label="Deployment summary">
+              <p className="m-0 text-body font-semibold">{counts(changes)} across {plan.stacks.filter(stack => !stack.noChanges).length} stack{plan.stacks.filter(stack => !stack.noChanges).length === 1 ? "" : "s"}.</p>
+              {plan.iamBroadening ? <p className={planBannerClasses("warn")}><ShieldAlert size={15} aria-hidden /> IAM or security permissions broaden. Inspect the security diff before deploying.</p> : null}
+              {replacing.length || removing.length || stateful.length ? <p className={planBannerClasses("warn")}><AlertTriangle size={15} aria-hidden /> {[replacing.length ? `${replacing.length} resource replacement${replacing.length === 1 ? "" : "s"} possible` : "", removing.length ? `${removing.length} resource${removing.length === 1 ? "" : "s"} removed` : "", stateful.length ? `${stateful.length} resource${stateful.length === 1 ? "" : "s"} holding data changed` : ""].filter(Boolean).join("; ")}.</p> : null}
+              {exportsInUse.length ? <p className={planBannerClasses("warn")}><AlertTriangle size={15} aria-hidden /> {exportsInUse.map(entry => `${entry.exportName} is ${entry.change} but imported by ${entry.importers.join(", ")}`).join("; ")}.</p> : null}
+            </section>
+
             {plan.reviewEvidence ? (
               <section aria-label="Review evidence">
                 <h3>Review evidence</h3>
@@ -335,7 +333,7 @@ export function PlanReview(props: {
                     {message}
                   </p>
                 ))}
-                <details open={plan.iamBroadening || Boolean(plan.reviewEvidence.problems.length)}>
+                <details open={Boolean(plan.reviewEvidence.problems.length)}>
                   <summary>IAM and security diff</summary>
                   <pre className={cx(logClasses, "max-h-[320px] border")}>
                     {plan.reviewEvidence.security}
@@ -349,65 +347,6 @@ export function PlanReview(props: {
                 </details>
               </section>
             ) : null}
-
-            <div className={checkGridClasses}>
-              <div className={checkClasses(plan.guard === "conflict" ? "refused" : "ok")}>
-                <strong className={checkTitleClasses}>
-                  <Check size={14} aria-hidden /> Ownership
-                </strong>
-                <div className={checkMessageClasses}>
-                  {plan.guard === "absent"
-                    ? "A first deployment: nothing of this name exists."
-                    : `AWS holds ${name} (${plan.guard}); every stack is this deployment's.`}
-                </div>
-              </div>
-              <div
-                className={checkClasses(
-                  plan.iamBroadening || plan.status === "blocked" ? "refused" : "ok",
-                )}
-              >
-                <strong className={checkTitleClasses}>
-                  {plan.iamBroadening ? (
-                    <ShieldAlert size={14} aria-hidden />
-                  ) : (
-                    <Check size={14} aria-hidden />
-                  )}{" "}
-                  Permissions
-                </strong>
-                <div className={checkMessageClasses}>
-                  {plan.status === "blocked"
-                    ? "Impact unknown: analysis must succeed before applying."
-                    : plan.iamBroadening
-                      ? "IAM or security permissions broaden. Inspect the security diff in this review."
-                      : "No IAM or security broadening detected."}
-                </div>
-              </div>
-              <div
-                className={checkClasses(
-                  replacing.length || removing.length || stateful.length ? "refused" : "ok",
-                )}
-              >
-                <strong className={checkTitleClasses}>Resources</strong>
-                <div className={checkMessageClasses}>
-                  {counts(changes)}
-                  {replacing.length ? `; ${replacing.length} replaced` : ""}
-                  {stateful.length ? `; ${stateful.length} holding data changed` : ""}.
-                </div>
-              </div>
-              <div className={checkClasses(exportsInUse.length ? "refused" : "ok")}>
-                <strong className={checkTitleClasses}>Cross-stack exports</strong>
-                <div className={checkMessageClasses}>
-                  {exportsInUse.length
-                    ? exportsInUse
-                        .map(
-                          (entry) =>
-                            `${entry.exportName} is ${entry.change} but imported by ${entry.importers.join(", ")}`,
-                        )
-                        .join("; ")
-                    : "No export another stack imports is removed or changed."}
-                </div>
-              </div>
-            </div>
 
             <section aria-label="Changes by stack">
               <h3 className={sectionTitleClasses}>Changes by stack</h3>
@@ -523,14 +462,17 @@ export function PlanReview(props: {
                 </p>
               </section>
             ) : null}
-            <section aria-label="What the plan cannot know">
-              <h3 className={sectionTitleClasses}>What this plan cannot know</h3>
+            <details>
+              <summary className="min-h-8 cursor-pointer py-1 text-caption text-graphite">Synthesis details and limitations</summary>
+              <p className="text-caption text-graphite">{plan.review === "change-set" ? "CloudFormation change sets" : "Template comparison"} · prepared {relativeTime(plan.createdAt)} · expires {new Date(plan.expiresAt).toLocaleString()}.</p>
+              {plan.inputsFile ? <p className="text-caption text-graphite">Inputs: <code>{plan.inputsFile}</code></p> : null}
+              <p className="text-caption text-graphite">Deploy uses these saved templates and assets. Local startup and database application are separate actions.</p>
               <ul className="m-0 grid gap-1 pl-5 wrap-anywhere text-step-minus1 text-graphite">
                 {plan.uncertainties.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
               </ul>
-            </section>
+            </details>
           </>
         ) : null}
       </div>
@@ -579,7 +521,7 @@ export function PlanReview(props: {
             Create secrets and plan again
           </button>
         ) : null}
-        {plan && (plan.expired || plan.status === "blocked" || plan.result) ? (
+        {plan && (plan.expired || plan.status === "blocked" || plan.result || sourceChanged) ? (
           <button
             data-variant="primary"
             className={cx(
@@ -589,7 +531,7 @@ export function PlanReview(props: {
             onClick={() => props.onReplan(plan, false)}
             disabled={Boolean(props.busy)}
           >
-            Plan current source
+            Synthesize again
           </button>
         ) : null}
         {applicable ? (
@@ -602,7 +544,7 @@ export function PlanReview(props: {
             disabled={Boolean(props.busy) || (needsName && typed !== name)}
             onClick={() => props.onApply(plan, needsName ? typed : undefined)}
           >
-            Apply to {plan.identity.account}
+            Deploy {plan.identity.mode === "dev" ? "development" : "production"}
           </button>
         ) : null}
       </footer>

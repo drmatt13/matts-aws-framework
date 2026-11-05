@@ -21,6 +21,7 @@ source:
   - framework-studio/src/agent-chat.ts
   - framework-studio/src/views/agent/AgentPanel.tsx
   - framework-studio/src/sightline/AgentViews.tsx
+  - framework-studio/src/views/agent/AgentViewTabs.tsx
   - framework-studio/src/sightline/useSightlineInputs.ts
   - framework-studio/src/sightline/bridge.ts
   - framework-studio/src/views/deploy/DockerStatus.tsx
@@ -97,12 +98,19 @@ profile preferences never choose a mode or override its association. Deploy show
 checks and their remedies on the right of the deployment heading, with issues and remedies
 before passed checks. The heading uses a plain document header and 18px sans title;
 its findings and operational evidence share the document column, type roles and spacing. Narrow layouts wrap the group below the name and keep it aligned right;
-there is no separate subnav bar. The Repository/AWS cards, stage-origin labels, template
-comparison/change-set entry points and stage-creation form are removed from this page;
-the underlying deployment, observation and source-edit services remain available.
+there is no separate subnav bar. **Synthesize** prepares and saves the selected mode's
+complete deployment assembly and template review without applying it. The newest pending
+plan for the exact deployment, mode, profile, account and region is the current plan;
+older artifacts remain available under **Earlier plans** for explicit review and recovery.
+Each plan card owns **Review plan** and **Discard**. Deployment is confirmed inside its
+review; the header has only **Synthesize**, with no promoted review or deployment action.
+Preparation and deployment progress belong to Activity. Source, input, target and AWS
+connection changes make a saved synthesis unavailable for ordinary deployment. The Repository/AWS cards, stage-origin labels,
+separate comparison/change-set controls and stage-creation form remain absent.
 The full-width This machine, Client environment & frontend release, and Stateful retention
 and retained-resource references cards are absent from Deploy. Their components and backend
-services remain available; saved-plan reviews, local operation findings, events and Activity remain.
+services remain available; saved-plan reviews, local operation findings and Activity remain.
+CloudFormation events are shown through Activity rather than repeated on the page.
 The account/region line shows a caption-sized loading skeleton while the selected profile
 is first read, preserving the same line height. Expired or missing
 credentials replace that line with a red **AWS sign-in required** text action in the same
@@ -123,7 +131,7 @@ for target resolution, background scheduling and refresh policy.
 | --- | --- | --- |
 | Map | `/` | Isometric declaration graph, search, tag emphasis, connection visibility, camera, resource navigation, creation and Inspector |
 | Database | `/database` | Authored Prisma contract, diagram, validation, migration history and artifact review; separate explicit database target and application controls |
-| Deploy | `/deploy` | Active source-mode deployment, header machine checks, findings, saved-plan reviews, events and Activity |
+| Deploy | `/deploy` | Active source-mode deployment, header machine checks, synthesis, reviewed deployment, findings and Activity |
 | GraphQL | `/graphql` | Placeholder for the GraphQL workspace |
 | Authentication | `/cognito` | User pools, identity pools, providers and permissions, each with separate source and deployed evidence |
 | DNS / Domains | `/domains` | Production domain input settings, selected-deployment observations and separately approved domain operations |
@@ -153,7 +161,7 @@ own exact-text session and navigation protection.
 | Docker availability | One Shell-mounted observer and shared query cache; Deploy, Map and Activity consume the same current host observation |
 | Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and operation reads; shared log storage and one global operation-event observer continue on every route. Execution belongs to the runner or the operation's legacy service |
 | Agent conversation | `useAgentChat` in the persistent shell owns provider, each provider's model selection, transcript, draft, pending request and unread state. These survive mode switches, collapse and navigation, and reset on page reload |
-| Sightline display and projection | `sightline/AgentViews.tsx` owns Conversation/Sightline display selection; the visible Sightline alone subscribes to route, Studio and cached evidence. Workspace owners register lazy typed readers in `sightline/bridge.ts`, removed on unmount; they never read the projection back. The agent receives none of it |
+| Sightline display and projection | `views/GlobalActivity.tsx` owns Conversation/Sightline display selection, `views/agent/AgentViewTabs.tsx` presents it in the bar and `sightline/AgentViews.tsx` shows the chosen view; the visible Sightline alone subscribes to route, Studio and cached evidence. Workspace owners register lazy typed readers in `sightline/bridge.ts`, removed on unmount; they never read the projection back. The agent receives none of it |
 | Shared deployment target resolution and observations | Pure mode-aware resolver and one persistent observer; TanStack Query owns data/errors/freshness. Consumer hooks subscribe without polling or issuing reads |
 | Specialized operational destination, inspection and approval | Owning workspace; shared deployment defaults never replace its explicit target, inspection action or review |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
