@@ -1,11 +1,6 @@
 import { useDockerStatus, useDockerStart } from "../machine/docker";
 import { withDockerStatus, unavailableDockerStatus } from "../../shared/machine";
-import {
-  deploymentOverviewQuery,
-  deploymentDiscoveryQuery,
-  deploymentStatusQuery,
-  deploymentPlansQuery,
-} from "../deploy/queries";
+import { AwsReadError, deploymentOverviewQuery, deploymentPlansQuery } from "../deploy/queries";
 import { cx } from "../ui/classes";
 import { PageToolbar, pageBodyClasses, pageTitleClasses, documentProseClasses } from "./DocumentUI";
 import { buttonClasses } from "../ui/Button";
@@ -24,6 +19,7 @@ import { deploymentFindings, nextAction, type Action } from "../../shared/deploy
 import { ApiError } from "../http";
 import { deployApi } from "../deploy/api";
 import { useDeployEvents } from "../deploy/live";
+import { useDeploymentObservation, useRefreshDeployment } from "../deploy/observations";
 import { openActivity } from "../activity";
 import { AccountBar } from "./deploy/AccountBar";
 import { Detail } from "./deploy/Detail";
@@ -57,12 +53,14 @@ function DeployState({ title, machine, children }: {
  * an operation the studio server runs as a job, whose progress streams below.
  */
 export function Deploy() {
-  const { awsProfile: profile, mode: declarationMode, live } = useStudio();
-  const connectionKey = `${declarationMode}|${profile ?? ""}|${live.awsConnectionRevision}`;
+  const { mode: declarationMode } = useStudio();
+  const observation = useDeploymentObservation();
+  const { profile, overviewQuery, statusQuery, discoveryQuery, status, discovery, problem, target } = observation;
+  const connectionKey = observation.contextKey;
+  const refreshDeployment = useRefreshDeployment();
   const currentConnection = useRef(connectionKey);
   currentConnection.current = connectionKey;
   const queryClient = useQueryClient();
-  const overviewQuery = useQuery({ ...deploymentOverviewQuery(), staleTime: 30_000 });
   const machineQuery = useDockerStatus();
   const dockerStart = useDockerStart();
   const overview = overviewQuery.data ? withDockerStatus(overviewQuery.data, machineQuery.status ?? unavailableDockerStatus("Checking Docker…")) : undefined;
@@ -104,51 +102,8 @@ export function Deploy() {
         job.kind !== "local-client",
     );
 
-  // Discovery (every deployment in the account) and the selected deployment's
-  // status are read side by side: status carries a full discovery too, so the
-  // page shows whichever answers first.
-  const preferredTarget = overview?.targets.find(target =>
-    target.name === overview.preferences.deployment && target.mode === declarationMode);
-  const selectedName = preferredTarget?.name
-    ?? overview?.targets.find(target => target.mode === declarationMode)?.name;
-  // A target pinned to a region is read from that region, as deploying it would use.
-  const selectedRegion = overview?.targets.find((target) => target.name === selectedName)?.region;
-  // Configuration/session changes get fresh observations, even for the same profile name.
-  const discoveryKey = [...deploymentDiscoveryQuery(profile).queryKey, connectionKey];
-  const statusKey = [...deploymentStatusQuery(profile, selectedName, selectedRegion).queryKey, connectionKey];
-  const discoveryQuery = useQuery({
-    ...deploymentDiscoveryQuery(profile),
-    queryKey: discoveryKey,
-    enabled: Boolean(profile),
-    staleTime: 20_000,
-    refetchInterval: 120_000,
-  });
-  const busySelected = Boolean(runningFor(selectedName));
-  const statusQuery = useQuery({
-    ...deploymentStatusQuery(profile, selectedName, selectedRegion),
-    queryKey: statusKey,
-    enabled: Boolean(profile && selectedName),
-    staleTime: 3_000,
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      return busySelected || (data?.ok && data.value.detail?.state.kind === "in-progress")
-        ? 4_000
-        : 120_000;
-    },
-  });
-  const status = statusQuery.data?.ok ? statusQuery.data.value : undefined;
-  const discovery = discoveryQuery.data?.ok ? discoveryQuery.data.value : status;
-  const problem =
-    statusQuery.data && !statusQuery.data.ok
-      ? statusQuery.data.problem
-      : !statusQuery.data && discoveryQuery.data && !discoveryQuery.data.ok
-        ? discoveryQuery.data.problem
-        : undefined;
-  const selectedContext =
-    status?.context ??
-    (selectedRegion && selectedRegion !== discovery?.context.region
-      ? undefined
-      : discovery?.context);
+  const selectedName = target?.name;
+  const selectedContext = status?.context ?? discovery?.context;
 
   const rows: RailRow[] = useMemo(() => {
     const targets = overview?.targets ?? [];
@@ -191,11 +146,6 @@ export function Deploy() {
   });
 
   useDeployEvents({
-    onConnectionChange: () => {
-      setReviewKey(undefined);
-      setTeardown(undefined);
-      afterSuccess.current.clear();
-    },
     onJob: (job) => {
       if (job.status === "running") return;
       const then = afterSuccess.current.get(job.id);
@@ -251,7 +201,7 @@ export function Deploy() {
         openActivity(job.id);
         // The live stream may already have reported this job further along: keep that.
         queryClient.setQueryData(
-          deploymentOverviewQuery().queryKey,
+          deploymentOverviewQuery(false, { repository: observation.scope.repository, sourceRevision: observation.scope.sourceRevision }).queryKey,
           (current: typeof overview) =>
             current &&
             (current.jobs.some((entry) => entry.id === job.id)
@@ -264,7 +214,7 @@ export function Deploy() {
         return undefined;
       }
     },
-    [queryClient, toast, dockerStart.start],
+    [queryClient, toast, dockerStart.start, observation.scope.repository, observation.scope.sourceRevision],
   );
 
   const refreshAll = async () => {
@@ -274,19 +224,7 @@ export function Deploy() {
     // refresh keeps the last successful evidence on screen.
     await Promise.allSettled([
       machineQuery.refresh(),
-      queryClient.fetchQuery({ ...deploymentOverviewQuery(true), staleTime: 0 }),
-      ...(profile
-        ? [queryClient.fetchQuery({ ...deploymentDiscoveryQuery(profile, true), queryKey: discoveryKey, staleTime: 0 })]
-        : []),
-      ...(profile && row
-        ? [
-            queryClient.fetchQuery({
-              ...deploymentStatusQuery(profile, row.name, row.target?.region, true),
-              queryKey: statusKey,
-              staleTime: 0,
-            }),
-          ]
-        : []),
+      refreshDeployment(),
       queryClient.fetchQuery({ ...deploymentPlansQuery(), staleTime: 0 }),
     ]);
     refreshInFlight.current = false;
@@ -400,12 +338,11 @@ export function Deploy() {
     ? runningFor(plansQuery.data?.find((plan) => plan.key === reviewKey)?.deployment)?.title
     : undefined;
 
-  const readError =
-    overviewQuery.error ?? discoveryQuery.error ?? statusQuery.error ?? plansQuery.error;
-  const readNotice = discoveryQuery.data && !discoveryQuery.data.ok && status
-    ? "Account discovery in the profile's default region could not be read: " +
-      discoveryQuery.data.problem.message + ". The selected deployment's observation below is separate."
-    : undefined;
+  const observationError = observation.error instanceof AwsReadError ? undefined : observation.error;
+  const readError = overviewQuery.error ?? observation.catalogQuery.error ?? observationError ?? plansQuery.error;
+  const readNotice = status && statusQuery.error
+    ? `Deployment evidence is stale. ${statusQuery.error.message}`
+    : observation.availability === "unavailable-profile" ? problem?.message : undefined;
   if (overviewQuery.error && !overview)
     return (
       <DeployState title="Deploy & Run could not be read">
@@ -418,7 +355,7 @@ export function Deploy() {
           <button
             className={buttonClasses({ variant: "quiet", size: "regular" })}
             disabled={overviewQuery.isFetching}
-            onClick={() => void overviewQuery.refetch()}
+            onClick={() => void refreshDeployment()}
           >
             {overviewQuery.isFetching ? "Retrying…" : "Try again"}
           </button>

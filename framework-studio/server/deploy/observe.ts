@@ -37,27 +37,44 @@ export interface WatchLine {
   readonly [key: string]: unknown;
 }
 
+interface CachedObservation {
+  readonly profile?: string;
+  readonly promise: Promise<Observation<unknown>>;
+  /** Pending requests are shared regardless of their age or a forced refresh. */
+  completedAt?: number;
+}
+
 export class AwsObserver {
-  private readonly cache = new Map<string, { at: number; promise: Promise<Observation<unknown>> }>();
+  private readonly cache = new Map<string, CachedObservation>();
   private readonly watches = new Set<ChildProcess>();
+  private teardownSequence = 0;
 
   constructor(private readonly tools: Tools, private readonly run: Runner, private readonly baseEnv: NodeJS.ProcessEnv) {}
 
   private read<T>(key: string, ttlMs: number, force: boolean, args: readonly string[], profile?: string, script = STATUS_SCRIPT): Promise<Observation<T>> {
     key = `${readAwsFiles(this.baseEnv).revision}|${key}`;
     const cached = this.cache.get(key);
-    if (cached && !force && Date.now() - cached.at < ttlMs) return cached.promise as Promise<Observation<T>>;
+    if (cached && (cached.completedAt === undefined || !force && Date.now() - cached.completedAt < ttlMs))
+      return cached.promise as Promise<Observation<T>>;
     const promise = this.run(this.tools.script(script, args, studioEnvironment(this.baseEnv, { profile })), { timeoutMs: 180_000 })
       .then((result) => interpret<T>(result));
-    this.cache.set(key, { at: Date.now(), promise });
-    // A failed read is not remembered: the next ask tries again.
-    void promise.then((observation) => { if (!observation.ok && this.cache.get(key)?.promise === promise) this.cache.delete(key); });
+    const entry: CachedObservation = { profile, promise };
+    this.cache.set(key, entry);
+    void promise.then((observation) => {
+      // Invalidation starts a new generation. An older completion belongs only
+      // to its original callers, never to the replacement cache entry.
+      if (this.cache.get(key) !== entry) return;
+      if (observation.ok) entry.completedAt = Date.now();
+      else this.cache.delete(key);
+    }, () => {
+      if (this.cache.get(key) === entry) this.cache.delete(key);
+    });
     return promise;
   }
 
   /** Drops what was read for a profile (or everything), after a change or a sign-in. */
   invalidate(profile?: string): void {
-    for (const key of this.cache.keys()) if (!profile || key.includes(`|${profile}|`)) this.cache.delete(key);
+    for (const [key, entry] of this.cache) if (!profile || entry.profile === profile) this.cache.delete(key);
   }
 
   async profiles(force = false): Promise<AwsProfileInfo[]> {
@@ -79,7 +96,7 @@ export class AwsObserver {
 
   /** What deleting a deployment would remove and leave behind. Reads only. */
   teardown(profile: string, deployment: string, mode: "dev" | "prod", region: string | undefined, retainFailed = false, disableProtection = false): Promise<Observation<TeardownPlanView>> {
-    return this.read(`teardown|${profile}|${region ?? ""}|${deployment}|${Date.now()}`, 0, true,
+    return this.read(`teardown|${profile}|${region ?? ""}|${deployment}|${this.teardownSequence++}`, 0, true,
       ["--deployment", deployment, "-c", `prodDeployment=${mode === "prod"}`, "--profile", profile, ...(region ? ["--region", region] : []), ...(retainFailed ? ["--retain-failed"] : []), ...(disableProtection ? ["--allow-disable-protection"] : []), "--plan", "--json"], profile, DESTROY_SCRIPT);
   }
 

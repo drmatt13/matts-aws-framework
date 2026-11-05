@@ -11,6 +11,10 @@ source:
   - framework-studio/src/views/AwsProfileMenu.tsx
   - framework-studio/src/views/AwsProfileConfiguration.tsx
   - framework-studio/src/snapshot.ts
+  - framework-studio/src/connection-generations.ts
+  - framework-studio/src/deploy/observations.tsx
+  - framework-studio/src/deploy/context.ts
+  - framework-studio/src/deploy/queries.ts
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
   - framework-studio/src/views/GlobalActivity.tsx
@@ -58,7 +62,9 @@ Only profile names are cached in browser local storage, keyed by repository root
 both modes may use the same profile. Missing profiles remain visible as unavailable until
 reselected or cleared. Storage failures retain session choices, and storage events synchronize
 tabs. The popover lists local profile metadata through `/api/aws-connections` and checks
-STS caller identity through its protected POST `/check`, without deployment discovery.
+STS caller identity through its protected POST `/check`. These endpoints do not themselves
+perform deployment discovery; associating a profile separately activates the persistent
+deployment observer, including when the menu is opened outside Deploy.
 Account/caller observations are query-cached, never persisted in local storage. Escape and
 outside click dismiss the popover; keyboard focus returns to its trigger. While open,
 the Development/Production buttons keep the popover open and update its mode/profile.
@@ -104,9 +110,11 @@ expanding the readiness strip; it follows the profile menu's native Escape, outs
 and focus-return behavior. AWS connection details live in the global chevron. Domains still edits Production intent while the global source selector
 may display Development: its operational connection is explicitly the active association.
 Changing that association or its authentication/configuration invalidates evidence and
-pending reviews; it never retargets running jobs. Deploy refreshes read-only evidence in the
-background for the current context; other operational workspaces retain their explicit
-inspection actions. See [AWS connections](../../framework-studio/aws-connections.md).
+pending reviews; it never retargets running jobs. One persistent observer refreshes
+read-only deployment evidence for each configured mode on every route; Deploy consumes
+the same cached and in-flight queries. Other operational workspaces retain their explicit
+inspection actions. See [AWS connections](../../framework-studio/aws-connections.md#shared-deployment-observations)
+for target resolution, background scheduling and refresh policy.
 
 | Workspace | Route | What the interface controls |
 | --- | --- | --- |
@@ -142,15 +150,19 @@ own exact-text session and navigation protection.
 | Docker availability | One Shell-mounted observer and shared query cache; Deploy, Map and Activity consume the same current host observation |
 | Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and operation reads; shared log storage and one global operation-event observer continue on every route. Execution belongs to the runner or the operation's legacy service |
 | Agent conversation | `useAgentChat` in the persistent shell owns provider, each provider's model selection, transcript, draft, pending request and unread state. These survive mode switches, collapse and navigation, and reset on page reload |
-| Deployment target and observations | Owning operational workspace; separate from source mode and source-save approval |
+| Shared deployment target resolution and observations | Pure mode-aware resolver and one persistent observer; TanStack Query owns data/errors/freshness. Consumer hooks subscribe without polling or issuing reads |
+| Specialized operational destination, inspection and approval | Owning workspace; shared deployment defaults never replace its explicit target, inspection action or review |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
 | Camera, hover, filters and disclosures | Local view state; never persisted as framework configuration |
 
 `http.ts` owns token/protocol HTTP mechanics; endpoint adapters own typed calls.
-Query definitions share read identity without selecting a deployment or performing
-an explicit AWS inspection. Page components keep observation/error state and action
-approval flows. Use the [source ownership map](../REPOSITORY-MAP.md#where-to-change-studio)
-to locate the rendering, state, transport and tests for a change.
+Shared deployment queries include repository/source revision, mode, profile, credential
+generation and destination. `GlobalDeploymentObservations` activates one target per
+configured mode and owns deployment polling/cache events. Pages subscribe through shared
+hooks; specialized inspection state and all action approvals remain with their workspaces.
+No AWS failure blocks source navigation or graph rendering. Use the
+[source ownership map](../REPOSITORY-MAP.md#where-to-change-studio) to locate rendering,
+state, transport and tests for a change.
 
 Docker availability is observed through `/api/machine/docker`, reusing Deploy's host
 probe and derived Docker/Compose readiness checks. One Shell observer refreshes every

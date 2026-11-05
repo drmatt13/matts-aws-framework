@@ -72,6 +72,10 @@ export class DeployService {
     const state = options.stateDirectory ?? (this.env.FRAMEWORK_STUDIO_STATE_DIRECTORY ? path.resolve(this.env.FRAMEWORK_STUDIO_STATE_DIRECTORY) : path.join(root, ".cache", "framework-studio"));
     this.state = state;
     this.jobs = new JobManager({ directory: path.join(state, "jobs"), emit: (event, data) => {
+      if (event === "deploy-job" && (data as JobView).status !== "running") {
+        const profile = (data as JobView).params.profile;
+        this.observer.invalidate(typeof profile === "string" ? profile : undefined);
+      }
       broadcast(event, data);
       if (event === "deploy-job") broadcast("operation-job", data);
       if (event === "deploy-log") broadcast("operation-log", data);
@@ -309,6 +313,9 @@ export class DeployService {
         const changed = this.operationVersions.get(job.id) !== version;
         if (changed) {
           this.operationVersions.set(job.id, version);
+          // Subscribers may refresh as soon as a terminal job arrives. Drop
+          // pre-completion AWS evidence before publishing either event.
+          if (job.status !== "running") this.observer.invalidate(typeof job.params.profile === "string" ? job.params.profile : undefined);
           this.broadcast("operation-job", job);
           this.broadcast("deploy-job", job);
           if (job.status !== "running") this.broadcast("deploy-changed", { deployment: job.deployment, profile: job.params.profile });

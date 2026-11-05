@@ -1,6 +1,6 @@
 import { RetryNotice } from "./RetryNotice";
 import { identitySourceQuery } from "../identity-queries";
-import { deploymentOverviewQuery } from "../deploy/queries";
+import { useDeploymentOverview } from "../deploy/observations";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { domainSettingsProblems } from "../../shared/domain-settings";
@@ -233,7 +233,7 @@ function DomainEvidence({ result }: { result?: DomainsObservation }) {
 export function DomainsWorkspace() {
   const { snapshot, draft, draftState, select, awsProfile, mode, live } = useStudio();
   const source = useQuery(identitySourceQuery("prod", snapshot.revision));
-  const overview = useQuery(deploymentOverviewQuery());
+  const overview = useDeploymentOverview();
   const [destination, setSelection] = useState<IdentitySelection>({
     profile: "",
     deployment: "",

@@ -9,6 +9,8 @@ source:
   - framework-studio/src/views/SourceContext.tsx
   - framework-studio/src/identity-api.ts
   - framework-studio/src/identity-queries.ts
+  - framework-studio/src/deploy/observations.tsx
+  - framework-studio/src/deploy/context.ts
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/RetryNotice.tsx
   - framework-studio/src/views/IdentityPolicyEditor.tsx
@@ -34,8 +36,9 @@ Subsection navigation sits immediately below the application bar, ahead of inspe
 controls and errors, using the shared workspace tabs. It remains a stable destination
 while context loads or fails. The context toolbar and cards share the bounded workspace
 width used by Domains. The shared source-environment selector lives in `Shell`'s
-application bar; selecting a source mode does not inspect or deploy AWS. Saved source
-history belongs to Git.
+application bar. Selecting a source mode promotes its shared read-only deployment
+observation; it does not run this workspace's specialized inspection or deploy AWS.
+Saved source history belongs to Git.
 Card typography, form spacing and action alignment come from the shared identity
 workspace styles. Source actions stay grouped with their explanation, and failed
 context/source reads use an inline alert with a visible retry action. Keep long messages
@@ -54,9 +57,12 @@ contains provider evidence, groups and pool relationships. `AuthenticationWorksp
 owns requests, context, cancellation, approvals and panel lifetime.
 
 The workspace inherits Studio's selected development/production mode. Inspection
-uses one profile, declared deployment and region across the subsections. Deploy's
-remembered preferences seed the selection; they do not prove the account or make
-the graph deployed. Changing the destination invalidates incompatible observations
+uses one profile, declared deployment and region across the subsections. Shared repository
+metadata and the pure mode-aware target resolver seed defaults from a matching remembered
+target; they do not prove the account or make the graph deployed. Explicit selections
+remain local to this workspace and per mode. Global deployment observations can load
+while this route is open, but Cognito/identity-pool inspection still requires its explicit
+action and retains its own cancellation and approval boundary. Changing the destination invalidates incompatible observations
 and live-operation reviews. Observations are also isolated by the declared account.
 Source revision, input changes and an observation age above five minutes make old
 inspection evidence stale. Refresh is an explicit read against verified owned stacks.

@@ -15,15 +15,16 @@ import { Button } from "../ui/Button";
 import { IconButton } from "../ui/IconButton";
 import { Select } from "../ui/FormControls";
 import { AwsProfileConfiguration } from "./AwsProfileConfiguration";
+import { connectionGeneration } from "../connection-generations";
 
 function ProfileDetails({ onConfigure }: { readonly onConfigure: () => void }) {
-  const { mode, awsProfile: profile, setAwsProfile, awsProfileCacheError } = useStudio();
+  const { mode, awsProfile: profile, setAwsProfile, awsProfileCacheError, live } = useStudio();
   const label = mode === "dev" ? "Development" : "Production";
   const queryClient = useQueryClient();
   const profiles = useQuery(awsProfilesQuery());
   const available = profiles.data?.some((entry) => entry.name === profile);
   const identity = useQuery({
-    ...awsProfileIdentityQuery(profile),
+    ...awsProfileIdentityQuery(profile, connectionGeneration(live, profile)),
     enabled: Boolean(profile && available),
   });
   const observation = available ? identity.data : undefined;
@@ -36,7 +37,7 @@ function ProfileDetails({ onConfigure }: { readonly onConfigure: () => void }) {
     setRetrying(true);
     try {
       queryClient.setQueryData(
-        awsProfileIdentityQuery(profile).queryKey,
+        awsProfileIdentityQuery(profile, connectionGeneration(live, profile)).queryKey,
         await checkAwsProfile(profile),
       );
     } finally {

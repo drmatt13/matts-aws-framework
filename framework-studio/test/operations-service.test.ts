@@ -16,7 +16,7 @@ const operation = (patch: Partial<JobView> = {}): JobView => ({
 const line = (seq: number): JobLogLine => ({ seq, at: "2026-01-01T00:00:00.000Z", stream: "info", text: `line ${seq}` });
 
 /** Exercise the production service boundary without launching a runner or touching AWS. */
-function fixture(t: TestContext) {
+function fixture(t: TestContext, onEvent?: (event: string, data: unknown) => void) {
   const state = mkdtempSync(path.join(tmpdir(), "studio-operation-service-"));
   const events: { event: string; data: unknown }[] = [];
   const source = {
@@ -49,7 +49,7 @@ function fixture(t: TestContext) {
     return operation({ id, cancelRequested: true });
   });
   t.mock.method(OperationsClient.prototype, "close", () => { source.closes++; });
-  const service = new DeployService(root, (event, data) => events.push({ event, data }), { stateDirectory: state, operations: true });
+  const service = new DeployService(root, (event, data) => { events.push({ event, data }); onEvent?.(event, data); }, { stateDirectory: state, operations: true });
   t.after(async () => { await service.dispose(); rmSync(state, { recursive: true, force: true }); });
   return { service, source, events, state };
 }
@@ -93,6 +93,38 @@ test("discovery failures stay visible and prevent treating unknown independent w
   source.jobs = [operation({ status: "interrupted", execution: "lost", outcome: "uncertain" })];
   await assert.rejects(service.perform({ kind: "deps-install", params: {} }), /still owns this checkout/);
   assert.equal(service.hasUnobservedOperations(), false);
+});
+
+test("terminal independent jobs invalidate their profile observations before subscribers can refresh", async t => {
+  const invalidated: (string | undefined)[] = [];
+  const { service, source } = fixture(t, (event, data) => {
+    if (event === "deploy-job" && (data as JobView).status !== "running")
+      assert.equal(invalidated.at(-1), (data as JobView).params.profile);
+    if (event === "deploy-changed") assert.equal(invalidated.at(-1), (data as { profile?: string }).profile);
+  });
+  t.mock.method(service.observer, "invalidate", (profile?: string) => { invalidated.push(profile); });
+  await service.listOperations();
+  source.jobs = [operation()];
+  await service.listOperations();
+  assert.equal(invalidated.length, 0, "running work does not expire observations on each job projection");
+  source.jobs = [operation({ status: "succeeded", execution: "finished", outcome: "confirmed" })];
+  await service.listOperations();
+  assert.deepEqual(invalidated, ["fixture"]);
+  await service.listOperations();
+  assert.deepEqual(invalidated, ["fixture"], "repeated discovery of unchanged terminal work does not invalidate again");
+});
+
+test("terminal Studio-owned jobs also invalidate observations before their completion event", async t => {
+  const invalidated: (string | undefined)[] = [];
+  const { service } = fixture(t, (event, data) => {
+    if (event === "deploy-job" && (data as JobView).status !== "running")
+      assert.deepEqual(invalidated, ["fixture"]);
+  });
+  t.mock.method(service.observer, "invalidate", (profile?: string) => { invalidated.push(profile); });
+  await service.listOperations();
+  const job = service.jobs.start({ kind: "export", title: "Fixture export", params: { profile: "fixture" }, locks: [], steps: [] });
+  assert.equal((await service.jobs.wait(job.id)).status, "succeeded");
+  assert.deepEqual(invalidated, ["fixture"]);
 });
 
 test("plan cleanup waits for recovered runner ownership and retains its unfinished directory", async t => {

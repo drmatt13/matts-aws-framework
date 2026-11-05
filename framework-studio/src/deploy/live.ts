@@ -1,53 +1,68 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type Query, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import type { DeployOverview, JobView, StackEventView } from "../../shared/deploy";
+import type { DeployOverview, DiscoveryView, JobView, StackEventView } from "../../shared/deploy";
 import { token } from "../http";
 import { connectStudioEvents } from "../events";
-import { deploymentOverviewQuery } from "./queries";
+import { matchesDeployment, type DeploymentDestination, type DeploymentScope } from "./context";
 
 export { logs, useJobLog } from "../operations/live";
 
 export interface LiveHandlers {
-  readonly onConnectionChange?: () => void;
   readonly onJob?: (job: JobView) => void;
   readonly onEvent?: (deployment: string, event: StackEventView, context: { profile?: string; account?: string; region?: string }) => void;
 }
+const trailing = new WeakSet<Query>();
 
-/**
- * Keeps Deploy & Run's queries current from the studio's event stream:
- * jobs, their logs, CloudFormation progress, and changes an operation made.
- */
+/** An event received during a read requires one more read after it settles. */
+export function invalidateDeploymentQueries(client: QueryClient, predicate: (query: Query) => boolean = () => true) {
+  const filters = { queryKey: ["deploy"], predicate };
+  for (const query of client.getQueryCache().findAll(filters)) {
+    if (!query.promise || query.state.fetchStatus !== "fetching" || trailing.has(query)) continue;
+    trailing.add(query);
+    void query.promise.catch(() => {}).then(() => {
+      trailing.delete(query);
+      if (client.getQueryCache().get(query.queryHash) === query)
+        void client.invalidateQueries({ queryKey: query.queryKey, exact: true }, { cancelRefetch: false });
+    });
+  }
+  void client.invalidateQueries(filters, { cancelRefetch: false });
+}
+
+function destinationMatches(query: Query, destination: DeploymentDestination) {
+  if (!["status", "discover"].includes(String(query.queryKey[1]))) return true;
+  const scope = query.queryKey[2] as DeploymentScope;
+  const data = query.state.data as DiscoveryView | undefined;
+  return matchesDeployment(scope, destination, data?.context.account, data?.context.region);
+}
+
+/** Mounted only by GlobalDeploymentObservations; pages own callbacks, never cache writes. */
 export function useDeployLive(): void {
-  const queryClient = useQueryClient();
+  const client = useQueryClient();
   useEffect(() => {
     const source = connectStudioEvents(token);
     const parse = <T,>(event: Event) => JSON.parse((event as MessageEvent<string>).data) as T;
-    source.addEventListener("deploy-job", (event) => {
+    source.addEventListener("deploy-job", event => {
       const job = parse<JobView>(event);
-      queryClient.setQueryData<DeployOverview>(deploymentOverviewQuery().queryKey, (overview) => overview && {
-        ...overview, jobs: [job, ...overview.jobs.filter((entry) => entry.id !== job.id)].sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+      client.setQueriesData<DeployOverview>({ queryKey: ["deploy", "overview"] }, overview => {
+        const previous = overview?.jobs.find(entry => entry.id === job.id);
+        if (!overview || previous && (previous.lastSeq > job.lastSeq || previous.status !== "running" && job.status === "running")) return overview;
+        return { ...overview, jobs: [job, ...overview.jobs.filter(entry => entry.id !== job.id)].sort((a, b) => b.startedAt.localeCompare(a.startedAt)) };
       });
     });
-    source.addEventListener("deploy-stacks", (event) => {
-      const { deployment } = parse<{ deployment: string }>(event);
-      void queryClient.invalidateQueries({ queryKey: ["deploy", "status"], predicate: (entry) => entry.queryKey.includes(deployment) });
+    source.addEventListener("deploy-stacks", event => {
+      const destination = parse<DeploymentDestination>(event);
+      invalidateDeploymentQueries(client, query => ["status", "discover"].includes(String(query.queryKey[1])) && destinationMatches(query, destination));
     });
-    source.addEventListener("deploy-changed", () => {
-      void queryClient.invalidateQueries({ queryKey: ["deploy"] });
-    });
-    source.addEventListener("aws-connections", () => {
-      void queryClient.invalidateQueries({ queryKey: ["deploy"], refetchType: "none" });
-    });
-    source.addEventListener("open", () => {
-      void queryClient.invalidateQueries({ queryKey: ["deploy"] });
+    source.addEventListener("deploy-changed", event => {
+      const destination = parse<DeploymentDestination>(event);
+      invalidateDeploymentQueries(client, query => destinationMatches(query, destination));
     });
     return () => source.close();
-  }, [queryClient]);
+  }, [client]);
 }
 
-/** Page-specific reactions share the stream without repeating global cache/log writes. */
+/** Page-specific reactions use the same transport without repeating cache updates. */
 export function useDeployEvents(handlers: LiveHandlers): void {
-  useDeployLive();
   const current = useRef(handlers);
   current.current = handlers;
   useEffect(() => {
@@ -58,7 +73,6 @@ export function useDeployEvents(handlers: LiveHandlers): void {
       const { deployment, stack, event: detail, profile, account, region } = parse<{ deployment: string; stack: string; event: Omit<StackEventView, "stack">; profile?: string; account?: string; region?: string }>(event);
       if (detail) current.current.onEvent?.(deployment, { ...detail, stack }, { profile, account, region });
     });
-    source.addEventListener("aws-connections", () => current.current.onConnectionChange?.());
     return () => source.close();
   }, []);
 }

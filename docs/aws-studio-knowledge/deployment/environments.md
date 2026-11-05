@@ -9,6 +9,9 @@ source:
   - packages/framework/src/deploy/identity.ts
   - cdk-app/bin/main.ts
   - framework-studio/server/inputs.ts
+  - framework-studio/src/deploy/context.ts
+  - framework-studio/src/deploy/observations.tsx
+  - framework-studio/src/connection-generations.ts
   - cdk-app/deployment.ts
   - cdk-app/lib/framework/framework-network.ts
 related:
@@ -32,18 +35,30 @@ There are exactly two `DeploymentMode`s: **dev** and **prod**. A named deploymen
 
 Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal routed workloads/tasks/workflows/agents execute locally. Prod builds the cloud-enabled application, network/database/frontend as configured. WebSocket API Gateway is framework managed in both modes. Handler deploy settings, including per-environment input conditions, determine which routes and Lambdas exist. `deploy` lanes remain distinct from these modes; see [configuration predicates](../framework/configuration.md).
 
-Deploy's account toolbar displays the active Source mode's profile and labels the resolved
-account and region. Even a Production target uses the active mode's connection; target
-selection never changes that association. A profile's default region is supporting information; the selected
-named deployment's region pin takes precedence. The deployment rail retains every
-declared target, including multiple targets using prod mode, and identifies unread
-deployment state as unverified.
+Studio observes one selected named target per configured mode through one persistent
+observer, independently of the current route. The pure resolver in
+[context.ts](../../../framework-studio/src/deploy/context.ts) reuses a remembered target
+only when it still belongs to that declaration mode, then falls back to the first matching
+repository target. Neither profile names, legacy per-target profile preferences nor
+discovered deployments select a declaration mode. Multiple named prod targets remain
+distinct destinations using prod semantics.
+
+Deploy's account line displays the active Source mode's observed account/region. Its
+target's region pin takes precedence over the profile/default region policy; account and
+ownership mismatches remain explicit. Development and Production can share a profile,
+but their selected target queries remain independent. Credential/configuration changes
+advance that profile's generation and refresh both associated modes. Route navigation
+reuses cached/in-flight evidence without starting another poller. Other operational
+workspaces keep their explicit deployment/region controls and active mode's connection;
+for example Domains edits Production intent without substituting the Production profile
+when the accepted Source mode is Development. See
+[AWS connections](../../framework-studio/aws-connections.md#shared-deployment-observations).
 
 Selection checks require command/target mode agreement and refuse accidental production inference. `prepare` in [deploy.ts](../../../scripts/deploy.ts) then compares the synthesized identity with selection and actual STS account. Ownership classification prevents a dev graph from updating stacks owned by prod or another deployment. Named targets do not provide a separate secret namespace if someone deliberately aliases identities/inputs; identity and selected inputs must be reviewed together.
 
 Development export supplies generated root environment/resource manifest and browser settings. Production output/export uses its production destinations rather than seeding development. Protected Studio input editing addresses only the two fixed mode files; custom target input paths are not a general file browser. [Secrets](secrets.md) owns the private-value boundaries.
 
-Deploy's **Add a deployment stage** editor adds a stage through a reviewed source change;
+The retained **Add a deployment stage** editor/service adds a stage through a reviewed source change;
 it never renames an existing stage, `deployAs` or resource, and edits no inputs file. Renaming
 the app from the navbar never changes `framework:appId`; it moves development to the new name
 and sets `deployAs` for each production stage that a read-only AWS discovery (with the

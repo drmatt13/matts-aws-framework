@@ -86,9 +86,12 @@ for (const width of [1440, 320])
         (request) => request.method !== "GET" && request.path !== "/api/aws-connections/check",
       ),
     ).toEqual([]);
-    expect(
-      studio.requests.some((request) => /deploy\/(discover|status)/.test(request.path)),
-    ).toBe(false);
+    await expect.poll(() => studio.requests.some(request =>
+      request.path.startsWith("/api/deploy/status?") && request.path.includes("deployment=browser-dev") && request.path.includes("profile=dev"),
+    )).toBe(true);
+    await expect.poll(() => studio.requests.some(request =>
+      request.path.startsWith("/api/deploy/status?") && request.path.includes("deployment=browser-prod") && request.path.includes("profile=production"),
+    )).toBe(true);
   });
 
 test("associations persist, allow reuse and clear independently without repeated identity requests", async ({
@@ -694,7 +697,7 @@ test("Identity Center sign-out discloses shared impact and cancellation sends no
   ).toBe(false);
 });
 
-test("credential lifecycle events mark observations stale without another provider execution", async ({
+test("an unassociated profile lifecycle event marks identity stale without deployment reads", async ({
   page,
   studio,
 }) => {
@@ -1020,6 +1023,7 @@ for (const storageBlocked of [false, true])
     const modal = await openConfiguration(page);
     await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
     await modal.getByRole("combobox", { name: "Use for", exact: true }).selectOption("both");
+    await expect.poll(() => studio.requests.filter(request => request.path.startsWith("/api/deploy/status?") && new URL(request.path, "http://fixture.invalid").searchParams.get("profile") === "dev").length).toBeGreaterThanOrEqual(2);
     const trash = modal.getByRole("button", { name: "Delete AWS profile dev", exact: true });
     await trash.click();
     const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
@@ -1040,6 +1044,11 @@ for (const storageBlocked of [false, true])
     await expect(page.getByRole("button", { name: /Development AWS profile:/ })).toHaveAccessibleName("Development AWS profile: choose a profile");
     await page.getByRole("button", { name: "Production", exact: true }).click();
     await expect(page.getByRole("button", { name: /Production AWS profile:/ })).toHaveAccessibleName("Production AWS profile: choose a profile");
+    const reads = studio.requests.filter(request => /\/deploy\/(?:status|discover)\?/.test(request.path)).length;
+    const overviews = studio.requests.filter(request => request.path.startsWith("/api/deploy/overview")).length;
+    await studio.emit("deploy-changed", {});
+    await expect.poll(() => studio.requests.filter(request => request.path.startsWith("/api/deploy/overview")).length).toBeGreaterThan(overviews);
+    expect(studio.requests.filter(request => /\/deploy\/(?:status|discover)\?/.test(request.path))).toHaveLength(reads);
   });
 
 test("dependent profiles block deletion and stale deletion failures preserve the selected connection", async ({ page, studio }) => {

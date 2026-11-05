@@ -1,6 +1,6 @@
 import { dockerStatus } from "./support/scenarios";
 import { test, expect, assertAccessible } from "./support/test";
-import { discovery, overview, NOW } from "./support/scenarios";
+import { discoveryFor, overview, NOW } from "./support/scenarios";
 import { connectionCatalogFixture } from "./support/aws-connections";
 
 test.beforeEach(async ({ context, studio }) => {
@@ -11,8 +11,7 @@ test.beforeEach(async ({ context, studio }) => {
     { name: "dev-connection", kind: "sso" }, { name: "prod-connection", kind: "sso" },
   ]) }));
   studio.reply("GET", "/api/deploy/status", (route, url) => route.fulfill({ json: { ok: true, value: {
-    ...discovery(),
-    context: { ...discovery().context, profile: url.searchParams.get("profile") },
+    ...discoveryFor(url),
     deployment: url.searchParams.get("deployment"),
   } } }));
 });
@@ -27,7 +26,7 @@ for (const width of [1440, 390])
       studio.reply("GET", pathname, async (route, url) => {
         const profile = url.searchParams.get("profile");
         if (profile === "prod-connection") { await pending; await route.fulfill({ json: expired }); }
-        else await route.fulfill({ json: { ok: true, value: { ...discovery(), context: { ...discovery().context, profile }, deployment: url.searchParams.get("deployment") } } });
+        else await route.fulfill({ json: { ok: true, value: { ...discoveryFor(url), deployment: url.searchParams.get("deployment") } } });
       });
     await studio.goto("/deploy");
     const header = page.locator("main h1").locator("xpath=ancestor::header");
@@ -190,6 +189,7 @@ for (const mode of ["Development", "Production"] as const)
     } }));
     await studio.goto("/graphql");
     await page.getByRole("group", { name: "Source environment", exact: true }).getByRole("button", { name: mode, exact: true }).click();
+    await expect.poll(() => studio.requests.some(request => request.path.startsWith("/api/deploy/status?") && request.path.includes(`deployment=${expected}`))).toBe(true);
     await page.getByRole("navigation", { name: "Views", exact: true }).getByRole("link", { name: "Deploy", exact: true }).click();
     await expect(page.getByRole("heading", { name: new RegExp(`^${expected}`) })).toBeVisible();
     expect(studio.requests.some(request => request.path === "/api/deploy/operations")).toBe(false);
@@ -200,8 +200,11 @@ test("idle polling runs quietly at slower intervals and job events still update 
   await studio.goto("/deploy");
   await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
   const count = (path: string) => studio.requests.filter(request => request.path.startsWith(path)).length;
-  await expect.poll(() => count("/api/deploy/status?")).toBeGreaterThan(0);
+  await expect.poll(() => count("/api/deploy/status?")).toBe(2);
   const before = { overview: count("/api/deploy/overview"), docker: count("/api/machine/docker"), status: count("/api/deploy/status?"), discovery: count("/api/deploy/discover?") };
+  await page.getByRole("link", { name: "GraphQL", exact: true }).click();
+  await page.getByRole("link", { name: "Deploy", exact: true }).click();
+  expect(count("/api/deploy/status?")).toBe(before.status);
   await page.clock.fastForward(29_000);
   expect(count("/api/deploy/overview")).toBe(before.overview);
   await page.clock.fastForward(2_000);
@@ -216,4 +219,332 @@ test("idle polling runs quietly at slower intervals and job events still update 
   await expect.poll(() => count("/api/deploy/overview")).toBeGreaterThan(updated);
   await expect(page.getByRole("region", { name: "Machine readiness", exact: true }).locator(".animate-spin")).toHaveCount(0);
   expect(studio.requests.some(request => request.path === "/api/deploy/operations")).toBe(false);
+});
+
+const statusRequests = (requests: readonly { path: string }[], deployment?: string, profile?: string) => requests.filter(request => {
+  const url = new URL(request.path, "http://studio-fixture.invalid");
+  return url.pathname === "/api/deploy/status" && (!deployment || url.searchParams.get("deployment") === deployment)
+    && (!profile || url.searchParams.get("profile") === profile);
+});
+const operationRequests = (requests: readonly { method: string; path: string }[]) => requests.filter(request =>
+  request.method !== "GET" && request.path !== "/api/aws-connections/check",
+);
+
+for (const pathname of ["/", "/graphql"])
+  test(`cold ${pathname === "/" ? "Map" : "GraphQL"} observes both configured modes before Deploy is visited`, async ({ page, studio }) => {
+    await studio.goto(pathname);
+    await expect.poll(() => statusRequests(studio.requests, "browser-dev", "dev-connection").length).toBe(1);
+    await expect.poll(() => statusRequests(studio.requests, "browser-prod", "prod-connection").length).toBe(1);
+    expect(studio.requests.some(request => request.path.startsWith("/api/deploy/discover?"))).toBe(false);
+    expect(operationRequests(studio.requests)).toEqual([]);
+    const before = statusRequests(studio.requests).length;
+    await page.getByRole("navigation", { name: "Views", exact: true }).getByRole("link", { name: "Deploy", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
+    expect(statusRequests(studio.requests)).toHaveLength(before);
+    expect(await page.evaluate(() => (window as unknown as { __studioBrowserEvents: { active(): number } }).__studioBrowserEvents.active())).toBe(1);
+  });
+
+test("entering and leaving Deploy reuses a pending observation without adding event transports", async ({ page, studio }) => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  studio.reply("GET", "/api/deploy/status", async (route, url) => {
+    if (url.searchParams.get("profile") === "dev-connection") await pending;
+    await route.fulfill({ json: { ok: true, value: { ...discoveryFor(url), deployment: url.searchParams.get("deployment") } } });
+  });
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev").length).toBe(1);
+  await page.getByRole("link", { name: "Deploy", exact: true }).click();
+  await expect(page.getByRole("status", { name: "Loading AWS profile", exact: true })).toBeVisible();
+  expect(statusRequests(studio.requests, "browser-dev")).toHaveLength(1);
+  await page.getByRole("link", { name: "GraphQL", exact: true }).click();
+  release();
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod").length).toBe(1);
+  await page.getByRole("link", { name: "Deploy", exact: true }).click();
+  await expect(page.locator('[data-slot="deployment-context"]')).toContainText("123456789012 · us-east-1");
+  expect(statusRequests(studio.requests, "browser-dev")).toHaveLength(1);
+  expect(await page.evaluate(() => (window as unknown as { __studioBrowserEvents: { active(): number } }).__studioBrowserEvents.active())).toBe(1);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("both modes sharing one profile refresh independently after a same-profile credential event", async ({ context, page, studio }) => {
+  await context.addInitScript(() => localStorage.setItem("aws-studio:mode-profiles:v1:/studio-fixture", JSON.stringify({ dev: "dev-connection", prod: "dev-connection" })));
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev", "dev-connection").length).toBe(1);
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod", "dev-connection").length).toBe(1);
+  await studio.emit("aws-connections", { profiles: ["dev-connection"] });
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev", "dev-connection").length).toBe(2);
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod", "dev-connection").length).toBe(2);
+  await page.getByRole("button", { name: "Production", exact: true }).click();
+  await page.getByRole("link", { name: "Deploy", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /^browser-prod/ })).toBeVisible();
+  expect(statusRequests(studio.requests).some(request => request.path.includes("profile=prod-connection"))).toBe(false);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("the other configured mode warms after five seconds when the active profile is slow", async ({ page, studio }) => {
+  await page.clock.install({ time: new Date(NOW) });
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  studio.reply("GET", "/api/deploy/status", async (route, url) => {
+    if (url.searchParams.get("profile") === "dev-connection") await pending;
+    await route.fulfill({ json: { ok: true, value: { ...discoveryFor(url), deployment: url.searchParams.get("deployment") } } });
+  });
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev").length).toBe(1);
+  expect(statusRequests(studio.requests, "browser-prod")).toHaveLength(0);
+  await page.clock.fastForward(5_100);
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod").length).toBe(1);
+  release();
+  expect(statusRequests(studio.requests)).toHaveLength(2);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("a scoped connection event refreshes its associated mode without rereading the other profile", async ({ studio }) => {
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  await studio.emit("aws-connections", { profiles: ["prod-connection"] });
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod").length).toBe(2);
+  expect(statusRequests(studio.requests, "browser-dev")).toHaveLength(1);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+for (const failure of ["no associations", "missing profile", "failed catalog"] as const)
+  test(`${failure} leaves navigation usable without deployment reads`, async ({ context, page, studio }) => {
+    await context.addInitScript(({ failure }) => localStorage.setItem("aws-studio:mode-profiles:v1:/studio-fixture",
+      JSON.stringify(failure === "no associations" ? {} : { dev: failure === "missing profile" ? "removed-profile" : "dev-connection" })), { failure });
+    if (failure === "failed catalog") studio.reply("GET", "/api/aws-connections", route => route.fulfill({ status: 503, json: { error: "Profile catalog is temporarily unavailable." } }));
+    await studio.goto("/graphql");
+    await expect.poll(() => studio.requests.some(request => request.path === "/api/aws-connections")).toBe(true);
+    await page.getByRole("link", { name: "Map", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Resources", exact: true })).toBeVisible();
+    expect(studio.requests.filter(request => /\/deploy\/(?:status|discover)\?/.test(request.path))).toEqual([]);
+    expect(operationRequests(studio.requests)).toEqual([]);
+  });
+
+test("catalog failure recovers on an ordinary route without replacing associations", async ({ page, studio }) => {
+  let unavailable = true;
+  studio.reply("GET", "/api/aws-connections", route => route.fulfill(unavailable
+    ? { status: 503, json: { error: "Profile catalog is temporarily unavailable." } }
+    : { json: connectionCatalogFixture([{ name: "dev-connection", kind: "sso" }, { name: "prod-connection", kind: "sso" }]) }));
+  await studio.goto("/graphql");
+  await expect.poll(() => studio.requests.some(request => request.path === "/api/aws-connections")).toBe(true);
+  expect(statusRequests(studio.requests)).toEqual([]);
+  unavailable = false;
+  await studio.emit("aws-connections", { profiles: [] });
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  await expect(page.getByRole("button", { name: "Development AWS profile: dev-connection", exact: true })).toBeVisible();
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+for (const failure of ["catalog", "status"] as const)
+  test(`initial ${failure} transport failure stops loading without claiming deployment absence`, async ({ page, studio }) => {
+    const message = `Fixture ${failure} transport unavailable.`;
+    studio.reply("GET", failure === "catalog" ? "/api/aws-connections" : "/api/deploy/status",
+      route => route.fulfill({ status: 503, json: { error: message } }));
+    await studio.goto("/deploy");
+    await expect(page.getByRole("alert").filter({ hasText: message })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Loading AWS profile", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Not deployed here", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: /^browser-dev/ })).toBeVisible();
+    await page.getByRole("link", { name: "Map", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Resources", exact: true })).toBeVisible();
+    expect(operationRequests(studio.requests)).toEqual([]);
+  });
+
+test("an expired same-profile observation recovers after credential refresh on GraphQL", async ({ context, page, studio }) => {
+  await context.addInitScript(() => localStorage.setItem("aws-studio:mode-profiles:v1:/studio-fixture", JSON.stringify({ dev: "dev-connection" })));
+  let expired = true;
+  studio.reply("GET", "/api/deploy/status", (route, url) => route.fulfill({ json: expired
+    ? { ok: false, problem: { kind: "expired", message: "Fixture session expired." } }
+    : { ok: true, value: { ...discoveryFor(url), deployment: url.searchParams.get("deployment") } } }));
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(1);
+  expired = false;
+  await studio.emit("aws-connections", { profiles: ["dev-connection"] });
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  await page.getByRole("link", { name: "Deploy", exact: true }).click();
+  await expect(page.locator('[data-slot="deployment-context"]')).toContainText("123456789012 · us-east-1");
+  await expect(page.getByRole("button", { name: "AWS sign-in required. Open AWS profile configuration", exact: true })).toHaveCount(0);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("a late response remains attached to its original profile after changing the association", async ({ context, page, studio }) => {
+  await context.addInitScript(() => localStorage.setItem("aws-studio:mode-profiles:v1:/studio-fixture", JSON.stringify({ dev: "dev-connection" })));
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let completed!: () => void;
+  const oldFinished = new Promise<void>(resolve => { completed = resolve; });
+  studio.reply("GET", "/api/deploy/status", async (route, url) => {
+    const original = discoveryFor(url);
+    const previousProfile = url.searchParams.get("profile") === "dev-connection";
+    if (previousProfile) await pending;
+    const value = previousProfile ? original : { ...original, context: { ...original.context, account: "999999999999", arn: "arn:aws:iam::999999999999:user/new-caller" } };
+    try { await route.fulfill({ json: { ok: true, value: { ...value, deployment: url.searchParams.get("deployment") } } }); }
+    finally { if (previousProfile) completed(); }
+  });
+  await studio.goto("/deploy");
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev", "dev-connection").length).toBe(1);
+  await page.getByRole("button", { name: "Development AWS profile: dev-connection", exact: true }).click();
+  await page.getByRole("combobox", { name: "AWS profile", exact: true }).selectOption("prod-connection");
+  await page.keyboard.press("Escape");
+  const metadata = page.locator('[data-slot="deployment-context"]');
+  await expect(metadata).toContainText("999999999999 · us-east-1");
+  release();
+  await oldFinished;
+  await expect(metadata).toContainText("999999999999 · us-east-1");
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("credential invalidation during a pending read cannot restore the old caller", async ({ context, page, studio }) => {
+  await context.addInitScript(() => localStorage.setItem("aws-studio:mode-profiles:v1:/studio-fixture", JSON.stringify({ dev: "dev-connection" })));
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let completed!: () => void;
+  const oldFinished = new Promise<void>(resolve => { completed = resolve; });
+  let first = true;
+  studio.reply("GET", "/api/deploy/status", async (route, url) => {
+    const oldGeneration = first;
+    first = false;
+    if (oldGeneration) await pending;
+    const original = discoveryFor(url);
+    const context = oldGeneration ? original.context : { ...original.context, account: "999999999999", arn: "arn:aws:iam::999999999999:user/refreshed-caller" };
+    try { await route.fulfill({ json: { ok: true, value: { ...original, context, deployment: url.searchParams.get("deployment") } } }); }
+    finally { if (oldGeneration) completed(); }
+  });
+  await studio.goto("/deploy");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(1);
+  await studio.emit("aws-connections", { profiles: ["dev-connection"] });
+  await expect(page.locator('[data-slot="deployment-context"]')).toContainText("999999999999 · us-east-1");
+  release();
+  await oldFinished;
+  await expect(page.locator('[data-slot="deployment-context"]')).toContainText("999999999999 · us-east-1");
+  expect(statusRequests(studio.requests)).toHaveLength(2);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("cross-tab association changes refresh the matching deployment on an ordinary route", async ({ context, page, studio }) => {
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  const other = await context.newPage();
+  await other.goto("/graphql");
+  await other.evaluate(() => localStorage.setItem("aws-studio:mode-profiles:v1:/studio-fixture", JSON.stringify({ dev: "prod-connection", prod: "prod-connection" })));
+  await expect(page.getByRole("button", { name: "Development AWS profile: prod-connection", exact: true })).toBeVisible();
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev", "prod-connection").length).toBeGreaterThan(0);
+  await other.close();
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("source publication reloads targets and uses the new target's pinned region", async ({ studio }) => {
+  let current = overview();
+  studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: current }));
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  current = { ...current, targets: current.targets.map(target => target.mode === "dev" ? { ...target, name: "renamed-development", region: "eu-west-1" } : target) };
+  Object.assign(studio.response.snapshot, { revision: "changed-target-revision" });
+  await studio.emit("snapshot", { revision: "changed-target-revision", external: [] });
+  await expect.poll(() => statusRequests(studio.requests, "renamed-development", "dev-connection").some(request => request.path.includes("region=eu-west-1"))).toBe(true);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("entering Deploy during a delayed source snapshot reuses the published deployment context", async ({ page, studio }) => {
+  let current = overview();
+  studio.reply("GET", "/api/deploy/overview", route => route.fulfill({ json: current }));
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let completed!: () => void;
+  const snapshotFinished = new Promise<void>(resolve => { completed = resolve; });
+  const response = { ...studio.response, snapshot: { ...studio.response.snapshot, revision: "published-target-revision" } };
+  studio.reply("GET", "/api/snapshot", async route => {
+    await pending;
+    try { await route.fulfill({ json: response }); }
+    finally { completed(); }
+  });
+  current = { ...current, targets: current.targets.map(target => target.mode === "dev" ? { ...target, name: "published-development", region: "eu-west-1" } : target) };
+  await studio.emit("snapshot", { revision: "published-target-revision", external: [] });
+  await expect.poll(() => statusRequests(studio.requests, "published-development", "dev-connection").length).toBe(1);
+  await page.getByRole("link", { name: "Deploy", exact: true }).click();
+  await expect(page.getByRole("heading", { name: /^published-development/ })).toBeVisible();
+  await expect(page.locator('[data-slot="deployment-context"]')).toContainText("123456789012 · eu-west-1");
+  expect(statusRequests(studio.requests, "published-development", "dev-connection")).toHaveLength(1);
+  release();
+  await snapshotFinished;
+  await expect(page.getByRole("heading", { name: /^published-development/ })).toBeVisible();
+  await expect(page.locator('[data-slot="deployment-context"]')).toContainText("123456789012 · eu-west-1");
+  expect(statusRequests(studio.requests, "published-development", "dev-connection")).toHaveLength(1);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("a hidden inactive mode revalidates a freshly cached profile when its association returns", async ({ context, page, studio }) => {
+  await context.addInitScript(() => localStorage.setItem("aws-studio:mode-profiles:v1:/studio-fixture", JSON.stringify({ dev: "dev-connection", prod: "dev-connection" })));
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod", "dev-connection").length).toBe(1);
+  await page.getByRole("button", { name: "Production", exact: true }).click();
+  await page.getByRole("button", { name: "Production AWS profile: dev-connection", exact: true }).click();
+  await page.getByRole("combobox", { name: "AWS profile", exact: true }).selectOption("prod-connection");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod", "prod-connection").length).toBe(1);
+  await page.getByRole("button", { name: "Development", exact: true }).click();
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new StorageEvent("storage", { key: "aws-studio:mode-profiles:v1:/studio-fixture",
+      newValue: JSON.stringify({ dev: "dev-connection", prod: "dev-connection" }) }));
+  });
+  await studio.settle();
+  expect(statusRequests(studio.requests, "browser-prod", "dev-connection")).toHaveLength(1);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod", "dev-connection").length).toBe(2);
+  await expect(page.getByRole("button", { name: "Development", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("hidden tabs suspend deployment polling and reconnect reconciles both configured contexts", async ({ page, studio }) => {
+  await page.clock.install({ time: new Date(NOW) });
+  await studio.goto("/graphql");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const before = statusRequests(studio.requests).length;
+  await page.clock.fastForward(360_000);
+  expect(statusRequests(studio.requests)).toHaveLength(before);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev").length).toBeGreaterThan(1);
+  await expect.poll(() => statusRequests(studio.requests, "browser-prod").length).toBeGreaterThan(1);
+  const connected = statusRequests(studio.requests).length;
+  await studio.emit("hello", {});
+  await expect.poll(() => statusRequests(studio.requests).length).toBeGreaterThan(connected);
+  expect(await page.evaluate(() => (window as unknown as { __studioBrowserEvents: { active(): number } }).__studioBrowserEvents.active())).toBe(1);
+  expect(operationRequests(studio.requests)).toEqual([]);
+});
+
+test("matching deployment jobs accelerate polling on Map and completion refreshes their destination", async ({ page, studio }) => {
+  await page.clock.install({ time: new Date(NOW) });
+  await studio.goto("/");
+  await expect.poll(() => statusRequests(studio.requests).length).toBe(2);
+  const job = { id: "global-observer-job", title: "Fixture deployment", kind: "deploy-apply", status: "running", deployment: "browser-dev",
+    params: { profile: "dev-connection", deployment: "browser-dev" }, startedAt: NOW, locks: [], lastSeq: 0 };
+  await studio.emit("deploy-job", job);
+  const before = statusRequests(studio.requests, "browser-dev").length;
+  await page.clock.fastForward(4_100);
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev").length).toBeGreaterThan(before);
+  expect(statusRequests(studio.requests, "browser-prod")).toHaveLength(1);
+  const running = statusRequests(studio.requests, "browser-dev").length;
+  await studio.emit("deploy-job", { ...job, status: "succeeded", finishedAt: new Date(Date.parse(NOW) + 4100).toISOString() });
+  await studio.emit("deploy-changed", { profile: "dev-connection", deployment: "browser-dev" });
+  await expect.poll(() => statusRequests(studio.requests, "browser-dev").length).toBeGreaterThan(running);
+  expect(operationRequests(studio.requests)).toEqual([]);
 });

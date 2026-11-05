@@ -16,6 +16,10 @@ source:
   - framework-studio/src/snapshot.ts
   - framework-studio/src/events.ts
   - framework-studio/src/deploy/live.ts
+  - framework-studio/src/deploy/observations.tsx
+  - framework-studio/src/deploy/queries.ts
+  - framework-studio/src/connection-generations.ts
+  - framework-studio/server/deploy/observe.ts
   - framework-studio/src/database-session.ts
   - framework-studio/server/database-history.ts
 related:
@@ -88,15 +92,40 @@ owns the snapshot query and server-event invalidation. The typed endpoint catalo
 separate in `api.ts`; [http.ts](../../../framework-studio/src/http.ts) owns protocol,
 token, no-store, cancellation and response-error mechanics.
 
-Snapshot and Deploy observers share one reference-counted EventSource per tab through
-`src/events.ts`; `deploy/live.ts` owns deployment subscriptions and log hooks. Each
-observer retains its own listeners during navigation, leaving HTTP/1 connections
+Snapshot, operation and deployment observers share one reference-counted EventSource
+per tab through `src/events.ts`. `GlobalDeploymentObservations` mounts once and owns
+deployment cache subscriptions through `deploy/live.ts`; Deploy's separate page hook
+handles only page callbacks. Route changes do not add deployment pollers or duplicate
+cache listeners. Each subscriber cleans up only its own listeners, leaving HTTP/1 connections
 available for reads and approvals with several tabs open. Six or more simultaneous
 tab streams can still reach the browser's per-origin connection limit. Unknown API
 routes return JSON 404; an older server's HTML fallback is rejected as an invalid API
 response instead of appearing as empty successful data. Dirty drafts keep their
 baseline visible and record a newer snapshot as a conflict rather than silently
 rebasing; see [editing](editing.md).
+
+The global deployment observer loads repository overview/profile metadata independently
+of the current route. It uses the latest published source identity, then resolves one
+matching named target for each configured declaration mode. Overview is fresh for 60
+seconds and has no polling interval. Status/discovery is fresh for 20 seconds, polls
+every 120 seconds for the active mode and 300 seconds for the other, and accelerates to
+four seconds for matching running jobs/in-progress stacks. Failures cool down for 300
+seconds. The inactive mode warms after the active read settles or five seconds, with two
+concurrent deployment reads at most. Hidden tabs pause polling/warming and reconcile on
+return. The existing status result supplies discovery without an extra equivalent read.
+See [AWS connections](../../framework-studio/aws-connections.md#shared-deployment-observations)
+for the full cache and scheduling contract.
+
+`snapshot.ts` advances profile-scoped connection generations on `aws-connections`; a
+global scope advances every profile. Existing broad connection revisions still expire
+workspace-specific reviews. Identity checks and deployment reads include their captured
+generation in their cache keys, so late responses cannot become current evidence for a
+new actor/configuration. The first `hello` retains startup reads; subsequent `hello`
+events advance all connection generations and reconcile metadata to recover missed
+changes. Source publication refreshes target metadata and source-dependent observations.
+Destination-matched deployment invalidation during an in-flight read schedules one
+trailing refresh. Typed observation errors preserve labeled same-context stale evidence
+without turning an unavailable AWS read into an absent deployment or blocking the map.
 
 An initial snapshot failure offers a connection retry. A failed background fetch with a
 cached snapshot keeps `StudioProvider` mounted, preserving selection and unsaved drafts;

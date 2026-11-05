@@ -17,9 +17,9 @@ const query = (values: Record<string, string | undefined | boolean>) => {
 };
 
 export const deployApi = {
-  overview: (force = false) => call<DeployOverview>(`/deploy/overview${query({ force })}`),
-  discover: (profile: string, force = false) => call<Observation<DiscoveryView>>(`/deploy/discover${query({ profile, force })}`),
-  status: (profile: string, deployment: string, force = false, region?: string) => call<Observation<StatusView>>(`/deploy/status${query({ profile, deployment, region, force })}`),
+  overview: (force = false, signal?: AbortSignal) => call<DeployOverview>(`/deploy/overview${query({ force })}`, undefined, signal),
+  discover: (profile: string, force = false, region?: string, signal?: AbortSignal) => call<Observation<DiscoveryView>>(`/deploy/discover${query({ profile, region, force })}`, undefined, signal),
+  status: (profile: string, deployment: string, force = false, region?: string, signal?: AbortSignal) => call<Observation<StatusView>>(`/deploy/status${query({ profile, deployment, region, force })}`, undefined, signal),
   teardown: (profile: string, deployment: string, mode: DeployMode, region?: string, retainFailed = false, disableProtection = false) => call<Observation<TeardownPlanView>>(`/deploy/teardown${query({ profile, deployment, mode, region, retainFailed, disableProtection })}`),
   plans: () => call<PlanSummaryView[]>("/deploy/plans"),
   plan: (key: string) => call<PlanView>(`/deploy/plans/${encodeURIComponent(key)}`),

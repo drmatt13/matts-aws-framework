@@ -9,11 +9,75 @@ Declaration mode, connection, deployment target and operation approval are separ
 Every operational page uses the active declaration mode's association, even when its
 explicit destination uses another mode. Target account/region and ownership checks remain
 authoritative. Selecting a target never restores an older per-target profile. Changing
-the connection expires evidence/reviews. Deploy accepts a selected target's declared mode
-through the unsaved-source guard and defaults to a matching target on entry or Source-mode
-changes; it refreshes read-only observations in the background. Other workspaces retain
-explicit inspection actions. Running operations retain their captured connection, and none
-of these selection changes approves or starts an operation.
+the connection expires evidence/reviews. Deploy follows the accepted declaration mode,
+whose changes retain the unsaved-source guard. A persistent observer resolves each mode's
+matching target and refreshes its read-only deployment evidence on every Studio route.
+Other workspaces retain explicit inspection actions. Running operations retain their
+captured connection, and none of these selection changes approves or starts an operation.
+
+## Shared deployment observations
+
+`StudioProvider` owns the accepted declaration mode, repository-scoped profile names and
+lightweight connection generations. TanStack Query owns deployment responses, timestamps,
+errors and freshness. `GlobalDeploymentObservations` in `src/deploy/observations.tsx`
+mounts once beside the route outlet and owns query activation, scheduling and deployment
+cache-event updates. Consumer hooks subscribe to the same cache entries without adding
+requests, timers or event listeners; entering Deploy reuses cached and in-flight reads.
+There is no second deployment Context or copied observation store.
+
+The global overview supplies repository targets and the remembered target preference.
+This existing endpoint also reads prerequisites, profiles, Docker/local state and jobs;
+it has a 60-second freshness window and refreshes on startup, relevant events and stale
+focus/reconnect, without an interval. The separate Docker observer keeps its own existing
+five-second host policy. Profile availability comes from the shared connection catalog.
+A missing association, unavailable profile or failed catalog prevents deployment reads
+for that context without blocking the graph or navigation or choosing another profile.
+
+Each configured mode observes one selected named target. The resolver accepts a remembered
+target only when it still belongs to that mode; otherwise it uses the first matching
+repository target. Profile names and legacy per-target profiles never choose the mode.
+Named prod targets such as staging remain distinct deployments, and target account/region
+pins retain authority. An unpinned region is resolved by the host's existing AWS policy.
+Changing a target or profile never changes an already running job's destination.
+
+The existing status response includes account identity, regional discovery, target
+ownership/state, recent events, change-set summaries and Development compatibility checks.
+Shared consumers use that discovery rather than issuing a second discovery request.
+Standalone discovery is used when the mode has an associated profile but no selected
+target. When both modes share that profile and neither has a target, one discovery
+entry and one polling observer serve both. Plan details, drift, logs, teardown reviews and specialized Cognito, Domains,
+retention and database inspections remain page/action owned. Database inspections that
+launch a billed task still need their existing approval, and WebSocket connections remain
+explicit user actions. App-name review still obtains its own fresh server-side evidence.
+
+The active mode starts as soon as prerequisites are available. The other configured mode
+warms after the active read settles or five seconds elapse, with at most two deployment
+reads in flight per tab. Deployment evidence is fresh for 20 seconds. Visible idle polling
+is 120 seconds for the active mode and 300 seconds for the other; a matching running job
+or in-progress deployment uses four seconds. Failed reads use a 300-second cooldown.
+Hidden tabs pause polling and warming, retain invalidations, and revalidate on return.
+Focus and network reconnect revalidate stale evidence. Transient transport/server or
+throttling failures retry once with a short jittered delay; credential, profile and
+permission failures do not retry in a tight loop. Explicit Refresh bypasses completed host
+caches and shares pending reads.
+
+Status query identity includes repository/source revision, declaration mode, profile,
+connection generation, named deployment, account pin and region policy. Account discovery
+omits mode and target because its regional inventory is shared. Credential/configuration
+events advance affected profiles' generations; an unspecified/global scope advances all.
+Both modes sharing a profile refresh together while their targets remain independent.
+Identity checks use the same generation protection. Reconnecting the shared EventSource
+reconciles missed events once on `hello`, including catalog and connection evidence.
+Source publication refreshes target metadata before resolving the next target context.
+Destination-scoped deployment events refresh relevant observations; an event received
+during a pending read schedules one further read rather than losing the invalidation.
+
+AWS failures become typed Query errors. A failed refresh retains labeled stale evidence
+only for its original context; a successful absent result remains distinct from unknown
+or unavailable evidence. Late responses can populate only their captured query key, never
+the currently selected context. Inactive cache entries remain for ten minutes, and old
+credential/source generations are not used as current evidence. These reads never start
+authentication, deployment, export, local services or any other operational mutation.
 
 ## Profile management
 

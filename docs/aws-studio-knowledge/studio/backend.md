@@ -9,6 +9,10 @@ source:
   - framework-studio/server/machine/docker.ts
   - framework-studio/shared/machine.ts
   - framework-studio/server/guards.ts
+  - framework-studio/server/deploy/observe.ts
+  - framework-studio/server/deploy/service.ts
+  - framework-studio/src/deploy/observations.tsx
+  - framework-studio/src/deploy/live.ts
   - framework-studio/server/edits/batch.ts
   - framework-studio/server/edits/journal.ts
   - framework-studio/server/database-workbench.ts
@@ -67,6 +71,24 @@ The browser fetches `/api/snapshot` and subscribes to `/api/events`. A snapshot 
 both mode models and source locations, not live AWS state. One reference-counted
 EventSource per tab serves snapshot, operation and deployment observers. Reconnect invalidates
 queries; source changes expire reviews. Dirty drafts keep their own snapshot baseline.
+
+One persistent browser deployment observer reads overview/profile metadata and one
+mode-correct deployment target per configured association on every route. Shared Query
+entries own its responses/errors; pages subscribe without adding requests or polling.
+The existing status batch contains discovery, recent events/change-set summaries and
+Development compatibility; it avoids a separate equivalent discovery request. This is
+read-only evidence, separate from specialized inspection and mutation approval.
+
+`AwsObserver` shares pending command reads independently of their completed-cache TTL.
+Freshness starts at completion. A forced read bypasses a completed entry but joins a
+pending request in the same profile/configuration generation. Profile/all invalidation
+removes old entries so new reads cannot join an earlier generation; late completion can
+only finish the original request. Failed observations are not cached. Source publication
+invalidates source-dependent observations, and terminal operations invalidate the host
+cache before broadcasting completion. Browser query identities and scoped invalidation
+preserve the same destination/credential boundaries. See
+[AWS connections](../../framework-studio/aws-connections.md#shared-deployment-observations)
+for scheduling, failure and reconnect policy.
 
 Shared operation requests pass from guarded Studio HTTP routes through
 [`OperationsClient`](../../../framework-studio/server/operations/client.ts) and

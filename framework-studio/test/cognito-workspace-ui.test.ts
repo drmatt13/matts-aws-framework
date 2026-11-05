@@ -9,6 +9,8 @@ import type { DeployOverview } from "../shared/deploy";
 import type { IdentityPolicySource } from "../shared/identity-policy";
 import { SnapshotBuilder } from "../server/snapshot";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
+import { connectionCatalogFixture } from "./browser/support/aws-connections";
+import { discoveryFor } from "./browser/support/scenarios";
 
 const require = createRequire(import.meta.url);
 let dom: { window: Window & typeof globalThis };
@@ -16,6 +18,7 @@ let ui: typeof import("@testing-library/react");
 let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
+let observations: typeof import("../src/deploy/observations");
 let dialogs: typeof import("../src/views/DraftControls");
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -33,11 +36,11 @@ before(async () => {
   require.extensions[".css"] = () => {};
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
-  studio = await import("../src/studio"); dialogs = await import("../src/views/DraftControls");
+  studio = await import("../src/studio"); observations = await import("../src/deploy/observations"); dialogs = await import("../src/views/DraftControls");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
-afterEach(() => { ui.cleanup(); mock.restoreAll(); });
+afterEach(async () => { ui.cleanup(); await queryClient?.cancelQueries(); queryClient?.clear(); mock.restoreAll(); });
 after(async () => { await builder?.dispose(); dom.window.close(); });
 
 async function mount(Component: FunctionComponent = () => h("p", null, "Authentication test panel"), initial = "/cognito/user-pools", select: (id: string | undefined) => void = () => {}) {
@@ -46,7 +49,7 @@ async function mount(Component: FunctionComponent = () => h("p", null, "Authenti
   function Root() {
     return h(studio.StudioProvider, { response, selected: undefined, select, children: h(Capture) });
   }
-  function Capture() { context = studio.useStudio(); return h("div", null, h(router.Outlet), h(dialogs.UnsavedChangesDialog)); }
+  function Capture() { context = studio.useStudio(); return h("div", null, h(observations.GlobalDeploymentObservations), h(router.Outlet), h(dialogs.UnsavedChangesDialog)); }
   const root = router.createRootRoute({ component: Root });
   const parent = router.createRoute({ getParentRoute: () => root, path: "/cognito", component: Component });
   const children = ["user-pools", "identity-pools", "providers", "permissions"].map(path => router.createRoute({ getParentRoute: () => parent, path, component: () => null }));
@@ -110,11 +113,22 @@ async function workspaceApi(policy = false, simulate?: () => Promise<Response>) 
   mock.method(deploy.deployApi, "preferences", async () => ({ profiles: {} }));
   mock.method(management.cognitoManagementApi, "history", async () => []);
   mock.method(globalThis, "fetch", async (url: string) => {
+    if (url === "/api/aws-connections") return Response.json(connectionCatalogFixture([
+      { name: "dev", kind: "login", region: "us-east-1" }, { name: "production-readonly", kind: "login", region: "us-west-2" },
+    ]));
+    if (url.startsWith("/api/deploy/status?")) {
+      const request = new URL(url, "http://localhost");
+      const found = discoveryFor(request), target = overview.targets.find(entry => entry.name === request.searchParams.get("deployment"));
+      return Response.json({ ok: true, value: { ...found, deployment: target?.name,
+        context: { ...found.context, account: target?.account, arn: `arn:aws:iam::${target?.account}:role/Fixture` },
+        targets: overview.targets.map(entry => ({ ...entry, status: "absent" })),
+      } });
+    }
     if (url.endsWith("/identity-policy/sources")) return Response.json({ revision: response.snapshot.revision, sources: policies.sources });
     if (url.endsWith("/identity-policy/simulate") && simulate) return simulate();
     throw new Error(`Unexpected request in offline workspace test: ${url}`);
   });
-  const overview = { targets: [{ name: "qa-dev", mode: "dev", origin: "implicit", account: "111122223333", region: "us-east-1" }, { name: "qa-prod", mode: "prod", origin: "declared", account: "444455556666", region: "us-west-2" }], preferences: { profile: "dev", deployment: "qa-dev", profiles: { "qa-prod": "production-readonly" } }, profiles: [{ name: "dev", kind: "login", region: "us-east-1" }] } as unknown as DeployOverview;
+  const overview = { jobs: [], targets: [{ name: "qa-dev", mode: "dev", origin: "implicit", account: "111122223333", region: "us-east-1" }, { name: "qa-prod", mode: "prod", origin: "declared", account: "444455556666", region: "us-west-2" }], preferences: { profile: "dev", deployment: "qa-dev", profiles: { "qa-prod": "production-readonly" } }, profiles: [{ name: "dev", kind: "login", region: "us-east-1" }] } as unknown as DeployOverview;
   return { workspace, identity, deploy, overview, policies };
 }
 
@@ -166,7 +180,7 @@ test("source input context avoids duplicate paths while retaining custom-target 
   const provenance = ui.screen.getByText("Source inputs").parentElement!;
   assert.equal(provenance.querySelectorAll("code").length, 1, "the same normalized input path should be shown once");
   assert.doesNotMatch(provenance.textContent!, /Deployment inputs/);
-  ui.act(() => queryClient.setQueryData(["deploy", "overview"], { ...standard, targets: standard.targets.map(target => target.mode === "dev" ? { ...target, inputs: "cdk-app/.env.qa" } : target) }));
+  ui.act(() => queryClient.setQueriesData({ queryKey: ["deploy", "overview"] }, { ...standard, targets: standard.targets.map(target => target.mode === "dev" ? { ...target, inputs: "cdk-app/.env.qa" } : target) }));
   await ui.screen.findByText(/This deployment uses different inputs/);
   assert.match(provenance.textContent!, /Source inputs.*cdk-app\/\.env.dev.*Deployment inputs.*cdk-app\/\.env.qa/);
   assert.ok(ui.screen.getByText(/Retention editing is unavailable for this deployment’s custom inputs/));

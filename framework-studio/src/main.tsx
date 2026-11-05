@@ -16,6 +16,7 @@ import { StrictMode, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { useSnapshot } from "./snapshot";
 import { StudioProvider } from "./studio";
+import { GlobalDeploymentObservations } from "./deploy/observations";
 import { Shell } from "./views/Shell";
 import "./styles.css";
 
@@ -69,6 +70,7 @@ export function Root() {
   }
   return (
     <StudioProvider response={data} selected={search.select} select={select}>
+      <GlobalDeploymentObservations />
       <Shell
         notice={
           error ? (

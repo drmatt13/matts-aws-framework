@@ -1,5 +1,5 @@
 import { dialogPrimaryActionClasses } from "../inspector-ui";
-import { deploymentOverviewQuery } from "../deploy/queries";
+import { useDeploymentOverview } from "../deploy/observations";
 import { InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
@@ -424,7 +424,7 @@ function StatefulRecovery({
 }) {
   const styles = retentionStyles(appearance);
   const Heading = headingLevel === 3 ? "h4" : "h3";
-  const overview = useQuery({ ...deploymentOverviewQuery(), staleTime: 15_000 });
+  const overview = useDeploymentOverview();
   const { awsProfile, mode: declarationMode, live } = useStudio();
   const profile = awsProfile ?? "";
   const [deployment, setDeployment] = useState(supplied?.deployment ?? ""),

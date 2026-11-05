@@ -286,6 +286,9 @@ async function configureServer(
     resources.expirePlans();
     inputs.expirePlans();
     stateful.expirePlans();
+    // Discovery includes repository target matching, and status includes local
+    // compatibility. Both must be read against the newly published source.
+    deploy.observer.invalidate();
     broadcast("snapshot", { revision, external });
   };
   let evaluating = false;

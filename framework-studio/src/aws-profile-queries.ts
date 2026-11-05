@@ -24,9 +24,9 @@ export const awsProfilesQuery = () => ({
   select: (catalog: AwsProfileCatalog) => catalog.profiles,
 });
 
-export const awsProfileIdentityQuery = (profile: string | undefined) =>
+export const awsProfileIdentityQuery = (profile: string | undefined, generation = "0:0") =>
   queryOptions({
-    queryKey: ["aws-connections", "identity", profile],
+    queryKey: ["aws-connections", "identity", profile, generation],
     queryFn: ({ signal }) =>
       call<AwsConnectionObservation>("/aws-connections/check", { profile }, signal),
     staleTime: 30_000,

@@ -30,6 +30,18 @@ runtime health are inspected separately. Domains edits Production domain intent;
 named deployments keep their own target/profile/account context. See the
 [UI design system](../docs/framework-studio/ui-design-system.md).
 
+One persistent deployment observer starts read-only AWS status on Map or any other route
+for each configured mode. It resolves a matching remembered target (or the first matching
+target), preserves account/region pins and shares TanStack Query data and in-flight reads
+with Deploy. The active mode starts first; the other warms after completion or five
+seconds. Idle polling is two minutes for the active mode and five minutes for the other,
+accelerating to four seconds for matching running deployments and pausing while hidden.
+Credential/configuration, source, deployment and reconnect events refresh scoped evidence;
+failures leave navigation and source inspection usable. These reads never start local
+services, authenticate, deploy, export or apply migrations. Specialized inspections and
+approvals remain with their workspaces. See the
+[shared observation contract](../docs/framework-studio/aws-connections.md#shared-deployment-observations).
+
 The **Database** tab (`/database`) is a source-first Prisma 8 workbench with five
 workspaces: **Schema**, **History & migrations**, **Database status**, **Saved SQL**,
 and **Data retention**. Edit the
@@ -58,8 +70,8 @@ independent Database/Cognito policies and explicit references to compatible reta
 resources. Source authority, legacy compatibility, durable inventory, dependency
 guards and CLI parity are documented in the [stateful lifecycle guide](../docs/framework-studio/stateful-resources.md).
 
-The **Deploy** tab (`/deploy`) provides deployment discovery, reviewed operations and
-local development controls. See the current [operational lifecycle](../docs/aws-studio-knowledge/deployment/lifecycle.md)
+The **Deploy** tab (`/deploy`) consumes shared deployment observations and provides reviewed
+operations and local development controls. See the current [operational lifecycle](../docs/aws-studio-knowledge/deployment/lifecycle.md)
 and the historical [Deploy & Run design](../docs/framework-studio/deploy-and-run.md).
 Its deployment detail also offers reviewed **Development & production deployment
 names** and **Client environment & frontend release** controls: public env generation

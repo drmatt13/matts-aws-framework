@@ -6,6 +6,7 @@ import type { DeployOverview, DiscoveryView, DiscoveredDeploymentView, PlanSumma
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 import { DEFAULT_FRONTEND_RELEASE } from "../shared/frontend-release";
 import { snapshot as snapshotFixture } from "./browser/support/scenarios";
+import { connectionCatalogFixture } from "./browser/support/aws-connections";
 
 /**
  * The Deploy & Run page in a DOM, against scripted /api/deploy answers: what it
@@ -19,6 +20,7 @@ let page: typeof import("../src/views/Deploy");
 let dialogs: typeof import("../src/views/deploy/Teardown");
 let activity: typeof import("../src/views/GlobalActivity");
 let studio: typeof import("../src/studio");
+let observations: typeof import("../src/deploy/observations");
 let router: typeof import("@tanstack/react-router");
 let activeStudio: ReturnType<typeof import("../src/studio").useStudio>;
 const clients: import("@tanstack/react-query").QueryClient[] = [];
@@ -44,7 +46,7 @@ function overview(patch: Partial<DeployOverview> = {}): DeployOverview {
     prerequisites: [{ id: "docker", label: "Docker", status: "ok", summary: "Engine running." }],
     local: { project: "matts-aws-framework-new", docker: { engine: "running", desktop: true }, services: [], watch: { running: false }, client: { running: false }, exported: { client: false }, startedBy: "none", restartNeeded: [] },
     jobs: [], preferences: { profiles: {}, profile: "dev", deployment: "my-aws-app" },
-    profiles: [{ name: "dev", region: "us-east-1", kind: "sso" }],
+    profiles: [{ name: "dev", region: "us-east-1", kind: "sso" }, { name: "prod", region: "us-east-1", kind: "sso" }],
     ...patch,
   };
 }
@@ -89,7 +91,12 @@ before(async () => {
         return new Response(JSON.stringify(reply), { status: 200 });
       }
       const key = Object.keys(answers).find((candidate) => path === candidate || path.startsWith(`${candidate}?`)) ?? path;
-      const answer = typeof answers[key] === "function" ? await answers[key](url) : answers[key];
+      let answer = typeof answers[key] === "function" ? await answers[key](url) : answers[key];
+      if (path === "/deploy/status" && answer?.ok && answer.value) answer = { ...answer, value: {
+        ...answer.value, deployment: url.searchParams.get("deployment"),
+        context: { ...answer.value.context, profile: url.searchParams.get("profile") },
+        detail: answer.value.detail?.name === url.searchParams.get("deployment") ? answer.value.detail : undefined,
+      } };
       return answer instanceof Response ? answer : key in answers ? new Response(JSON.stringify(answer), { status: 200 }) : new Response(JSON.stringify({ error: `unscripted ${path}` }), { status: 404 });
     },
   });
@@ -97,12 +104,13 @@ before(async () => {
   query = require("@tanstack/react-query");
   router = require("@tanstack/react-router");
   studio = await import("../src/studio");
+  observations = await import("../src/deploy/observations");
   page = await import("../src/views/Deploy");
   dialogs = await import("../src/views/deploy/Teardown");
   activity = await import("../src/views/GlobalActivity");
 });
 after(() => dom.window.close());
-afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); dom.window.localStorage.clear(); });
+afterEach(async () => { ui.cleanup(); for (const client of clients.splice(0)) { await client.cancelQueries(); client.clear(); } dom.window.localStorage.clear(); });
 
 function render(scripted: Record<string, unknown>, content?: ReactNode, associations: { dev?: string; prod?: string } = { dev: "dev", prod: "prod" }) {
   posted = [];
@@ -112,6 +120,9 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
     "/frontend-release/history": [],
     ...scripted };
   const machineOverview = scripted["/deploy/overview"] as DeployOverview | undefined;
+  answers["/aws-connections"] ??= () => connectionCatalogFixture(
+    typeof answers["/deploy/overview"] === "object" ? (answers["/deploy/overview"] as DeployOverview).profiles : machineOverview?.profiles ?? [],
+  );
   answers["/machine/docker"] ??= { docker: machineOverview?.local.docker ?? overview().local.docker,
     checks: machineOverview?.prerequisites.filter(item => item.id === "docker" || item.id === "compose") ?? overview().prerequisites,
     observedAt: "2026-11-04T00:00:00.000Z" };
@@ -120,7 +131,7 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
   clients.push(client);
   const response = snapshotFixture();
   dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify(associations));
-  function Workbench() { activeStudio = studio.useStudio(); return content ?? h("div", null, h(page.Deploy), h(activity.GlobalActivity)); }
+  function Workbench() { activeStudio = studio.useStudio(); return h("div", null, h(observations.GlobalDeploymentObservations), content ?? h("div", null, h(page.Deploy), h(activity.GlobalActivity))); }
   const root = router.createRootRoute({ component: () => h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(Workbench) }) });
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
   return ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
@@ -173,7 +184,7 @@ test("the empty profile state discovers a newly configured profile in the backgr
   await ui.screen.findByRole("heading", { name: "No AWS profiles on this machine" });
   assert.equal(ui.screen.queryByRole("button", { name: "Refresh" }), null);
   answers["/deploy/overview"] = overview();
-  ui.act(() => emit("deploy-changed", {}));
+  ui.act(() => emit("aws-connections", { profiles: [] }));
   await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
   assert.ok(ui.screen.getByRole("region", { name: "Machine readiness" }));
   assert.equal(ui.screen.queryByRole("combobox", { name: "AWS profile" }), null);
@@ -392,7 +403,7 @@ test("refreshing container logs preserves a reader's position until they return 
   assert.equal(log.getAttribute("tabindex"), "0", "keyboard users can scroll the log");
 });
 
-test("selected destination owns the detail heading and survives unrelated discovery denial", async () => {
+test("selected destination owns the detail heading without redundant discovery in the default region", async () => {
   const west = { ...context, region: "us-west-2" };
   const target = { name: "my-aws-app", mode: "dev" as const, origin: "declared" as const, account: context.account, region: west.region };
   const deployment = { ...deployed("my-aws-app", "dev"), region: west.region };
@@ -406,7 +417,8 @@ test("selected destination owns the detail heading and survives unrelated discov
   await ui.waitFor(() => assert.ok(header.textContent?.includes("us-west-2")));
   assert.ok(await ui.screen.findByText("Deployed · 1 stack"));
   assert.equal(ui.screen.queryByText("Not readable with this profile."), null);
-  assert.ok(ui.screen.getByText(/selected deployment's observation below is separate/));
+  assert.equal(requested.some(path => path.startsWith("/deploy/discover") && new URL(path, "http://localhost").searchParams.get("profile") === "dev"), false);
+  assert.equal(ui.screen.queryByText(/Default region is denied/), null);
 });
 
 test("incomplete security analysis stays inside review and cannot be applied", async () => {

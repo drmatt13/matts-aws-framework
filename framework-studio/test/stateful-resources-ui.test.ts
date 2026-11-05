@@ -5,10 +5,13 @@ import { createElement as h } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import type { ModeModel, Snapshot } from "../shared/model";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
+import { connectionCatalogFixture } from "./browser/support/aws-connections";
+import { discoveryFor } from "./browser/support/scenarios";
 
 const require = createRequire(import.meta.url);
 let dom: { window: Window & typeof globalThis };
 let ui: typeof import("@testing-library/react"), query: typeof import("@tanstack/react-query"), router: typeof import("@tanstack/react-router"), studio: typeof import("../src/studio"), view: typeof import("../src/views/DataRetention");
+let observations: typeof import("../src/deploy/observations");
 const clients: import("@tanstack/react-query").QueryClient[] = [];
 let posted: { url: string; body: any }[];
 const model = (mode: "dev" | "prod"): ModeModel => ({ mode, status: "ok", targets: [], routes: [], resources: [], edges: [], workflows: [], fields: {}, diagnostics: [], evaluatedInMs: 0 });
@@ -21,10 +24,10 @@ before(async () => {
   Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} removeEventListener() {} close() {} } });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; }; dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
-  ui = require("@testing-library/react"); query = require("@tanstack/react-query"); router = require("@tanstack/react-router"); studio = await import("../src/studio"); view = await import("../src/views/DataRetention");
+  ui = require("@testing-library/react"); query = require("@tanstack/react-query"); router = require("@tanstack/react-router"); studio = await import("../src/studio"); observations = await import("../src/deploy/observations"); view = await import("../src/views/DataRetention");
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
 });
-afterEach(() => { ui.cleanup(); clients.splice(0).forEach(client => client.clear()); mock.restoreAll(); }); after(() => dom.window.close());
+afterEach(async () => { ui.cleanup(); for (const client of clients.splice(0)) { await client.cancelQueries(); client.clear(); } mock.restoreAll(); }); after(() => dom.window.close());
 
 function answers() {
   posted = [];
@@ -33,7 +36,9 @@ function answers() {
     if (body) posted.push({ url, body });
     let value: unknown;
     if (url.startsWith("/api/stateful-resources/source")) { const mode = url.includes("prod") ? "prod" : "dev"; value = { file: "framework-config/stateful-resources.ts", hash: `${mode}-hash`, mode, resources: { database: {}, cognito: { retention: "retain" } }, legacy: { file: `cdk-app/.env.${mode}`, retain: false, configured: true }, problems: [] }; }
-    else if (url.startsWith("/api/deploy/overview")) value = { targets: [{ name: "job2-dev", mode: "dev", region: "us-east-1" }], profiles: [{ name: "dev", region: "us-east-1" }] };
+    else if (url.startsWith("/api/deploy/overview")) value = { jobs: [], preferences: { profiles: {} }, targets: [{ name: "job2-dev", mode: "dev", region: "us-east-1" }], profiles: [{ name: "dev", region: "us-east-1" }] };
+    else if (url === "/api/aws-connections") value = connectionCatalogFixture([{ name: "dev", region: "us-east-1" }]);
+    else if (url.startsWith("/api/deploy/status?")) { const request = new URL(url, "http://localhost"); value = { ok: true, value: { ...discoveryFor(request), deployment: request.searchParams.get("deployment") } }; }
     else if (url === "/api/stateful-resources/retention/plan") value = { planId: "plan", expiresAt: "later", effects: ["Source only; deployment is separate."], changes: [{ file: "framework-config/stateful-resources.ts", diff: { unified: `+ ${body.kind}: ${body.retention}` } }] };
     else if (url === "/api/stateful-resources/apply") value = { status: "applied", message: "Saved source only; deployment is separate." };
     else if (url === "/api/stateful-resources/reference/plan") return new Response(JSON.stringify({ error: "Original app client is missing. Choose a surviving public app client." }), { status: 422 });
@@ -43,7 +48,7 @@ function answers() {
 }
 async function mount(kind?: "database" | "cognito") {
   dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${snapshot.repositoryRoot}`, JSON.stringify({dev:"dev"}));
-  function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(router.Outlet) }); }
+  function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h("div", null, h(observations.GlobalDeploymentObservations), h(router.Outlet)) }); }
   const root = router.createRootRoute({ component: Root }), app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/lifecycle"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/lifecycle", component: () => h(view.DataRetention, { kind }) })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));

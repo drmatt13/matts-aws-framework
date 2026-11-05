@@ -9,7 +9,8 @@ import {
 } from "./AuthenticationEvidence";
 import { sourceEditBlocked } from "../editing-state";
 import { identitySourceQuery } from "../identity-queries";
-import { deploymentOverviewQuery } from "../deploy/queries";
+import { useDeploymentOverview } from "../deploy/observations";
+import { resolveDeploymentTarget } from "../deploy/context";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -76,10 +77,7 @@ interface Inspection {
 }
 
 export function authenticationSelection(mode: Mode, overview?: DeployOverview, profile = ""): IdentitySelection {
-  const preferred = overview?.targets.find(
-    (target) => target.name === overview.preferences?.deployment && target.mode === mode,
-  );
-  const target = preferred ?? overview?.targets.find((target) => target.mode === mode);
+  const target = resolveDeploymentTarget(mode, overview);
   return {
     profile,
     deployment: target?.name ?? "",
@@ -98,7 +96,7 @@ export function AuthenticationWorkspace() {
   const section: Section =
     sections.find((entry) => pathname.endsWith(`/${entry.id}`))?.id ?? "user-pools";
   const source = useQuery(identitySourceQuery(mode, snapshot.revision));
-  const overview = useQuery(deploymentOverviewQuery());
+  const overview = useDeploymentOverview();
   const [selections, setSelections] = useState<Partial<Record<Mode, IdentitySelection>>>({});
   const candidate = selections[mode];
   const destination =

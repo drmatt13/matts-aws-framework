@@ -43,6 +43,7 @@ import { AwsProfileDetails } from "./AwsProfileDetails";
 import { AuthenticationProgress } from "./AwsProfileAuthentication";
 import { EnvironmentPills } from "./DeploymentBadge";
 import type { Mode } from "../../shared/model";
+import { connectionGeneration } from "../connection-generations";
 import {
   ProfileChangeReview,
   ProfileDeletionReview as ProfileDeletionConfirmation,
@@ -102,7 +103,6 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
   const [roles, setRoles] = useState<readonly { roleName: string }[]>([]);
   const [account, setAccount] = useState("");
   const [role, setRole] = useState("");
-  const [checks, setChecks] = useState<Record<string, AwsConnectionObservation>>({});
   const mounted = useRef(true);
   const refreshingRef = useRef(false);
   const deleteTrigger = useRef<HTMLButtonElement | null>(null);
@@ -114,6 +114,8 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
   currentAuthentication.current = authentication;
   const currentAssociations = useRef(awsProfiles);
   currentAssociations.current = awsProfiles;
+  const currentLive = useRef(live);
+  currentLive.current = live;
   const currentRequest = useRef(authenticationRequest);
   currentRequest.current = authenticationRequest;
   /** A finished sign-in with no further step returns to the view it began from; the status line keeps its outcome. */
@@ -135,14 +137,13 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
   const profile = catalog.data?.profiles.find((item) => item.name === selectedName);
   const defaultUnconfigured = !!catalog.data && !catalog.data.profiles.some((item) => item.name === "default");
   useEffect(() => {
-    setChecks({});
     setReview(undefined);
     setLogoutReview(undefined);
     setDeletionReview(undefined);
   }, [live.awsConnectionRevision]);
   // The modal reads cached observations. Choosing a row never executes a credential provider.
   const observation = useQuery({
-    ...awsProfileIdentityQuery(profile?.name),
+    ...awsProfileIdentityQuery(profile?.name, connectionGeneration(live, profile?.name)),
     enabled: false,
   });
   const authActive = !!authentication && !authenticationFinished(authentication);
@@ -255,9 +256,10 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
     setRefreshing(false);
   };
   const check = async (name: string, signal?: AbortSignal) => {
+    const generation = connectionGeneration(currentLive.current, name);
+    const key = awsProfileIdentityQuery(name, generation).queryKey;
     const next = await checkAwsProfile(name, signal);
-    queryClient.setQueryData(awsProfileIdentityQuery(name).queryKey, next);
-    setChecks((current) => ({ ...current, [name]: next }));
+    queryClient.setQueryData(key, next);
   };
   const authenticate = (request: AuthenticationRequest) =>
     void run("Starting sign-in…", async () => {
@@ -368,7 +370,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
       if (modes.includes(mode) && !current) {
         setAwsProfile(mode, name);
         if (mode === activeMode)
-          void queryClient.fetchQuery(awsProfileIdentityQuery(name)).catch(() => {});
+          void queryClient.fetchQuery(awsProfileIdentityQuery(name, connectionGeneration(live, name))).catch(() => {});
       } else if (!modes.includes(mode) && current) setAwsProfile(mode, undefined);
     }
     setMessage(
@@ -388,12 +390,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
       setDetailVisible(false);
       setAuthentication(undefined);
       setAdding(false);
-      setChecks((current) => {
-        const next = { ...current };
-        delete next[result.name];
-        return next;
-      });
-      queryClient.removeQueries({ queryKey: awsProfileIdentityQuery(result.name).queryKey });
+      queryClient.removeQueries({ queryKey: ["aws-connections", "identity", result.name] });
       setMessage(
         result.name === "default" ? "Default profile cleared." : `Deleted profile ${result.name}.`,
       );
@@ -523,11 +520,9 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                 ) : null}
                 {catalog.data.profiles.map((item) => {
                   const selected = !adding && item.name === selectedName;
-                  const cached =
-                    checks[item.name] ??
-                    queryClient.getQueryData<AwsConnectionObservation>(
-                      awsProfileIdentityQuery(item.name).queryKey,
-                    );
+                  const cached = queryClient.getQueryData<AwsConnectionObservation>(
+                    awsProfileIdentityQuery(item.name, connectionGeneration(live, item.name)).queryKey,
+                  );
                   const { state, attention } = profileHealth(item, cached);
                   const modes = (["dev", "prod"] as const).filter(
                     (mode) => awsProfiles[mode] === item.name,
@@ -847,7 +842,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                   <AwsProfileDetails
                     profile={profile}
                     catalog={catalog.data}
-                    observation={checks[profile.name] ?? observation.data}
+                    observation={observation.data}
                     associations={awsProfiles}
                     pending={pending}
                     onTest={() => void run("Checking connection…", () => check(profile.name))}

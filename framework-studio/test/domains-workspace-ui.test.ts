@@ -8,6 +8,8 @@ import type { DeployOverview } from "../shared/deploy";
 import type { DomainsObservation, IdentitySource } from "../shared/identity";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 import { SnapshotBuilder } from "../server/snapshot";
+import { connectionCatalogFixture } from "./browser/support/aws-connections";
+import { discoveryFor } from "./browser/support/scenarios";
 
 const require = createRequire(import.meta.url);
 let dom: { window: Window & typeof globalThis };
@@ -15,6 +17,7 @@ let ui: typeof import("@testing-library/react");
 let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
+let observations: typeof import("../src/deploy/observations");
 let view: typeof import("../src/views/DomainsWorkspace");
 let identity: typeof import("../src/identity-api");
 let deploy: typeof import("../src/deploy/api");
@@ -30,6 +33,7 @@ const source: IdentitySource = {
   providers: [], declaredProviders: [], identityPools: "not-declared", problems: [],
 };
 const overview = {
+  jobs: [],
   targets: [
     { name: "qa-dev", mode: "dev", origin: "implicit", account: "111122223333", region: "us-east-1" },
     { name: "qa-prod", mode: "prod", origin: "declared", account: "444455556666", region: "us-west-2" },
@@ -47,18 +51,18 @@ before(async () => {
   require.extensions[".css"] = () => {};
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
-  studio = await import("../src/studio"); view = await import("../src/views/DomainsWorkspace"); identity = await import("../src/identity-api"); deploy = await import("../src/deploy/api");
+  studio = await import("../src/studio"); observations = await import("../src/deploy/observations"); view = await import("../src/views/DomainsWorkspace"); identity = await import("../src/identity-api"); deploy = await import("../src/deploy/api");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
-afterEach(() => { ui.cleanup(); queryClient?.clear(); mock.restoreAll(); });
+afterEach(async () => { ui.cleanup(); await queryClient?.cancelQueries(); queryClient?.clear(); mock.restoreAll(); });
 after(async () => { await builder?.dispose(); dom.window.close(); });
 
 async function mount() {
   const previousContext = context;
   dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify({dev:"dev"}));
   function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(Capture) }); }
-  function Capture() { context = studio.useStudio(); return h(router.Outlet); }
+  function Capture() { context = studio.useStudio(); return h("div", null, h(observations.GlobalDeploymentObservations), h(router.Outlet)); }
   const root = router.createRootRoute({ component: Root });
   const domains = router.createRoute({ getParentRoute: () => root, path: "/domains", component: view.DomainsWorkspace });
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/domains"] }), routeTree: root.addChildren([domains]) });
@@ -72,13 +76,28 @@ function forbidOperations() {
   const requests: { url: string; method?: string }[] = [];
   mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
     requests.push({ url, method: init?.method });
+    const shared = sharedDeploymentRead(url);
+    if (shared) return shared;
     if (url === "/api/identity/domain-dns/history" && init?.method === "GET") return Response.json([]);
     throw new Error(`Unexpected request in offline Domains test: ${init?.method} ${url}`);
   });
   return () => {
     assert.equal(inspect.mock.callCount(), 0, "mounting or retrying local reads must not inspect AWS");
-    assert.ok(requests.every(request => request.url === "/api/identity/domain-dns/history" && request.method === "GET"), "only the local saved-receipt history may load automatically; no live probes or source/DNS mutations");
+    assert.ok(requests.every(request => request.method === "GET" && (request.url === "/api/identity/domain-dns/history" || request.url === "/api/aws-connections" || request.url.startsWith("/api/deploy/status?"))), "only shared deployment reads and local receipt history may load automatically; domain probes and mutations remain explicit");
   };
+}
+
+function sharedDeploymentRead(url: string) {
+  if (url === "/api/aws-connections") return Response.json(connectionCatalogFixture(overview.profiles));
+  if (url.startsWith("/api/deploy/status?")) {
+    const request = new URL(url, "http://localhost");
+    const found = discoveryFor(request), target = overview.targets.find(entry => entry.name === request.searchParams.get("deployment"));
+    return Response.json({ ok: true, value: { ...found, deployment: target?.name,
+      context: { ...found.context, account: target?.account, arn: `arn:aws:iam::${target?.account}:role/Fixture` },
+      targets: overview.targets.map(entry => ({ ...entry, status: "absent" })),
+    } });
+  }
+  return undefined;
 }
 
 test("Domains preserves source failure detail and retries production source without inspecting or mutating AWS", async () => {
@@ -165,6 +184,8 @@ test("Domains transport failures explain connection recovery, retain prior evide
   let offline = false;
   const inspections: { url: string; method?: string }[] = [];
   mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
+    const shared = sharedDeploymentRead(url);
+    if (shared) return shared;
     if (url === "/api/identity/domain-dns/history" && init?.method === "GET") return Response.json([]);
     assert.ok(url.startsWith("/api/identity/domains?"), `unexpected request: ${url}`);
     inspections.push({ url, method: init?.method });

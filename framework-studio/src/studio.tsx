@@ -95,7 +95,7 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   const inspection = useInspectorNavigation({ selected, ready: selected === draftState.selected, aliases: entityAliases,
     mode: draftState.mode, select: props.select, requestNavigation: proceed => draft.requestNavigation(proceed),
     label: id => index.displayNames[id] ?? index.resources.get(id)?.path.at(-1) ?? titleOf(index, id) });
-  const live = useLiveUpdates((files) => toast(`${files.join(", ")} changed outside the studio. ${draft.dirty ? "Your draft is preserved; review the source conflict before applying." : "The view has been refreshed."}`));
+  const live = useLiveUpdates((files) => toast(`${files.join(", ")} changed outside the studio. ${draft.dirty ? "Your draft is preserved; review the source conflict before applying." : "The view has been refreshed."}`), response.snapshot.revision);
 
   // Covers selection search params, view links, browser back/forward and programmatic
   // router navigation. The same session guard handles graph-mode changes below.

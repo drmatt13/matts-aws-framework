@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { STUDIO_PROTOCOL_VERSION } from "../../../shared/protocol";
 import { DEFAULT_FRONTEND_RELEASE } from "../../../shared/frontend-release";
-import { batchPlan, discovery, identity, NOW, overview, snapshot, stateful, workbench } from "./scenarios";
+import { batchPlan, discovery, discoveryFor, identity, NOW, overview, snapshot, stateful, workbench } from "./scenarios";
 import { installEvents } from "./events";
 import { connectionCatalogFixture, connectionObservationFixture } from "./aws-connections";
 
@@ -76,8 +76,8 @@ export const test = base.extend<{ studio: StudioFixture }>({
           case "GET /api/aws-connections": value = connectionCatalogFixture(overview().profiles); break;
           case "POST /api/aws-connections/check": value = connectionObservationFixture((body as {profile:string}).profile); break;
           case "GET /api/deploy/identity": value = { ok: true, value: { context: { ...discovery().context, profile: url.searchParams.get("profile") } } }; break;
-          case "GET /api/deploy/discover": value = { ok: true, value: discovery() }; break;
-          case "GET /api/deploy/status": value = { ok: true, value: { ...discovery(), deployment: url.searchParams.get("deployment"), detail: undefined } }; break;
+          case "GET /api/deploy/discover": value = { ok: true, value: discoveryFor(url) }; break;
+          case "GET /api/deploy/status": value = { ok: true, value: { ...discoveryFor(url), deployment: url.searchParams.get("deployment"), detail: undefined } }; break;
           case "GET /api/deploy/plans": value = []; break;
           case "GET /api/deploy/drift": value = null; break;
           case "GET /api/frontend-release/settings": value = { settings: DEFAULT_FRONTEND_RELEASE, hash: "browser-settings" }; break;

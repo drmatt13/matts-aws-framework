@@ -53,6 +53,7 @@ test("Cognito subsection navigation retains the selected profile and independent
   await page.getByRole("button", { name: "Retry source", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Fixture identity source unavailable" })).not.toBeVisible();
   studio.reply("GET", "/api/aws-connections", route => route.fulfill({ json: connectionCatalogFixture([{ name: "typed-profile", kind: "sso" }]) }));
+  await studio.emit("aws-connections", { profiles: [] });
   await page.getByRole("button", { name: /Development AWS profile:/ }).click();
   await page.getByRole("combobox", { name: "AWS profile", exact: true }).selectOption("typed-profile");
   await page.keyboard.press("Escape");

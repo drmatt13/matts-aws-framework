@@ -42,6 +42,14 @@ export function discovery(): DiscoveryView {
   return { context: { arn: "arn:aws:iam::123456789012:role/browser-fixture", profile: "browser", account: "123456789012", region: "us-east-1" }, deployments: [], unrecognized: [], records: {}, unreadable: [], observedAt: NOW,
     targets: [{ name: "browser-dev", mode: "dev", origin: "implicit", status: "absent" }, { name: "browser-prod", mode: "prod", origin: "declared", status: "absent" }] };
 }
+/** AWS observations must describe the requested connection, including pinned regions. */
+export function discoveryFor(url: URL): DiscoveryView {
+  const value = discovery();
+  return { ...value, context: { ...value.context,
+    profile: url.searchParams.get("profile") ?? value.context.profile,
+    region: url.searchParams.get("region") ?? value.context.region,
+  } };
+}
 export function identity(mode: "dev" | "prod"): IdentitySource {
   return { mode, file: `cdk-app/.env.${mode}`, hash: `identity-${mode}`, exists: true, inputs: {}, signInProviders: [], providers: [], declaredProviders: [], identityPools: "not-declared", problems: [] };
 }
