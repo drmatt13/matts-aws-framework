@@ -79,6 +79,7 @@ export function Deploy() {
     mode: "dev" | "prod";
     region?: string;
   }>();
+  const teardownButton = useRef<HTMLButtonElement | null>(null);
   const [keepName, setKeepName] = useState<{ stage: string; mode: "dev" | "prod"; deployAs: string }>();
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "refuse" | "info" }[]>([]);
   const [liveEvents, setLiveEvents] = useState<Record<string, StackEventView[]>>({});
@@ -220,10 +221,12 @@ export function Deploy() {
   const sameDestination = (plan: PlanSummaryView) => plan.deployment === selectedName
     && plan.mode === declarationMode && plan.profile === profile
     && plan.account === selectedContext?.account && plan.region === selectedContext?.region;
-  const pendingPlans = [...(plansQuery.data ?? [])].filter(plan => sameDestination(plan) && !plan.applied)
+  const destinationPlans = [...(plansQuery.data ?? [])].filter(sameDestination)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.key.localeCompare(a.key));
-  // A completed synthesis becomes the current proposal. Unfinished and older artifacts remain recoverable.
-  const currentPlan = pendingPlans.find(plan => plan.status !== "unfinished") ?? pendingPlans[0];
+  // Applying the newest generation supersedes earlier proposals; it must never
+  // promote an older pending artifact back into the current slot.
+  const latestPlan = destinationPlans.find(plan => plan.status !== "unfinished") ?? destinationPlans[0];
+  const currentPlan = latestPlan && !latestPlan.applied ? latestPlan : undefined;
   const pending = preparing === connectionKey;
   const activeJob = runningFor(selectedName);
 
@@ -345,7 +348,8 @@ export function Deploy() {
         void operate("docker-start", {});
         break;
       case "delete":
-        setTeardown({ deployment: name, mode: row.mode, region: row.target?.region });
+        teardownButton.current = trigger ?? null;
+        setTeardown({ deployment: name, mode: row.mode, region: selectedContext?.region ?? row.target?.region });
         break;
       case "deploy-as":
         if (row.target?.stage && action.deployAs) setKeepName({ stage: row.target.stage, mode: row.mode, deployAs: action.deployAs });
@@ -440,6 +444,7 @@ export function Deploy() {
               <Detail
                 row={row}
                 context={selectedContext}
+                inspectionScope={observation.scope}
                 status={status}
                 record={discovery?.records[row.name]}
                 findings={visibleFindings}
@@ -450,6 +455,8 @@ export function Deploy() {
                 events={events}
                 drift={driftQuery.data}
                 onAction={act}
+                busy={activeJob?.title ?? (pending ? "Synthesis" : undefined)}
+                deploymentStale={Boolean(problem)}
                 machine={machine}
                 notice={readFeedback}
                 actions={(
@@ -538,6 +545,7 @@ export function Deploy() {
           profile={profile}
           region={teardown.region}
           busy={runningFor(teardown.deployment)?.title}
+          returnFocusRef={teardownButton}
           onClose={() => setTeardown(undefined)}
           onDelete={({ confirm, retainFailed, review }) => {
             const target = teardown;

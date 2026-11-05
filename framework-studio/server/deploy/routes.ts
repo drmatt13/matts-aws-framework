@@ -3,6 +3,7 @@ import type { OperationRequest } from "../../shared/deploy";
 import { JobError } from "./jobs";
 import { OperationError, validService } from "./registry";
 import type { DeployService } from "./service";
+import type { StackInspectionRequest } from "../../shared/stack-inspection";
 
 /**
  * /api/deploy: Deploy & Run's HTTP surface, behind the studio's token, host and
@@ -53,6 +54,23 @@ export function deployRouter(service: DeployService): express.Router {
 
   router.get("/status", (request, response) => send(response, async () =>
     service.status(await service.requireProfile(request.query.profile), deployment(request.query.deployment), region(request.query.region), force(request.query.force))));
+
+  router.get("/stack", (request, response) => send(response, async () => {
+    const scalar = (name: string, required = false): string | undefined => {
+      const value = request.query[name];
+      if (value === undefined && !required) return undefined;
+      if (typeof value !== "string" || !value || value.length > 24_000) throw new OperationError(400, `Choose a valid ${name}.`);
+      return value;
+    };
+    const mode = scalar("mode", true);
+    if (mode !== "dev" && mode !== "prod") throw new OperationError(400, "State the deployment's mode.");
+    return service.inspectStack({
+      profile: await service.requireProfile(request.query.profile), deployment: deployment(request.query.deployment), mode,
+      account: scalar("account", true)!, region: region(request.query.region) ?? "", stack: scalar("stack", true)!,
+      stackId: scalar("stackId"), section: scalar("section", true) as StackInspectionRequest["section"],
+      cursor: scalar("cursor"), changeSetId: scalar("changeSetId"), exportName: scalar("exportName"), stage: scalar("stage") as StackInspectionRequest["stage"],
+    }, force(request.query.force));
+  }));
 
   router.get("/teardown", (request, response) => send(response, async () => {
     const mode = request.query.mode;

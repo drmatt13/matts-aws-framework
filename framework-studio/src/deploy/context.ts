@@ -25,6 +25,13 @@ export interface DeploymentDestination {
   readonly region?: string;
 }
 
+/** Source edits do not move observed AWS resources; every actor/destination field still does. */
+export function sameDeploymentObservation(left: DeploymentScope | undefined, right: DeploymentScope): boolean {
+  return Boolean(left && left.repository === right.repository && left.mode === right.mode
+    && left.profile === right.profile && left.generation === right.generation
+    && left.deployment === right.deployment && left.account === right.account && left.region === right.region);
+}
+
 export function matchesDeployment(scope: DeploymentScope, destination: DeploymentDestination, observedAccount?: string, observedRegion?: string) {
   return (!destination.profile || scope.profile === destination.profile)
     && (!destination.deployment || !scope.deployment || scope.deployment === destination.deployment)

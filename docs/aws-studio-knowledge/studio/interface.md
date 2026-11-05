@@ -14,9 +14,14 @@ source:
   - framework-studio/src/connection-generations.ts
   - framework-studio/src/deploy/observations.tsx
   - framework-studio/src/deploy/context.ts
+  - framework-studio/src/deploy/presence.ts
   - framework-studio/src/deploy/queries.ts
+  - framework-studio/src/deploy/stack-inspection.ts
+  - framework-studio/src/views/deploy/Detail.tsx
+  - framework-studio/src/views/deploy/StackInspector.tsx
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
+  - framework-studio/src/views/SourceContext.tsx
   - framework-studio/src/views/GlobalActivity.tsx
   - framework-studio/src/agent-chat.ts
   - framework-studio/src/views/agent/AgentPanel.tsx
@@ -99,9 +104,10 @@ checks and their remedies on the right of the deployment heading, with issues an
 before passed checks. The heading uses a plain document header and 18px sans title;
 its findings and operational evidence share the document column, type roles and spacing. Narrow layouts wrap the group below the name and keep it aligned right;
 there is no separate subnav bar. **Synthesize** prepares and saves the selected mode's
-complete deployment assembly and template review without applying it. The newest pending
-plan for the exact deployment, mode, profile, account and region is the current plan;
-older artifacts remain available under **Earlier plans** for explicit review and recovery.
+complete deployment assembly and template review without applying it. The newest completed
+generation for the exact deployment, mode, profile, account and region decides the current plan;
+once that generation is applied, an older pending plan does not become current again.
+Older artifacts remain available under **Earlier plans** for explicit review and recovery.
 Each plan card owns **Review plan** and **Discard**. Deployment is confirmed inside its
 review; the header has only **Synthesize**, with no promoted review or deployment action.
 Preparation and deployment progress belong to Activity. Source, input, target and AWS
@@ -111,6 +117,21 @@ The full-width This machine, Client environment & frontend release, and Stateful
 and retained-resource references cards are absent from Deploy. Their components and backend
 services remain available; saved-plan reviews, local operation findings and Activity remain.
 CloudFormation events are shown through Activity rather than repeated on the page.
+**Deployed · N stacks** is a keyboard-accessible disclosure with the observed destination
+and stack statuses. Its **Destroy…** action opens the existing teardown review; deletion
+still requires the typed deployment name and the backend's identity and retention checks.
+The card remains visible during synthesis and source-only observation refreshes.
+Each stack row opens a read-only **Stack details** inspector with its CloudFormation
+overview, resources, events, outputs, parameters, template, tags, change sets and
+cross-stack dependencies. Sections load only when selected, with pagination and
+explicit loading, empty and error states. The inspector pins the immutable stack ARN
+and clears when the deployment destination or credential generation changes. Deployment
+destruction stays in the parent card's separately confirmed teardown flow.
+Each Source mode's dot subscribes to the same destination-scoped observations: ready
+owned stacks are green, confirmed absence is red, failed/in-progress/unreadable evidence
+is amber, and unconfigured/loading evidence is muted. A source-only refresh retains the
+last observation; changing the destination or credential generation clears it. Retained
+evidence is labeled as last observed and does not establish current application health.
 The account/region line shows a caption-sized loading skeleton while the selected profile
 is first read, preserving the same line height. Expired or missing
 credentials replace that line with a red **AWS sign-in required** text action in the same

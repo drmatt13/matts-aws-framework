@@ -1,8 +1,28 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
-import type { AwsProblem } from "../../shared/deploy";
+import type { AwsProblem, DeployOverview, DiscoveryView, StatusView } from "../../shared/deploy";
 import { ApiError } from "../http";
 import { deployApi, type Observation } from "./api";
-import type { DeploymentScope } from "./context";
+import { sameDeploymentObservation, type DeploymentScope } from "./context";
+
+/** Last observed metadata survives source-only refreshes, including a consumer remount. */
+export function previousDeploymentOverview(client: QueryClient, repository: string): DeployOverview | undefined {
+  return client.getQueryCache().findAll({ queryKey: ["deploy", "overview"] })
+    .filter(query => (query.queryKey[2] as { repository?: string } | undefined)?.repository === repository && query.state.data)
+    .reverse()
+    .sort((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)[0]?.state.data as DeployOverview | undefined;
+}
+
+/** Cache reads only: never reuse evidence from a different actor or AWS destination. */
+export function previousDeploymentObservation<T extends DiscoveryView | StatusView>(client: QueryClient, scope: DeploymentScope, kind: "status" | "discover"): T | undefined {
+  return client.getQueryCache().findAll({ queryKey: ["deploy", kind] }).filter(query => {
+    const previous = query.queryKey[2] as DeploymentScope | undefined;
+    if (!previous || !query.state.data) return false;
+    if (kind === "status") return sameDeploymentObservation(previous, scope);
+    // An account inventory is deliberately shared by modes with no named target.
+    return previous.repository === scope.repository && previous.profile === scope.profile
+      && previous.generation === scope.generation && previous.region === scope.region;
+  }).reverse().sort((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)[0]?.state.data as T | undefined;
+}
 
 export class AwsReadError extends Error {
   constructor(readonly problem: AwsProblem) { super(problem.message); this.name = "AwsReadError"; }

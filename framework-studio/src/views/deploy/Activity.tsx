@@ -361,6 +361,8 @@ export function Activity(props: {
                   ref={log}
                   className={cx(logClasses, "min-h-0 flex-1")}
                   tabIndex={0}
+                  role="log"
+                  aria-live="off"
                   aria-label="Log"
                   onScroll={(event) => {
                     const element = event.currentTarget;

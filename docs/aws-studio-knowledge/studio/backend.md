@@ -11,6 +11,9 @@ source:
   - framework-studio/server/guards.ts
   - framework-studio/server/deploy/observe.ts
   - framework-studio/server/deploy/service.ts
+  - framework-studio/server/deploy/routes.ts
+  - framework-studio/server/deploy/stack-inspection.ts
+  - framework-studio/shared/stack-inspection.ts
   - framework-studio/src/deploy/observations.tsx
   - framework-studio/src/deploy/live.ts
   - framework-studio/server/edits/batch.ts
@@ -53,6 +56,7 @@ and disposal, and [operations](../deployment/operations.md) for runner lifecycle
 | `DatabaseApplicationService`, `DatabaseCloudService`, SQL router | Separately targeted, reviewed database operations | Authority derived merely from editing Prisma or choosing a source mode |
 | `InfrastructureService` | Explicit CDK synthesis and sanitized assembly inventory, with per-mode freshness | Deployment, live drift or AWS runtime health |
 | `DeployService`, frontend-release and stateful-resource services | Named targets, plans, operation approvals, evidence and recovery/lifecycle workflows | Implicit authority from source Apply or a canvas selection |
+| Stack inspection under `DeployService` | On-demand CloudFormation information for a verified deployment member and immutable stack ARN | Account-wide stack browsing, deployment approval, secret resolution or implicit drift detection |
 | Operations coordinator and workers | Durable accepted intents, duplicate prevention, resource claims, independent execution/log capture and shared projection for supported adapters | New deployment authority, replay of uncertain mutations or approval for database/publication/identity actions |
 | Identity and identity-policy services | Source-owned identity configuration, selected AWS observations and typed operation boundaries | A generic IAM policy simulator or proof that provider-side sign-in works |
 | `AwsConnectionsService` | Machine-local profile catalog, identity observations, native authentication coordination, reviewed non-secret AWS configuration and profile deletion | Deployment approval, complete IAM authorization or browser access to credentials |
@@ -78,6 +82,13 @@ entries own its responses/errors; pages subscribe without adding requests or pol
 The existing status batch contains discovery, recent events/change-set summaries and
 Development compatibility; it avoids a separate equivalent discovery request. This is
 read-only evidence, separate from specialized inspection and mutation approval.
+
+The on-demand `/deploy/stack` reader is separate from that background status batch.
+It validates the declared target, selected actor and framework ownership, pins the stack ARN and reads
+one requested CloudFormation section. Section pagination is bound to the verified
+destination; outputs, template, parameter and change-set data do not enter operation
+logs. NoEcho parameters and template defaults stay masked. See
+[deployment operations](../deployment/operations.md) for the inspector sections.
 
 `AwsObserver` shares pending command reads independently of their completed-cache TTL.
 Freshness starts at completion. A forced read bypasses a completed entry but joins a

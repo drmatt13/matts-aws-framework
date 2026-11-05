@@ -18,6 +18,8 @@ import { withDockerStatus } from "../../shared/machine";
 import { runCommand, Tools, type Runner } from "./process";
 import { buildOperation, exportDirectory, managedSpec, OperationError, type ManagedCommands, type OperationContext, type RepositoryTarget } from "./registry";
 import type { AwsConnectionsService } from "../aws-connections/service";
+import { StackInspector } from "./stack-inspection";
+import type { StackInspectionRequest } from "../../shared/stack-inspection";
 
 /**
  * Deploy & Run's server side: the observers, the operation registry and the
@@ -43,6 +45,7 @@ export class DeployService {
   readonly teardowns: TeardownStore;
   readonly local: LocalEnvironment;
   readonly observer: AwsObserver;
+  readonly stackInspector: StackInspector;
   readonly preferences: Preferences;
   private readonly run: Runner;
   private readonly env: NodeJS.ProcessEnv;
@@ -75,6 +78,7 @@ export class DeployService {
       if (event === "deploy-job" && (data as JobView).status !== "running") {
         const profile = (data as JobView).params.profile;
         this.observer.invalidate(typeof profile === "string" ? profile : undefined);
+        this.stackInspector?.invalidate();
       }
       broadcast(event, data);
       if (event === "deploy-job") broadcast("operation-job", data);
@@ -90,6 +94,7 @@ export class DeployService {
     this.teardowns = new TeardownStore(state);
     this.local = new LocalEnvironment(root, this.tools, this.run, this.env, exportDirectory(root, this.env), state, options.disabledLocalServices);
     this.observer = new AwsObserver(this.tools, this.run, this.env);
+    this.stackInspector = new StackInspector(this.tools, this.run, this.env);
     this.preferences = new Preferences(state);
     this.context = {
       root, tools: this.tools, env: this.env, run: this.run, exportDirectory: this.local.exportDirectory,
@@ -108,6 +113,7 @@ export class DeployService {
       followStacks: (job, profile, deployment, region) => this.follow(job, profile, deployment, region),
       changed: (profile, deployment) => {
         this.observer.invalidate(profile);
+        this.stackInspector.invalidate();
         this.prerequisites = undefined;
         this.dockerStatus.invalidate();
         if (!this.disposed) void this.dockerStatus.read(true).catch(() => {});
@@ -188,6 +194,12 @@ export class DeployService {
 
   status(profile: string, deployment: string, region: string | undefined, force: boolean): Promise<Observation<unknown>> {
     return this.observer.status(profile, deployment, region, force);
+  }
+
+  inspectStack(request: StackInspectionRequest, force: boolean) {
+    const target = this.targets().find(target => target.name === request.deployment);
+    if (!target || target.mode !== request.mode || target.account && target.account !== request.account || target.region && target.region !== request.region) throw new OperationError(409, "Choose a declared deployment and its configured account, region, and mode before inspecting a stack.");
+    return this.stackInspector.inspect(request, force, { appId: target.appId, stage: target.stage });
   }
 
   async teardown(profile: string, deployment: string, mode: "dev" | "prod", region: string | undefined, retainFailed = false, disableProtection = false) {
@@ -315,7 +327,10 @@ export class DeployService {
           this.operationVersions.set(job.id, version);
           // Subscribers may refresh as soon as a terminal job arrives. Drop
           // pre-completion AWS evidence before publishing either event.
-          if (job.status !== "running") this.observer.invalidate(typeof job.params.profile === "string" ? job.params.profile : undefined);
+          if (job.status !== "running") {
+            this.observer.invalidate(typeof job.params.profile === "string" ? job.params.profile : undefined);
+            this.stackInspector.invalidate();
+          }
           this.broadcast("operation-job", job);
           this.broadcast("deploy-job", job);
           if (job.status !== "running") this.broadcast("deploy-changed", { deployment: job.deployment, profile: job.params.profile });

@@ -298,7 +298,7 @@ test("deleting shows what AWS holds and what stays, and needs the typed name", a
   assert.equal((remove as HTMLButtonElement).disabled, true);
   ui.fireEvent.change(ui.screen.getByLabelText("Type my-aws-app to delete it"), { target: { value: "my-aws-app" } });
   ui.fireEvent.click(remove);
-  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "destroy", params: { deployment: "my-aws-app", mode: "dev", profile: "dev", confirm: "my-aws-app", review: "delete-review-abc123" } }));
+  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "destroy", params: { deployment: "my-aws-app", mode: "dev", profile: "dev", region: context.region, confirm: "my-aws-app", review: "delete-review-abc123" } }));
 });
 
 test("a plan job finishing while another plan is under review does not replace it", async () => {
@@ -606,5 +606,108 @@ test("a no-change synthesis still has one inspectable plan card without a deploy
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review plan" }));
   await ui.screen.findByText(/Nothing to apply/);
   assert.equal(ui.screen.queryByRole("button", { name: "Deploy development" }), null);
+  assert.equal(operations().length, 0);
+});
+
+for (const outcome of ["succeeded", "failed", "interrupted", "partial"] as const) {
+  test(`an applied ${outcome} generation never promotes an older pending plan`, async () => {
+    const older = { ...synthesizedPlan(), key: "older-pending", createdAt: "2026-11-05T11:00:00Z" };
+    const newest = { ...synthesisSummary(synthesizedPlan()), key: "latest-applied", applied: outcome };
+    render({ ...deploymentAnswers(), "/deploy/plans": [synthesisSummary(older), newest] });
+    await ui.screen.findByText("Earlier plans (1)");
+    const history = document.querySelector('details[aria-label="Earlier plans"]')!;
+    assert.equal(history.hasAttribute("open"), false);
+    const waiting = [...document.querySelectorAll("article")].filter(card => card.textContent?.includes("Plan ready for review"));
+    assert.equal(waiting.length, 1);
+    assert.ok(history.contains(waiting[0]!), "the only remaining pending proposal stays in history");
+    assert.equal(operations().length, 0);
+  });
+}
+
+test("applying the current plan moves every older pending proposal into history", async () => {
+  const older = { ...synthesizedPlan(), key: "older-pending", createdAt: "2026-11-05T11:00:00Z" };
+  const newest = { ...synthesizedPlan(), key: "latest-to-apply" };
+  render({ ...deploymentAnswers(), "/deploy/plans": [synthesisSummary(older), synthesisSummary(newest)] });
+  await ui.screen.findByText("Earlier plans (1)");
+  const history = document.querySelector('details[aria-label="Earlier plans"]')!;
+  assert.equal([...document.querySelectorAll("article")].filter(card => !history.contains(card) && card.textContent?.includes("Plan ready for review")).length, 1);
+  answers["/deploy/plans"] = [synthesisSummary(older), { ...synthesisSummary(newest), applied: "succeeded" }];
+  ui.act(() => emit("deploy-changed", { profile: "dev", deployment: "my-aws-app" }));
+  await ui.waitFor(() => assert.equal([...document.querySelectorAll("article")].filter(card => !history.contains(card) && card.textContent?.includes("Plan ready for review")).length, 0));
+  assert.ok(history.textContent?.includes("Plan ready for review"));
+});
+
+test("the deployed card reveals its exact stacks and opens reviewed destruction without deleting", async () => {
+  const deployment = deployed("my-aws-app", "dev");
+  const teardown: TeardownPlanView = {
+    key: "delete-review-deployed", expiresAt: "2099-01-01T00:00:00Z", digest: "reviewed", blockers: [],
+    deployment: deployment.name, mode: "dev", account: context.account, region: context.region,
+    stacks: [{ name: "my-aws-app-CognitoStack", status: "UPDATE_COMPLETE", terminationProtection: false, importedBy: [] }],
+    leftInPlace: [], remains: [], secrets: [], record: true,
+  };
+  render({ "/deploy/overview": overview(), "/deploy/status": { ok: true, value: {
+    ...discovery([deployment]), deployment: deployment.name, detail: { ...deployment, events: [], changeSets: [] },
+  } }, "/deploy/teardown": { ok: true, value: teardown } });
+  await ui.screen.findByText("Deployed · 1 stack");
+  const card = document.querySelector('details[aria-label="Deployed deployment"]') as HTMLDetailsElement;
+  assert.equal(card.open, false);
+  ui.fireEvent.click(card.querySelector("summary")!);
+  assert.equal(card.open, true);
+  const stacks = ui.within(card).getByRole("region", { name: "Deployed stacks" });
+  assert.ok(ui.within(stacks).getByText("my-aws-app-CognitoStack"));
+  assert.ok(ui.within(stacks).getByText("UPDATE_COMPLETE"));
+  assert.ok(card.textContent?.includes("Development · profile dev · 734849394764 · us-east-1"));
+  const destroy = ui.within(card).getByRole("button", { name: "Destroy…" });
+  destroy.focus();
+  ui.fireEvent.click(destroy);
+  const dialog = await ui.screen.findByRole("dialog", { name: /Delete my-aws-app/ });
+  const deletion = ui.within(dialog).getByRole("button", { name: "Delete my-aws-app" });
+  await ui.waitFor(() => assert.ok(ui.within(dialog).getByText("Deleted in this order")));
+  assert.equal((deletion as HTMLButtonElement).disabled, true);
+  assert.equal(operations().length, 0, "opening the saved teardown review never starts destruction");
+  ui.fireEvent.click(ui.within(dialog).getByRole("button", { name: "Cancel" }));
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("dialog"), null));
+  assert.equal(document.activeElement, destroy);
+  assert.equal(operations().length, 0);
+});
+
+test("synthesis leaves the deployed card inspectable and disables overlapping destruction", async () => {
+  const deployment = deployed("my-aws-app", "dev");
+  render({ "/deploy/overview": overview(), "/deploy/status": { ok: true, value: {
+    ...discovery([deployment]), deployment: deployment.name, detail: { ...deployment, events: [], changeSets: [] },
+  } } });
+  const title = await ui.screen.findByText("Deployed · 1 stack");
+  const card = title.closest("details")!;
+  ui.fireEvent.click(card.querySelector("summary")!);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Synthesize" }));
+  await ui.waitFor(() => assert.equal(operations().length, 1));
+  ui.act(() => emit("deploy-job", { ...job("deploy-plan", { deployment: deployment.name, profile: "dev" }), id: "job-1", deployment: deployment.name, lastSeq: 1 }));
+  assert.ok(ui.screen.getByText("Deployed · 1 stack"));
+  await ui.waitFor(() => assert.equal((ui.within(card).getByRole("button", { name: "Destroy…" }) as HTMLButtonElement).disabled, true));
+  assert.equal(ui.screen.queryByText(/Reading what the account holds/), null);
+});
+
+test("a failed AWS refresh retains last deployed stacks while disabling destruction until status recovers", async () => {
+  const deployment = deployed("my-aws-app", "dev");
+  const observed = { ok: true, value: { ...discovery([deployment]), deployment: deployment.name, detail: { ...deployment, events: [], changeSets: [] } } };
+  render({ "/deploy/overview": overview(), "/deploy/status": observed });
+  const title = await ui.screen.findByText("Deployed · 1 stack");
+  const card = title.closest("details")!;
+  ui.fireEvent.click(card.querySelector("summary")!);
+  const destroy = ui.within(card).getByRole("button", { name: "Destroy…" }) as HTMLButtonElement;
+  assert.equal(destroy.disabled, false);
+  answers["/deploy/status"] = { ok: false, problem: { kind: "failed", message: "AWS request timed out." } };
+  ui.act(() => emit("deploy-changed", { profile: "dev", deployment: deployment.name }));
+  await ui.screen.findByText("Last observed · status unavailable");
+  assert.equal(document.querySelector('details[aria-label="Deployed deployment"]'), card, "the existing disclosure and its open state survive refresh failure");
+  assert.ok(ui.within(card).getByText("my-aws-app-CognitoStack"));
+  assert.ok(ui.within(card).getByText("UPDATE_COMPLETE"));
+  assert.equal(destroy.disabled, true);
+  assert.equal(operations().length, 0);
+  assert.equal(requested.some(path => path.startsWith("/deploy/teardown")), false);
+  answers["/deploy/status"] = observed;
+  ui.fireEvent.click(ui.screen.getAllByRole("button", { name: "Try again" })[0]!);
+  await ui.waitFor(() => assert.equal(ui.screen.queryByText("Last observed · status unavailable"), null));
+  assert.equal(destroy.disabled, false);
   assert.equal(operations().length, 0);
 });

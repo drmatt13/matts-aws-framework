@@ -5,12 +5,15 @@ import { Notice } from "../../ui/Surface";
 import {
   AlertOctagon,
   AlertTriangle,
+  ChevronRight,
   Info,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import type { DeploymentScope } from "../../deploy/context";
 import type {
   AccountContext,
   DeploymentRecordView,
+  DiscoveredDeploymentView,
   DriftView,
   StackEventView,
   StatusView,
@@ -23,6 +26,7 @@ import {
 } from "../DocumentUI";
 import { callerName, relativeTime, shortStack } from "./format";
 import type { RailRow } from "./Rail";
+import { StackInspector } from "./StackInspector";
 
 const SEVERITY_ICON = {
   blocking: <AlertOctagon size={16} aria-hidden />,
@@ -55,13 +59,86 @@ function ActionButton(props: {
   );
 }
 
-function FindingCards({ findings, onAction }: {
-  readonly findings: readonly Finding[];
+function DeployedCard({ finding, deployment, context, busy, stale, onAction, inspectionScope }: {
+  readonly finding: Finding;
+  readonly deployment: DiscoveredDeploymentView;
+  readonly context?: AccountContext;
+  readonly busy?: string;
+  readonly stale?: boolean;
   readonly onAction: (action: Action, trigger?: HTMLButtonElement) => void;
+  readonly inspectionScope?: DeploymentScope;
 }) {
+  const [selectedStack, setSelectedStack] = useState<string>();
+  const stackTrigger = useRef<HTMLButtonElement>(null);
+  const profile = context?.profile;
   return (
     <>
-      {findings.map((finding) => (
+    <details aria-label="Deployed deployment" className="group/deployed min-w-0 overflow-hidden rounded-md border border-l-[3px] border-rule bg-sheet">
+      <summary className="grid min-h-12 cursor-pointer list-none grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <Info size={16} className="text-graphite" aria-hidden />
+        <span className="grid min-w-0 gap-1 wrap-anywhere">
+          <strong className="text-body font-semibold">{finding.title}</strong>
+          {stale ? <span className="text-caption text-local">Last observed · status unavailable</span> : null}
+        </span>
+        <ChevronRight size={16} className="text-graphite transition-transform duration-120 group-open/deployed:rotate-90 motion-reduce:transition-none" aria-hidden />
+      </summary>
+      <div className="grid min-w-0 gap-4 border-t border-rule px-4 py-3">
+        <p className={documentSupportClasses}>
+          {deployment.name} · {deployment.mode === "dev" ? "Development" : "Production"}
+          {context?.profile ? ` · profile ${context.profile}` : ""} · {deployment.account} · {deployment.region}
+        </p>
+        <section className="grid min-w-0 gap-2" aria-label="Deployed stacks">
+          <h2 className={documentTitleClasses}>Stacks</h2>
+          <ul className="m-0 grid list-none gap-2 p-0">
+            {deployment.stacks.map(stack => (
+              <li className="min-w-0" key={stack.name}>
+                <button type="button" aria-label={`Inspect ${stack.name}`} disabled={!profile}
+                  className="grid min-w-0 w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-rule bg-transparent px-3 py-2 text-left text-ink hover:bg-wash disabled:cursor-not-allowed disabled:opacity-45"
+                  onClick={event => { stackTrigger.current = event.currentTarget; setSelectedStack(stack.name); }}>
+                  <span className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <code className="text-caption wrap-anywhere">{stack.name}</code>
+                    <span className="text-caption text-graphite">{stack.status}</span>
+                  </span>
+                  <ChevronRight size={16} className="text-graphite" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <div className="flex justify-end">
+          <ActionButton action={{ id: "delete", label: "Destroy…", tone: "danger", ...(stale ? { disabled: "Refresh deployment status before destroying." } : busy ? { disabled: `${busy} is running.` } : {}) }} onAction={onAction} compact />
+        </div>
+      </div>
+    </details>
+    {selectedStack && profile ? <StackInspector scope={{
+      repository: inspectionScope?.repository ?? "", sourceRevision: inspectionScope?.sourceRevision ?? "",
+      generation: inspectionScope?.generation ?? "", profile, deployment: deployment.name,
+      mode: deployment.mode, account: deployment.account, region: deployment.region, stack: selectedStack,
+    }} onClose={() => setSelectedStack(undefined)} returnFocusRef={stackTrigger} /> : null}
+    </>
+  );
+}
+
+function FindingCards({ findings, onAction, deployment, context, busy, stale, inspectionScope }: {
+  readonly findings: readonly Finding[];
+  readonly onAction: (action: Action, trigger?: HTMLButtonElement) => void;
+  readonly deployment?: DiscoveredDeploymentView;
+  readonly context?: AccountContext;
+  readonly busy?: string;
+  readonly stale?: boolean;
+  readonly inspectionScope?: DeploymentScope;
+}) {
+  const inspectionIdentity = JSON.stringify({
+    repository: inspectionScope?.repository, generation: inspectionScope?.generation,
+    profile: inspectionScope?.profile, selectedProfile: context?.profile, caller: context?.arn,
+    mode: deployment?.mode, deployment: deployment?.name, account: deployment?.account, region: deployment?.region,
+    expectedAccount: inspectionScope?.account, expectedRegion: inspectionScope?.region,
+  });
+  return (
+    <>
+      {findings.map((finding) => finding.code === "DEPLOYED" && deployment ? (
+        <DeployedCard key={`${finding.code}-${inspectionIdentity}`} finding={finding} deployment={deployment} context={context} busy={busy} stale={stale} onAction={onAction} inspectionScope={inspectionScope} />
+      ) : (
         <article
           key={`${finding.code}-${finding.actions.find(action => action.plan)?.plan ?? finding.title}`}
           data-severity={finding.severity}
@@ -119,11 +196,19 @@ export function Detail(props: {
   readonly machine?: ReactNode;
   readonly notice?: ReactNode;
   readonly actions?: ReactNode;
+  readonly busy?: string;
+  readonly deploymentStale?: boolean;
+  readonly inspectionScope?: DeploymentScope;
 }) {
   const { row, context, status, record } = props;
   const authenticationFinding = props.findings.find((finding) => finding.code === "SIGNED_OUT");
-  const findings = props.findings.filter((finding) => finding !== authenticationFinding);
   const deployment = status ? status.detail : row.deployment;
+  const findings = props.findings.filter((finding) => finding !== authenticationFinding);
+  // Read errors explain why current status is unavailable, but do not erase the
+  // last exact-destination deployment evidence retained by the shared observer.
+  if (props.deploymentStale && deployment?.state.kind === "ready" && !findings.some(finding => finding.code === "DEPLOYED")) {
+    findings.push({ code: "DEPLOYED", severity: "info", scope: "aws", title: `Deployed · ${deployment.stacks.length} stack${deployment.stacks.length === 1 ? "" : "s"}`, actions: [] });
+  }
   const contracts = deployment?.contracts.length
     ? deployment.contracts.map((value) => `contract ${value}`).join(" + ")
     : undefined;
@@ -210,7 +295,7 @@ export function Detail(props: {
                 Reading what {context?.account ?? "the account"} holds…
               </Notice>
             ) : null}
-            <FindingCards findings={findings} onAction={props.onAction} />
+            <FindingCards findings={findings} onAction={props.onAction} deployment={deployment} context={context} busy={props.busy} stale={props.deploymentStale} inspectionScope={props.inspectionScope} />
           </section>
         ) : null}
 

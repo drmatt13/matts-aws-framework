@@ -8,6 +8,10 @@ source:
   - framework-studio/server/deploy/registry.ts
   - framework-studio/server/deploy/jobs.ts
   - framework-studio/server/deploy/observe.ts
+  - framework-studio/server/deploy/stack-inspection.ts
+  - framework-studio/shared/stack-inspection.ts
+  - framework-studio/src/deploy/stack-inspection.ts
+  - framework-studio/src/views/deploy/StackInspector.tsx
   - framework-studio/shared/operations.ts
   - framework-studio/server/operations/coordinator.ts
   - framework-studio/server/operations/worker.ts
@@ -43,9 +47,36 @@ has no subnav bar, deployment rail, Repository/AWS cards, stage-creation form or
 template-comparison/change-set controls. **Synthesize** saves a prepared assembly and
 template review. It is the header's only deployment action. The current plan card owns
 **Review plan** and **Discard**; the deployment action is inside the review. The newest
-pending plan is current for its exact destination, while **Earlier plans** retains older
-reviews without automatic deletion. Synthesis never applies a plan; deployment requires
+completed plan generation decides what is current for its exact destination, including
+an applied generation. Applying it leaves older proposals in **Earlier plans** rather
+than promoting one back to current. Older reviews are retained without automatic deletion.
+Synthesis never applies a plan; deployment requires
 explicit confirmation inside its review.
+The **Deployed · N stacks** card expands to show the observed destination and stack
+statuses. **Destroy…** opens the existing identity-scoped teardown review and requires
+its typed confirmation before deletion. Expanding the card never changes AWS.
+Selecting a deployed stack opens **Stack details**. Its sections load on demand:
+overview and stack policy, resources, events, outputs, parameters, original/processed
+templates, tags, change sets and cross-stack dependencies. Overview includes stack IDs,
+status reasons and timestamps, role and parent/root identity, termination protection,
+rollback settings/alarms, notification topics and the last reported drift status.
+Resources, events and change sets expose additional pages rather than silently limiting
+the displayed inventory. Export importers load separately when the export is expanded.
+Change-set inspection includes resource/property changes and
+its reviewed input metadata; it does not execute the change set.
+
+The protected stack-inspection API verifies the selected profile, account, region,
+declaration mode and framework ownership before returning data. The initial overview
+resolves the stack name to an immutable stack ARN; subsequent section reads use that
+ARN. Pagination cursors are bound to the actor, destination, stack and section. Changing
+the destination or credential generation closes the inspector and isolates cached data.
+These reads do not start drift detection, deploy, delete or resolve Secrets Manager
+values. NoEcho parameter values and template defaults are masked; an unavailable
+parameter schema produces conservative masking with an explicit explanation.
+Sensitive change-set property contexts are also masked when NoEcho inputs are present.
+Source-only refreshes retain the expanded deployment and selected stack while updating
+its evidence; credential or destination changes close it.
+
 Activity owns preparation progress, logs and CloudFormation events. The full-width This machine, frontend-release and
 stateful-retention cards are also absent; their underlying services remain intact. Machine
 overview polls every 30 seconds; idle AWS discovery
@@ -55,6 +86,14 @@ offer a contextual retry. Profile/configuration-session changes use fresh query 
 invalidate pending reviews; running jobs keep their captured actor. Entering Deploy or
 changing Source mode chooses a matching target through the unsaved-source guard. It never starts a deployment or restores an older
 per-target profile.
+
+Source-only revisions retain the last deployment observation while a read is pending
+or fails, including across navigation. This retained evidence is not a new AWS
+observation. Repository, profile, credential generation, mode, deployment, account or
+region changes clear it. Source-mode dots use these shared observations: green means
+owned stacks are ready, red means confirmed absent, amber means failed, in progress or
+unreadable, and muted means unconfigured or not yet observed. Green reports deployed
+infrastructure, not application health.
 
 Activity is a persistent shell tray on every route. `GlobalActivity` owns its job-query
 observer and presentation state; it is memoized independently of route/source context.

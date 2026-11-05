@@ -146,6 +146,32 @@ test("typed AWS refresh failures retain the previous success for the exact Query
   assert.equal(cache.getQueryState(options.queryKey)?.status, "error");
 });
 
+test("source-only refreshes and errors retain shared evidence without crossing actor or destination scopes", async () => {
+  const cache = client();
+  const oldStatus = { ...discovery(), context: { ...discovery().context, profile: scope.profile! }, deployment: scope.deployment! };
+  cache.setQueryData(queries.deploymentStatusQuery(scope).queryKey, oldStatus);
+  const next = { ...scope, sourceRevision: "source-2" };
+  assert.equal(queries.previousDeploymentObservation(cache, next, "status"), oldStatus);
+  handler = () => ({ ok: false, problem: { kind: "denied", message: "AWS could not be refreshed." } });
+  await assert.rejects(cache.fetchQuery(queries.deploymentStatusQuery(next)));
+  assert.equal(cache.getQueryData(queries.deploymentStatusQuery(next).queryKey), undefined, "retained evidence is not cached as a new confirmation");
+  assert.equal(queries.previousDeploymentObservation(cache, next, "status"), oldStatus, "new-source errors retain the same last observation");
+  for (const change of [{ repository: "/elsewhere" }, { mode: "prod" as const }, { profile: "prod" }, { generation: "0:1" }, { deployment: "other" }, { account: "999999999999" }, { region: "us-west-2" }])
+    assert.equal(queries.previousDeploymentObservation(cache, { ...next, ...change }, "status"), undefined);
+  const absent = { ...oldStatus, observedAt: "2026-11-05T12:00:00Z" };
+  cache.setQueryData(queries.deploymentStatusQuery(next).queryKey, absent);
+  assert.equal(queries.previousDeploymentObservation(cache, { ...next, sourceRevision: "source-3" }, "status"), absent, "new evidence supersedes older state, including equal-timestamp writes");
+});
+
+test("source refresh keeps the most recent same-repository target metadata available to remounted consumers", () => {
+  const cache = client();
+  const first = overview(), latest = { ...first, targets: [{ ...first.targets[0]!, name: "renamed-dev" }] };
+  cache.setQueryData(queries.deploymentOverviewQuery(false, repository).queryKey, first);
+  cache.setQueryData(queries.deploymentOverviewQuery(false, { ...repository, sourceRevision: "source-2" }).queryKey, latest);
+  assert.equal(queries.previousDeploymentOverview(cache, repository.repository), latest);
+  assert.equal(queries.previousDeploymentOverview(cache, "/other-repository"), undefined);
+});
+
 test("late responses stay under their original generation and cannot replace a new actor's evidence", async () => {
   const cache = client(), old = deferred<unknown>();
   handler = url => url.searchParams.has("force") ? fixtures(url) : old.promise;

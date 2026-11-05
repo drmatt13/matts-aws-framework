@@ -1,13 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import type { DeployMode, JobView } from "../../shared/deploy";
+import type { DeployMode, DiscoveryView, JobView, StatusView } from "../../shared/deploy";
 import { awsProfileCatalogQuery } from "../aws-profile-queries";
 import { connectionGeneration } from "../connection-generations";
 import { useStudio } from "../studio";
 import { deploymentSourceRevision } from "../snapshot";
 import { matchesDeployment, resolveDeploymentTarget, type DeploymentScope } from "./context";
 import { invalidateDeploymentQueries, useDeployLive } from "./live";
-import { AwsReadError, deploymentDiscoveryQuery, deploymentOverviewQuery, deploymentStatusQuery } from "./queries";
+import { AwsReadError, deploymentDiscoveryQuery, deploymentOverviewQuery, deploymentStatusQuery, previousDeploymentObservation, previousDeploymentOverview } from "./queries";
 
 function useDeploymentSource() {
   const { response, live } = useStudio();
@@ -17,11 +17,15 @@ function useDeploymentSource() {
 /** Cache subscriptions only: activating and refreshing shared reads belongs to the owner below. */
 export function useDeploymentOverview() {
   const source = useDeploymentSource();
-  return useQuery({ ...deploymentOverviewQuery(false, source), enabled: false });
+  const client = useQueryClient();
+  const current = useQuery({ ...deploymentOverviewQuery(false, source), enabled: false });
+  const retained = !current.data ? previousDeploymentOverview(client, source.repository) : undefined;
+  return { ...current, data: current.data ?? retained, isPlaceholderData: current.isPlaceholderData || Boolean(retained) };
 }
 
 export function useDeploymentObservation(mode?: DeployMode) {
   const studio = useStudio();
+  const client = useQueryClient();
   const selectedMode = mode ?? studio.mode;
   const source = useDeploymentSource();
   const overviewQuery = useDeploymentOverview();
@@ -40,8 +44,13 @@ export function useDeploymentObservation(mode?: DeployMode) {
   // A catalog transport failure makes availability unknown, rather than proving
   // that the saved profile vanished. Retain exact-context evidence as stale.
   const readable = availability === "available" || availability === "catalog-error";
-  const status = readable ? statusQuery.data : undefined;
-  const discovery = status ?? (readable && !target ? discoveryQuery.data : undefined);
+  const retainedStatus = !statusQuery.data ? previousDeploymentObservation<StatusView>(client, scope, "status") : undefined;
+  const retainedDiscovery = !discoveryQuery.data ? previousDeploymentObservation<DiscoveryView>(client, scope, "discover") : undefined;
+  // Source-scoped queries still revalidate. The last exact-destination observation
+  // remains evidence during that read and its errors, never a new confirmation.
+  const status = readable ? statusQuery.data ?? retainedStatus : undefined;
+  const discovery = status ?? (readable && !target ? discoveryQuery.data ?? retainedDiscovery : undefined);
+  const retained = Boolean(target ? status && !statusQuery.data : discovery && !discoveryQuery.data);
   const error = target ? statusQuery.error : discoveryQuery.error;
   const problem = availability === "unavailable-profile"
     ? { kind: "profile" as const, message: `The saved profile “${profile}” is unavailable on this machine. Choose another profile.` }
@@ -49,7 +58,7 @@ export function useDeploymentObservation(mode?: DeployMode) {
     : error instanceof AwsReadError ? error.problem
     : error ? { kind: "failed" as const, message: error.message } : undefined;
   return { scope, target, profile, availability, overviewQuery, catalogQuery, statusQuery, discoveryQuery,
-    status, discovery, problem, error, contextKey: JSON.stringify(scope) };
+    status, discovery, problem, error, retained, contextKey: JSON.stringify(scope) };
 }
 
 function useVisible() {

@@ -16,7 +16,7 @@ import { flagClasses, sectionTitleClasses, logClasses, planBannerClasses } from 
 
 import { useQuery } from "@tanstack/react-query";
 import { AlertOctagon, Lock } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { DeployMode } from "../../../shared/deploy";
 import { deployApi } from "../../deploy/api";
 import { DeploymentBadge } from "../DeploymentBadge";
@@ -33,6 +33,7 @@ export function Teardown(props: {
   readonly profile: string;
   readonly region?: string;
   readonly busy: string | undefined;
+  readonly returnFocusRef?: RefObject<HTMLButtonElement | null>;
   readonly onClose: () => void;
   readonly onDelete: (options: { confirm: string; retainFailed: boolean; review: string }) => void;
 }) {
@@ -66,8 +67,13 @@ export function Teardown(props: {
   });
   useEffect(() => {
     const element = dialog.current!;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     element.showModal();
-    return () => element.close();
+    return () => {
+      element.close();
+      const target = props.returnFocusRef?.current ?? opener;
+      if (target?.isConnected && !target.hasAttribute("disabled")) target.focus({ preventScroll: true });
+    };
   }, []);
   const plan = data?.ok ? data.value : undefined;
   useEffect(() => {
