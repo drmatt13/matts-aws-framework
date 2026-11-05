@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1030.0",
-    "@floating-ui/react": "^0.27.19",
     "@graphql-typed-document-node/core": "^3.2.0",
     "@repo/api-contract": "*",
     "@tanstack/react-devtools": "latest",
@@ -29,7 +28,6 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.16",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-plugin": "^1.132.0",

@@ -15,11 +15,7 @@
   },
   "dependencies": {
     "@microlink/react-json-view": "^1.31.14",
-    "@tanstack/react-devtools": "latest",
     "@tanstack/react-router": "latest",
-    "@tanstack/react-router-devtools": "latest",
-    "lucide-react": "^0.545.0",
-    "parse-json": "^8.3.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

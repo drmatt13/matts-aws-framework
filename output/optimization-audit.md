@@ -103,7 +103,7 @@ initial revision plus all protected edits: two draft-ui selectors (required-inpu
 readiness and Value in development) and two landscape opacity expectations
 (actual 0.045 versus expected 0.075). Tests and behavior remain unchanged.
 
-Unused-source cleanup (commit being recorded): removes unused client PageError,
+`d096aff` — unused-source cleanup: removes unused client PageError,
 Cognito schema types and GraphQL error predicate; unmounted tester ThemeToggle;
 three unused private framework/CDK/GraphQL helpers, two internal types, obsolete
 comment and unused imports. Replaces tester JSON validation with native JSON.parse
@@ -114,3 +114,12 @@ dev templates are exact, prod differs only in two Docker asset image digests.
 Generated files remain exact. Import-only edits emit byte-identical JS.
 Tester JS: 437,746 -> 423,286 bytes; gzip 140,183 -> 132,113; CSS 16,671 -> 13,767.
 Client built assets remain byte-identical. No startup/FPS speedup claimed.
+
+Dependency cleanup (commit being recorded): 46 unused direct declarations across
+19 manifests removed. npm 11.20 offline lockfile-only resolution removed 27 package
+records (1,331 -> 1,304), added none and changed no retained version. All 128
+OS/CPU/libc-specific records are byte-identical; root/CDK esbuild pins remain.
+The running checkout node_modules is deliberately not replaced. Exact removal
+ledger and lockfile proof are in output/optimization/. Required verify has only
+the baseline TypeScript errors; both synths still match after normalizing only
+container asset image digests. Generated files are unchanged.

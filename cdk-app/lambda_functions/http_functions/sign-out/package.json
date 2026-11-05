@@ -13,13 +13,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
-    "@repo/framework": "*",
-    "esbuild": "^0.28.2"
+    "@repo/framework": "*"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.161",
     "@types/node": "^24.12.4",
-    "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
 }

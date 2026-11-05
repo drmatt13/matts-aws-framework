@@ -13,12 +13,10 @@
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "^24.12.4",
     "@types/ws": "^8.18.0",
-    "ts-node": "^10.9.2",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@aws-sdk/client-apigatewaymanagementapi": "^3.1013.0",
     "@repo/framework": "*",
     "dotenv": "^16.4.7",
     "ws": "^8.18.1"
