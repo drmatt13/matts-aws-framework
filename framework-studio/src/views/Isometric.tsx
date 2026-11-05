@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { remapEntity } from "../../shared/naming";
 import { inspectorContextClasses } from "../inspector-ui";
 import {
@@ -230,6 +231,12 @@ export function Isometric() {
         : topology,
     [topology, model, activeTagKey, filterValue],
   );
+  usePublishSightline("map", () => ({
+    search: query, resourceKind, categories: [...categories], errorsShown,
+    tagFilter: { key: activeTagKey, value: filterValue ?? null }, view,
+    islands: scene.islands.map(island => ({ id: island.id, title: island.title,
+      members: scene.nodes.filter(node => node.island === island.id).map(node => ({ id: node.id, name: node.label })) })),
+  }));
   const visibleCategories = useMemo(
     () =>
       CATEGORIES.filter((category) =>

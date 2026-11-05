@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { RetryNotice } from "./RetryNotice";
 import {
   evidenceFactsClasses,
@@ -233,6 +234,16 @@ export function AuthenticationWorkspace() {
   const declaredUserPool = model.resources.find(
     (resource) => resource.kind === "member" && /(?:I)?UserPool$/.test(resource.typeText ?? ""),
   );
+  usePublishSightline("cognito", () => ({
+    subsection: section, destination: { deployment: selection.deployment, region: selection.region },
+    source: { availability: source.isPending ? "loading" : source.error ? "error" : source.data ? "available" : "not-loaded",
+      declaredPoolIds: [...declaredPools.map(pool => pool.id), ...(declaredUserPool ? [declaredUserPool.id] : [])],
+      providers: source.data ? (source.data.declaredProviders ?? []).map(provider => ({ id: provider.id, name: provider.name, type: provider.type, scope: provider.scope })) : undefined,
+      problemCount: source.data?.problems.length },
+    observed: { availability: busy ? "loading" : observation?.errors?.cognito || observation?.errors?.pools ? "error" : evidence ? "available" : "not-loaded",
+      poolId: cog?.poolId, observedAt: evidence?.data.context.observedAt, stale: sourceStale || timeStale,
+      providerNames: cog?.providers.map(provider => provider.name), identityPoolIds: pools?.pools.map(pool => pool.id) },
+  }));
   return (
     <div className="h-full w-full min-w-0 overflow-auto text-ink">
       <div className={pageToolbarClasses}>

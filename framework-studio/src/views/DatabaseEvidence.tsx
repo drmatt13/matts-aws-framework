@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { dialogPrimaryActionClasses } from "../inspector-ui";
 import { cx } from "../ui/classes";
 import { Select, TextInput } from "../ui/FormControls";
@@ -59,6 +60,13 @@ export function DatabaseEvidence({
   });
   const request = useRef(0);
   const target = workbench.targets.find((item) => item.id === targetId);
+  usePublishSightline("databaseTarget", () => ({
+    availability: targetId ? "available" : "not-applicable", targetId: targetId || undefined,
+    target: target ? { id: target.id, label: target.label, available: target.available } : undefined,
+    inspecting, reviewing, applying,
+    observation: observation ? { status: observation.status, observedAt: observation.observedAt,
+      marker: observation.marker.status, physical: observation.physical.status, migrationState: observation.migrationState.status } : undefined,
+  }));
   useEffect(() => {
     request.current++;
     session.invalidateObservation();

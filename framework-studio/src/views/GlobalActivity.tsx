@@ -9,7 +9,7 @@ import { Activity } from "./deploy/Activity";
 import { useDockerStart, useDockerStatus } from "../machine/docker";
 import { dockerPresence } from "../../shared/machine";
 import { useAgentChat } from "../agent-chat";
-const AgentPanel = lazy(() => import("./agent/AgentPanel").then(module => ({ default: module.AgentPanel })));
+const AgentPanel = lazy(() => import("../sightline/AgentViews").then(module => ({ default: module.AgentViews })));
 
 const NO_JOBS: readonly JobView[] = [];
 const selectJobs = (overview: { jobs: readonly JobView[] }) => overview.jobs;
@@ -31,8 +31,9 @@ export const GlobalActivity = memo(function GlobalActivity() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"activity" | "agent">("activity");
   const [agentVisited, setAgentVisited] = useState(false);
+  const [conversationVisible, setConversationVisible] = useState(true);
   const agentVisible = open && mode === "agent";
-  const chat = useAgentChat(agentVisible);
+  const chat = useAgentChat(agentVisible && conversationVisible);
   const [selected, setSelected] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [retrying, setRetrying] = useState(false);
@@ -88,7 +89,7 @@ export const GlobalActivity = memo(function GlobalActivity() {
     onToggle={toggle}
     mode={mode}
     onModeChange={value => { setMode(value); if (value === "agent") setAgentVisited(true); }}
-    agent={agentVisited ? <Suspense fallback={<p role="status" className="m-auto text-caption text-graphite">Opening agent…</p>}><AgentPanel chat={chat} visible={agentVisible} /></Suspense> : <></>}
+    agent={agentVisited ? <Suspense fallback={<p role="status" className="m-auto text-caption text-graphite">Opening agent…</p>}><AgentPanel chat={chat} visible={agentVisible} onConversationVisibilityChange={setConversationVisible} /></Suspense> : <></>}
     agentPending={chat.pending}
     agentUnread={chat.unread}
     agentSummary={chat.pending ? `${chat.provider === "codex" ? "Codex" : "Claude"} is thinking…` : chat.unread ? chat.problem ? "Response needs attention" : "Reply ready" : chat.messages.length ? "Continue your conversation" : "A question, an idea, a next step"}

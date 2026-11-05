@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { dialogPrimaryActionClasses } from "../inspector-ui";
 import { cx } from "../ui/classes";
 import { Select, TextInput } from "../ui/FormControls";
@@ -57,6 +58,7 @@ export function DatabaseCloud({
   const [busy, setBusy] = useState<"preparing" | "inspecting" | "applying">();
   const [error, setError] = useState<string>();
   const [result, setResult] = useState<DatabaseApplicationResult>();
+  usePublishSightline("databaseCloud", () => ({ deployment, targetId: target.id, busy, reviewOpen: !!approval }));
   useBlocker({
     shouldBlockFn: () => busy === "inspecting" || busy === "applying",
     enableBeforeUnload: !!busy,

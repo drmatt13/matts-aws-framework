@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { dialogPrimaryActionClasses } from "../inspector-ui";
 import { cx } from "../ui/classes";
 import { workbenchNoticeClasses, SourceComparison, WorkbenchDialog } from "./WorkbenchUI";
@@ -57,6 +58,7 @@ export function DatabaseSql({ active }: { readonly active: boolean }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string>(),
     [message, setMessage] = useState<string>();
+  usePublishSightline("databaseSql", () => ({ targetId: target, busy, reviewOpen: !!sourceReview || !!executionReview }));
   const load = async () => {
     const value = await databaseSqlApi.load();
     if (!Array.isArray(value.commands))

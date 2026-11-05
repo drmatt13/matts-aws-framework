@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { dialogPrimaryActionClasses, dialogBodyHeadingClasses } from "../inspector-ui";
 import { cx } from "../ui/classes";
 import { Select, TextInput } from "../ui/FormControls";
@@ -334,6 +335,10 @@ export function DatabaseHistory({
     [],
   );
   const selected = history?.migrations.find((item) => item.id === selectedId);
+  usePublishSightline("databaseHistory", () => ({
+    availability: busy === "load" ? "loading" : error ? "error" : history ? "available" : "not-loaded",
+    selectedId, selected: selected ? { id: selected.id, name: selected.name, from: selected.from, to: selected.to, integrity: selected.integrity } : undefined, busy,
+  }));
   const options = [
     { value: "saved", label: "Current saved source" },
     ...(draftValidation

@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { useDockerStatus, useDockerStart } from "../machine/docker";
 import { withDockerStatus, unavailableDockerStatus } from "../../shared/machine";
 import { AwsReadError, deploymentOverviewQuery, deploymentPlansQuery } from "../deploy/queries";
@@ -338,6 +339,14 @@ export function Deploy() {
     ? runningFor(plansQuery.data?.find((plan) => plan.key === reviewKey)?.deployment)?.title
     : undefined;
 
+  usePublishSightline("deploy", () => ({
+    availability: overviewQuery.error ? "error" : overview ? "available" : "loading",
+    target: target ? { name: target.name, mode: target.mode, region: target.region } : undefined,
+    reviewKey, findings: { availability: awsKnown ? "available" : "not-loaded",
+      entries: findings.map(finding => ({ code: finding.code, severity: finding.severity, scope: finding.scope })) },
+    running: jobs.filter(job => job.status === "running" && job.deployment === selectedName)
+      .map(job => ({ id: job.id, kind: job.kind, status: job.status })),
+  }));
   const observationError = observation.error instanceof AwsReadError ? undefined : observation.error;
   const readError = overviewQuery.error ?? observation.catalogQuery.error ?? observationError ?? plansQuery.error;
   const readNotice = status && statusQuery.error

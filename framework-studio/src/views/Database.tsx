@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { dialogPrimaryActionClasses } from "../inspector-ui";
 import { workbenchNoticeClasses, WorkbenchDialog, SourceComparison } from "./WorkbenchUI";
 import { cx } from "../ui/classes";
@@ -246,6 +247,14 @@ export function Database() {
   };
   const validationCurrent = state.validationVersion === state.version;
   const valid = validationCurrent && state.validation?.valid;
+  usePublishSightline("database", () => ({
+    availability: loadingError ? "error" : state.baseline ? "available" : "loading",
+    tab, editorMode: mode, selection, dirty: session.dirty, conflicted: session.conflict,
+    validation: { availability: state.validating ? "loading" : state.validation ? "available" : "not-loaded",
+      current: validationCurrent, valid: state.validation?.valid,
+      diagnostics: (state.validation?.diagnostics ?? []).map(d => ({ code: d.code, severity: d.severity, from: d.from, to: d.to })) },
+    diagramRetained: !!state.diagram && !valid, revision: state.baseline?.revision, file: state.baseline?.file,
+  }));
   const savedValidation = state.baseline?.validation;
   const storageChanged = valid && savedValidation?.storageHash !== state.validation?.storageHash;
   const behaviorChanged =

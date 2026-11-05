@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../sightline/bridge";
 import { RetryNotice } from "./RetryNotice";
 import { identitySourceQuery } from "../identity-queries";
 import { useDeploymentOverview } from "../deploy/observations";
@@ -66,6 +67,10 @@ function DomainControls({ source }: { readonly source: IdentitySource }) {
       Object.keys(source.inputs),
     );
   const problems = domainSettingsProblems("prod", values);
+  usePublishSightline("domainIntent", () => ({
+    inputs: Object.keys(values).map(name => ({ name, present: !!values[name], modified: !!pending?.edits.some(edit => edit.name === name) })),
+    diagnostics: problems.map(() => ({ severity: "error" })),
+  }));
   return (
     <DocumentCard>
       <h2 className={documentTitleClasses}>Production domain intent</h2>
@@ -267,6 +272,17 @@ export function DomainsWorkspace() {
       }));
     }
   }, [overview.data, selection.deployment]);
+  usePublishSightline("domains", () => ({
+    destination: { deployment: selection.deployment, region: selection.region },
+    source: { mode: "prod", availability: source.isPending ? "loading" : source.error ? "error" : source.data ? "available" : "not-loaded",
+      inputs: source.data ? Object.keys(source.data.inputs).map(name => ({ name, present: !!source.data?.inputs[name],
+        modified: !!draft.environment("prod")?.edits.some(edit => edit.name === name) })) : undefined,
+      diagnostics: source.data?.problems.map(() => ({ severity: "error" })) },
+    observed: { availability: busy ? "loading" : error ? "error" : result ? "available" : "not-loaded",
+      observedAt: result?.context.observedAt, stale: !!result && observedHash !== source.data?.hash,
+      certificateStatuses: result?.certificates.map(cert => ({ purpose: cert.purpose, status: cert.status, problemCount: cert.problems.length })),
+      warningCount: result?.warnings.length, dnsProblemCount: result?.dns.filter(record => !!record.problem).length },
+  }));
   const inspect = async () => {
     request.current?.abort();
     const controller = new AbortController();

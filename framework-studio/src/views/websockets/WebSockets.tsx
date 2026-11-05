@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../../sightline/bridge";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api";
 import { LAUNCH_URL_PARAMS, connectionUrlWithToken, consumeLaunchToken, launchConnectionUrl } from "../../websockets/launch";
@@ -23,6 +24,7 @@ const launchApiGateway = launchConnectionUrl(LAUNCH_URL_PARAMS.apiGateway, undef
 
 export function WebSockets() {
   const defaults = useQuery({ queryKey: ["websocket-defaults"], queryFn: api.webSocketDefaults, staleTime: Number.POSITIVE_INFINITY, retry: false });
+  usePublishSightline("websockets", () => ({ availability: defaults.isPending ? "loading" : defaults.error ? "error" : "available" }));
   const heading = (
     <PageToolbar className="flex flex-wrap items-center gap-x-4 gap-y-1">
       <h1 className={pageTitleClasses}>WebSockets</h1>

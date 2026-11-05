@@ -1,3 +1,4 @@
+import { usePublishSightline } from "../../sightline/bridge";
 import { cx } from "../../ui/classes";
 import { Send } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
@@ -92,6 +93,10 @@ export function WebSocketTester({ title, description, initialConnectionURL }: We
   const connectionAttemptRef = useRef(0);
   const [loadingConnection, setLoadingConnection] = useState(false);
 
+  usePublishSightline(title === "Local" ? "websocketLocal" : "websocketAws", () => ({
+    connection: loadingConnection ? "connecting" : ws ? "connected" : "disconnected",
+    configured: !!wsUrl, valid: URLisValid,
+  }));
   useEffect(() => {
     setMounted(true);
   }, []);
