@@ -83,9 +83,7 @@ this does not establish an FPS improvement. The report includes reproducible Nod
 and browser harnesses, exact geometry reference tests, forced-GC memory observations,
 independent review and the remaining large-graph rasterization boundary.
 
-## Remaining opportunities
-
-### Inspector connection availability — November 5, 2026
+## Inspector connection availability — November 5, 2026
 
 The Connections disclosure previously built both complete model indexes for every
 row. It now builds a fresh pair once during each nonempty `Relations` render and
@@ -104,6 +102,8 @@ These numbers measure availability computation, excluding React, DOM and paint.
 They do not establish a page-load or FPS improvement. The campaign's reproducible
 harness, samples and broader verification limits are recorded in
 `output/optimization-audit.md` and its local evidence directory.
+
+## Remaining opportunities
 
 - **GPU painting is still the main cost.** Shadows, glow, text and SVG draws
   retain their original quality. A future layer or sprite cache needs visual

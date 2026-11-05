@@ -2,7 +2,6 @@ import type { DeployLane } from "@repo/framework/config";
 import { networkConstructId } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecrAssets from "aws-cdk-lib/aws-ecr-assets";
 import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as ecsPatterns from "aws-cdk-lib/aws-ecs-patterns";

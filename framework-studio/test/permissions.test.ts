@@ -7,7 +7,7 @@ import type { IBucket } from "aws-cdk-lib/aws-s3";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
 import { projectModel } from "../server/model/project";
 import type { ModeModel, ModelEdge, ModelTarget, Relation } from "../shared/model";
-import { authorizationLabel, authorizationSummary, hasIam, withConnectionAuthorizations } from "../shared/permissions";
+import { authorizationLabel, authorizationSummary, withConnectionAuthorizations } from "../shared/permissions";
 import { grantOptions } from "../shared/grants";
 import { aggregateConnections } from "../src/connections";
 import { connectionVisible } from "../src/scene/connections";
@@ -101,7 +101,6 @@ test("authenticated agents use user tokens; service agents and tools retain thei
   const source = edge("invokesAgent", undefined, { to: "agent:assistant" });
   const targets = [target("lambda:caller"), target("agent:assistant", "agent", { auth: true })];
   assert.equal(describe(source, targets).authorization!.kind, "user-token");
-  assert.equal(hasIam(describe(source, targets)), false);
   assert.deepEqual(describe(source, targets.map(item => ({ ...item, auth: false }))).authorization!.grants[0]!.actions, ["bedrock-agentcore:InvokeAgentRuntime"]);
   const tool = describe(edge("usesTool", undefined, { from: "agent:assistant", to: "lambda:tool" }), targets);
   assert.equal(tool.authorization!.grants.length, 2);

@@ -5,7 +5,7 @@ import { defineFrameworkConfig, getFrameworkTargets, deployLanes, DEPLOY_SETTING
 import { defaults } from "../../framework-config/defaults";
 import { targetLanes } from "../server/model/project";
 import type { Lanes } from "../shared/model";
-import { DEPLOYMENT_BADGES, deploymentBadge, deploymentSettingLabel, deploymentSummary, environments, previewDeploymentLanes } from "../src/deployment";
+import { DEPLOYMENT_BADGES, deploymentBadge, deploymentSettingLabel, environments, previewDeploymentLanes } from "../src/deployment";
 
 function lanes(local: boolean, dev: boolean, prod: boolean): Lanes {
   return { deploy: "both", origin: "default", cloud: prod, local, dev, prod };
@@ -15,7 +15,6 @@ test("local development and AWS production form two enabled environments without
   const actual = lanes(true, false, true);
   assert.deepEqual(environments(actual), { dev: true, prod: true });
   assert.equal(deploymentBadge(actual), undefined);
-  assert.equal(deploymentSummary(actual), "Runs in development and production.");
 });
 
 test("AWS-invoked workloads and WebSocket handlers also stay unmarked when available in both", () => {

@@ -63,11 +63,3 @@ export function tileTopPoints(point: GridPoint): number[] {
     centre.x - HALF_WIDTH, centre.y,
   ];
 }
-
-/** The same face as an SVG points string. */
-export function tileTop(point: GridPoint): string {
-  const points = tileTopPoints(point);
-  const pairs: string[] = [];
-  for (let index = 0; index < points.length; index += 2) pairs.push(`${points[index]},${points[index + 1]}`);
-  return pairs.join(" ");
-}

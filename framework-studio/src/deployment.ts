@@ -67,14 +67,6 @@ export function previewDeploymentLanes(target: Pick<ModelTarget, "lanes" | "role
   return { ...target.lanes, when: undefined, deploy: setting, ...resolved };
 }
 
-export function deploymentSummary(lanes: Lanes): string {
-  const { dev, prod } = environments(lanes);
-  if (dev && prod) return "Runs in development and production.";
-  if (prod) return "Runs in production only.";
-  if (dev) return "Runs in development only.";
-  return "Not enabled in either environment.";
-}
-
 /** Catalog entries carry mode-specific absence rather than workload deployment settings. */
 export function catalogAvailability(models: Snapshot["models"]): Readonly<Record<string, Availability>> {
   const result: Record<string, Availability> = {};

@@ -134,7 +134,7 @@ matches. This measures computation, not total UI latency or FPS. Verify retains
 only baseline TS2339. Full Chromium light: 218/233 passed; 15 failures are being
 compared to the exact starting tree before attribution. Goldens unchanged.
 
-Service image optimization (commit being recorded): removes the unused root
+`03683d2` — service image optimization: removes the unused root
 node_modules copy from the runtime stage; keeps the already-complete bundle and
 package metadata. Normal-bundling synth still matches in both modes apart from
 Docker asset digests; verify repeats baseline TS2339. Actual Docker linux/arm64
@@ -144,3 +144,13 @@ auth and error comparisons plus stdout/stderr match byte-for-byte, and both real
 `npm run start` commands have identical startup logs, health200 and hello401.
 Containers used network-none/read-only roots and were removed; the two scoped
 comparison images remain. No image-build speed claim: cache warmth differed.
+
+Second-pass cleanup (commit being recorded): removes newly exposed Board-only
+resourceBadge and three other private helpers used only by their exclusive assertions;
+preserves all remaining mixed-test assertions. Removes the last unused CDK namespace
+import (TypeScript and esbuild emit identical JS), tester Testing Library declarations,
+and root unused deepmerge-ts declaration while retaining its override pin. Final totals:
+272 direct declarations and 1,303 lock records; no added/version-changed packages and
+all 128 native records retained. Focused23/23 pass; final build and synth gates pass
+with only expected Docker digests. Verify repeats baseline TS2339 in67.22s.
+All35 workspaces have received two audit passes. Final workspace suites are pending.

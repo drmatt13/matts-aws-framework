@@ -1,6 +1,4 @@
 import type { ModelResource, ModelRoute, ModelTarget } from "../shared/model";
-import { isFrameworkManagedResource } from "../shared/framework-management";
-import { resourceIssues } from "./issues";
 
 /** Shared by the DOM views and the canvas. Paths are local, versioned SVG assets. */
 export const ICONS = {
@@ -81,9 +79,4 @@ export function resourceIcon(resource: ModelResource): IconKey {
   if (/Secret/.test(type)) return "secret";
   if (type === "string") return "value";
   return "construct";
-}
-
-/** A resource's one badge where only one fits: its worst issue, otherwise its ownership lock. */
-export function resourceBadge(resource: ModelResource, resources?: ReadonlyMap<string, ModelResource>): IconKey | undefined {
-  return resourceIssues(resource, resources?.values())[0]?.badge ?? (isFrameworkManagedResource(resource, resources) ? "managed" : undefined);
 }

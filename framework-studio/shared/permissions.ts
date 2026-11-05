@@ -32,7 +32,6 @@ export interface ConnectionAuthorization {
   readonly notes: readonly string[];
 }
 
-export const hasIam = (edge: Pick<ModelEdge, "authorization">): boolean => edge.authorization?.kind === "iam";
 export function authorizationLabel(authorization: ConnectionAuthorization): string {
   return authorization.kind === "iam" ? "IAM grant"
     : authorization.kind === "local" ? "Local connection" : authorization.kind === "user-token" ? "User token" : "Source evidence";
