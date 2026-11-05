@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import type { JobLogLine, JobView } from "../../shared/deploy";
 import { test, expect, assertAccessible } from "./support/test";
 import { NOW, overview } from "./support/scenarios";
@@ -83,6 +84,103 @@ test("Activity retains its selected job, log DOM and scroll across every primary
   expect(logReads()).toBeLessThanOrEqual(initialLogReads + 1);
   expect(studio.requests.filter(request => request.method === "POST")).toEqual([]);
   await assertAccessible(page);
+});
+
+const mapPlacement = (page: Page) => page.evaluate(() => {
+  const landscape = (window as unknown as { __studioLandscape: {
+    camera(): unknown; viewport(): unknown; connections(): readonly { id: string; midpoint: unknown }[];
+  } }).__studioLandscape;
+  return { camera: landscape.camera(), viewport: landscape.viewport(), connections: landscape.connections().map(({ id, midpoint }) => ({ id, midpoint })) };
+});
+
+for (const width of [1440, 700]) test(`Opening and closing Activity leaves the map exactly where it was at ${width}px`, async ({ page, studio }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await studio.goto("/");
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
+  const toggle = activity.getByRole("button", { name: /^Activity/ });
+  const canvas = page.locator('[data-ui="landscape-canvas"]');
+  const controls = page.locator('[data-ui~="landscape-bottom"]');
+  const placement = async () => ({ canvas: await canvas.boundingBox(), controls: await controls.boundingBox(), map: await mapPlacement(page) });
+  const closed = await placement();
+  expect(closed.map.connections.length).toBeGreaterThan(0);
+  await expect(controls).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await studio.settle();
+  const top = closed.canvas!.y;
+  const clip = { x: closed.canvas!.x, y: top, width: closed.canvas!.width, height: (await activity.boundingBox())!.y - top };
+  const open = await page.screenshot({ clip });
+  expect(await placement()).toEqual(closed);
+  // The tray covers these; they must not take keyboard focus from beneath it.
+  await expect(controls).toBeHidden();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await studio.settle();
+  expect(await placement()).toEqual(closed);
+  await expect(controls).toBeVisible();
+  // Every pixel the open tray left showing is the pixel the closed map draws there.
+  expect((await page.screenshot({ clip })).equals(open)).toBe(true);
+});
+
+test("A notice in the open tray does not change how much of the map it covers", async ({ page, studio }) => {
+  await studio.goto("/");
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
+  await activity.getByRole("button", { name: /^Activity/ }).click();
+  await studio.settle();
+  const before = await page.locator('[data-ui="activity-drawer"]').boundingBox();
+  studio.reply("GET", "/api/operations", route => route.fulfill({ status: 500, json: { error: "Fixture activity failure" } }));
+  await page.reload();
+  await expect(activity).toBeVisible();
+  await activity.getByRole("button", { name: /^Activity/ }).click();
+  await expect(activity.getByRole("button", { name: "Retry activity", exact: true })).toBeVisible();
+  expect(await page.locator('[data-ui="activity-drawer"]').boundingBox()).toEqual(before);
+});
+
+test("Camera moves and the side panel use the space above an open Activity tray", async ({ page, studio }) => {
+  await studio.goto("/");
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
+  await activity.getByRole("button", { name: /^Activity/ }).click();
+  await studio.settle();
+  const trayTop = (await activity.boundingBox())!.y;
+  const canvasTop = (await page.locator('[data-ui="landscape-canvas"]').boundingBox())!.y;
+
+  await page.getByRole("button", { name: "Fit the whole application", exact: true }).click();
+  await studio.settle();
+  const lowest = await page.evaluate(() => Math.max(...(window as unknown as { __studioLandscape: {
+    connections(): readonly { points: readonly { y: number }[] }[];
+  } }).__studioLandscape.connections().flatMap(connection => connection.points.map(point => point.y))));
+  expect(lowest + canvasTop).toBeLessThanOrEqual(trayTop);
+
+  await page.getByRole("button", { name: /^Resources/ }).click();
+  const panel = (await page.getByRole("complementary", { name: "Resources", exact: true }).boundingBox())!;
+  expect(panel.y + panel.height).toBeLessThanOrEqual(trayTop + 1);
+  expect(panel.height).toBeGreaterThan(0);
+  expect(await page.locator("main").evaluate(element => element.scrollHeight <= element.clientHeight)).toBe(true);
+});
+
+test("A panel stacked under a narrow map keeps the islands still as Activity opens", async ({ page, studio }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await studio.goto("/");
+  await page.getByRole("button", { name: /^Resources/ }).click();
+  await studio.settle();
+  const before = await mapPlacement(page);
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
+  await activity.getByRole("button", { name: /^Activity/ }).click();
+  await studio.settle();
+  // The canvas above the panel has to shrink here, but from the foot: nothing relays out.
+  const after = (await mapPlacement(page)).connections as readonly { id: string; midpoint: { x: number; y: number } }[];
+  const expected = before.connections as typeof after;
+  expect(after.map(connection => connection.id)).toEqual(expected.map(connection => connection.id));
+  after.forEach(({ midpoint }, at) => {
+    expect(midpoint.x).toBeCloseTo(expected[at]!.midpoint.x, 6);
+    expect(midpoint.y).toBeCloseTo(expected[at]!.midpoint.y, 6);
+  });
+  await expect(page.locator('[data-ui~="landscape-bottom"]')).toBeVisible();
+  const canvas = (await page.locator('[data-ui="landscape-canvas"]').boundingBox())!;
+  const panel = (await page.getByRole("complementary", { name: "Resources", exact: true }).boundingBox())!;
+  expect(canvas.y + canvas.height).toBeLessThanOrEqual(panel.y + 1);
 });
 
 for (const width of [1440, 390]) test(`Activity receives and cancels a background job outside Deploy at ${width}px`, async ({ page, studio }) => {

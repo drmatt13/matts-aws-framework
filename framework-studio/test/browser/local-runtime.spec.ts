@@ -198,6 +198,9 @@ test("Docker startup from Deploy remains shared when Map opens or dismisses its 
   await expect(readiness.getByRole("button", { name: "Starting…", exact: true })).toBeDisabled();
   await page.getByRole("navigation", { name: "Views" }).getByRole("link", { name: "Map", exact: true }).click();
   const control = page.getByRole("switch", { name: "Local runtime", exact: true });
+  // Starting from Deploy revealed the job in Activity, whose open tray covers the map's dock.
+  await expect(control).toBeHidden();
+  await page.getByRole("region", { name: "Activity", exact: true }).getByRole("button", { name: /^Activity/ }).click();
   await control.click();
   await expect(page.getByRole("dialog", { name: "Starting Docker Desktop…", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");

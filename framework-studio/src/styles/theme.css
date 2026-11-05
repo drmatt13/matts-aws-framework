@@ -71,6 +71,7 @@
   --shadow-popover: 0 12px 36px #0005;
   --bar: 52px;
   --inspector: clamp(380px, 32vw, 480px);
+  --activity-drawer: min(340px, 42dvh);
   --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2385909c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   color-scheme: light;
 }

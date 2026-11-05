@@ -40,15 +40,25 @@ function proposal(value: unknown): Proposal {
 }
 function executable(provider: Provider): string | undefined {
   const name = process.platform === "win32" ? `${provider}.exe` : provider;
-  const directories = [...(process.env.PATH ?? "").split(path.delimiter), path.join(process.env.HOME ?? "", ".local/bin")];
-  return directories.map(directory => path.join(directory, name)).find(file => {
-    try { accessSync(file, constants.X_OK); return lstatSync(file).isFile() || lstatSync(file).isSymbolicLink(); } catch { return false; }
-  });
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  const directories = (process.env.PATH ?? "").split(path.delimiter).filter(directory => path.isAbsolute(directory));
+  if (home) directories.push(path.join(home, ".local/bin"));
+  const usable = (file: string) => {
+    try {
+      const resolved = realpathSync(file);
+      // Editor extensions can inject their bundled CLIs into PATH too.
+      if (/(?:^|[\\/])(?:\.vscode(?:-insiders)?|\.cursor|\.windsurf)[\\/]extensions[\\/]/.test(resolved)) return false;
+      accessSync(resolved, constants.X_OK);
+      return lstatSync(resolved).isFile();
+    } catch { return false; }
+  };
+  return directories.map(directory => path.join(directory, name)).find(usable);
 }
 /** Login storage stays with the native CLI; application/AWS/API-key env is not inherited. */
 export function agentLabEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { NO_COLOR: "1", FORCE_COLOR: "0", TERM: "dumb" };
-  for (const key of ["PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "TMPDIR", "TEMP", "TMP", "LANG", "CODEX_HOME", "CLAUDE_CONFIG_DIR"])
+  // Claude's macOS Keychain account lookup requires USER even in noninteractive runs.
+  for (const key of ["PATH", "HOME", "USER", "USERPROFILE", "SYSTEMROOT", "TMPDIR", "TEMP", "TMP", "LANG", "CODEX_HOME", "CLAUDE_CONFIG_DIR"])
     if (process.env[key]) env[key] = process.env[key];
   return env;
 }
@@ -83,7 +93,7 @@ export class AgentLabService {
   async status() {
     const providers = await Promise.all((["codex", "claude"] as const).map(async id => {
       const file = executable(id);
-      if (!file) return { id, label: id === "codex" ? "Codex" : "Claude", available: false, detail: "CLI not found on Studio's PATH." };
+      if (!file) return { id, label: id === "codex" ? "Codex" : "Claude", available: false, detail: `Standalone ${id} CLI not found on Studio's PATH or in ~/.local/bin. Editor extension bundles are not used.` };
       try {
         const result = await this.command(file, id === "codex" ? ["login", "status"] : ["auth", "status"], tmpdir(), 5000);
         const authenticated = id === "codex" ? result.code === 0 && /logged in/i.test(result.stdout + result.stderr)

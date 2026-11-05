@@ -32,7 +32,7 @@ export function MapEntityNavigator({
   return (
     <ul
       data-ui="landscape-entity-list"
-      className="-m-px h-px w-px overflow-hidden border-0 p-0 whitespace-nowrap [clip:rect(0,0,0,0)] absolute list-none focus-within:bottom-16 focus-within:left-4 focus-within:z-6 focus-within:m-0 focus-within:h-auto focus-within:max-h-[min(420px,55%)] focus-within:w-[min(360px,calc(100%-32px))] focus-within:overflow-auto focus-within:overscroll-contain focus-within:rounded-lg focus-within:border focus-within:border-map-rule focus-within:bg-map-panel focus-within:p-3 focus-within:whitespace-normal focus-within:text-map-ink focus-within:shadow-popover focus-within:[clip:auto]"
+      className="-m-px h-px w-px overflow-hidden border-0 p-0 whitespace-nowrap [clip:rect(0,0,0,0)] absolute list-none focus-within:bottom-16 activity-open:focus-within:top-16 activity-open:focus-within:bottom-auto focus-within:left-4 focus-within:z-6 focus-within:m-0 focus-within:h-auto focus-within:max-h-[min(420px,55%)] focus-within:w-[min(360px,calc(100%-32px))] focus-within:overflow-auto focus-within:overscroll-contain focus-within:rounded-lg focus-within:border focus-within:border-map-rule focus-within:bg-map-panel focus-within:p-3 focus-within:whitespace-normal focus-within:text-map-ink focus-within:shadow-popover focus-within:[clip:auto]"
       aria-label="Entities in the landscape"
       onPointerDownCapture={onPointerDownCapture}
       onFocusCapture={onFocusCapture}

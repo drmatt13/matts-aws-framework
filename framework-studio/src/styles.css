@@ -29,3 +29,5 @@
 @custom-variant inspector-360 (@container inspector (max-width: 360px));
 @custom-variant inspector-300 (@container inspector (max-width: 300px));
 @custom-variant detail-640 (@container (max-width: 640px));
+/* The Activity tray is open and covers the foot of the workspace. */
+@custom-variant activity-open ([data-ui="shell"]:has([data-ui="activity-drawer"]) &);

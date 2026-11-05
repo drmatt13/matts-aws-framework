@@ -407,9 +407,17 @@ export function Isometric() {
     [schedule],
   );
 
+  /** Aims within the canvas left showing, for the whole canvas that runs on beneath the tray. */
+  const aimVisible = useCallback((aim: (visible: Viewport) => Camera) => {
+    const { viewport } = live.current;
+    const visible = visibleViewport(containerRef.current, viewport);
+    return resizeCamera(aim(visible), visible, viewport);
+  }, []);
+
   const fit = useCallback(
-    (animate = true) => moveCamera(fitScene(live.current.scene, live.current.viewport), animate),
-    [moveCamera],
+    (animate = true) =>
+      moveCamera(aimVisible((visible) => fitScene(live.current.scene, visible)), animate),
+    [moveCamera, aimVisible],
   );
 
   const focus = useCallback(
@@ -419,17 +427,19 @@ export function Isometric() {
         : undefined;
       if (!node) {
         const island = islandSlabs(live.current.scene).find((slab) => slab.island.id === id);
-        if (island) moveCamera(fitBounds(island.bounds, live.current.viewport, 60));
+        if (island) moveCamera(aimVisible((visible) => fitBounds(island.bounds, visible, 60)));
         return;
       }
       const camera = live.current.camera;
-      moveCamera({
-        x: node.geometry.top.x,
-        y: node.geometry.top.y,
-        zoom: zoom ?? Math.max(camera.zoom, 0.9),
-      });
+      moveCamera(
+        aimVisible(() => ({
+          x: node.geometry.top.x,
+          y: node.geometry.top.y,
+          zoom: zoom ?? Math.max(camera.zoom, 0.9),
+        })),
+      );
     },
-    [moveCamera],
+    [moveCamera, aimVisible],
   );
 
   useEffect(() => {
@@ -448,12 +458,13 @@ export function Isometric() {
     const selectionChanged = state.selected !== state.inspectedSelection;
     state.inspectedSelection = state.selected;
     if (selectionChanged && state.tween?.source === "reveal") state.tween = undefined;
-    // Selection and the panel are presentation; use the containing workspace
-    // dimensions so opening a node does not relayout the architecture.
+    // Selection, the panel and Activity are presentation; use the containing workspace
+    // dimensions, with the tray's share restored, so none of them relayouts the architecture.
     const workspace = container.closest("[data-studio-workspace]")?.getBoundingClientRect();
+    const tray = document.querySelector("[data-ui='activity-drawer']")?.getBoundingClientRect();
     const nextAspect = layoutAspect(
       workspace?.width ?? next.width,
-      workspace?.height ?? next.height,
+      (workspace?.height ?? next.height) + (tray?.height ?? 0),
     );
     window.clearTimeout(aspectTimer.current);
     aspectTimer.current = window.setTimeout(() => {
@@ -483,7 +494,7 @@ export function Isometric() {
       : { left: 0, width: next.width };
     if (!state.fitted) {
       state.fitted = true;
-      state.camera = fitScene(state.scene, next);
+      state.camera = aimVisible((visible) => fitScene(state.scene, visible));
     } else if (previous.width > 1) {
       state.camera = resizeCamera(state.camera, previous, next, moved);
       // An in-flight focus starts from the resized camera, without jumping back to its old origin,
@@ -498,11 +509,14 @@ export function Isometric() {
       // What the map showed before this change, in the new viewport's coordinates: wider than
       // the viewport when a panel has just opened over part of it.
       const shown = { left: -moved.x, right: previous.width - moved.x };
-      const revealed = bounds ? revealSelection(state.camera, next, bounds, shown) : undefined;
+      const visible = visibleViewport(container, next);
+      const revealed = bounds
+        ? revealSelection(resizeCamera(state.camera, next, visible), visible, bounds, shown)
+        : undefined;
       if (revealed) {
         state.tween = {
           from: state.camera,
-          to: revealed,
+          to: resizeCamera(revealed, visible, next),
           start: performance.now(),
           duration: reducedMotion() ? 0 : 450,
           source: "reveal",
@@ -514,7 +528,7 @@ export function Isometric() {
     if (state.frame !== undefined) cancelAnimationFrame(state.frame);
     state.frame = undefined;
     draw();
-  }, [draw]);
+  }, [draw, aimVisible]);
 
   // Mount before paint: the renderer, the canvas's size, and web fonts arriving late.
   useLayoutEffect(() => {
@@ -1153,12 +1167,16 @@ export function Isometric() {
       <div
         data-ui="landscape-content"
         data-landscape-content
-        className="flex min-h-0 min-w-0 flex-1 vp-800:flex-col"
+        className="flex min-h-0 min-w-0 flex-1 activity-open:overflow-clip vp-800:flex-col"
       >
         <div
           data-ui="landscape"
           className={cx(
             "relative flex-1 overflow-hidden bg-map-ground text-map-ink",
+            // Activity opens over the map: the canvas keeps its height and runs on beneath the
+            // tray, so nothing here moves. A panel stacked under a narrow map sits in between.
+            "activity-open:h-[calc(100%+var(--activity-drawer))]",
+            view === "closed" && "activity-open:vp-800:flex-none",
             // Keep the dock clear of wrapped connection filters when a phone panel opens.
             model.mode === "dev" ? "min-h-50 vp-800:min-h-70" : "min-h-0 vp-800:min-h-45",
           )}
@@ -1262,7 +1280,11 @@ export function Isometric() {
           </div>
           <div
             data-ui="landscape-bar landscape-bottom"
-            className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 bottom-3 items-end"
+            className={cx(
+              "pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 bottom-3 items-end",
+              // Beneath the tray these leave the tab order as well as the eye.
+              view === "closed" ? "activity-open:invisible" : "activity-open:not-vp-800:invisible",
+            )}
           >
             <div className="flex min-w-0 max-w-[calc(100%-52px)] flex-col items-start gap-2">
               {model.mode === "dev" ? <ComposePreview motion={motion} /> : null}
@@ -1338,6 +1360,14 @@ export function Isometric() {
       </div>
     </div>
   );
+}
+
+/** The canvas above whatever covers its foot: Activity opens over the map, not by resizing it. */
+function visibleViewport(container: HTMLElement | null, viewport: Viewport): Viewport {
+  const top = container?.getBoundingClientRect().top;
+  const bottom = container?.closest("[data-landscape-content]")?.getBoundingClientRect().bottom;
+  if (top === undefined || bottom === undefined) return viewport;
+  return { ...viewport, height: Math.max(1, Math.min(viewport.height, bottom - top)) };
 }
 
 /** What the pointer is over, in words: an entity, a relationship, a place, or furniture. */

@@ -198,7 +198,10 @@ toolbar use the 18px `pageTitleClasses`; Deploy's deployment name is its page ti
 Page chrome stays outside the column: the navbar and global Activity tray span the window.
 Activity occupies the final shell row on every route; its memoized owner stays mounted
 through navigation. Opening the bounded tray reduces workspace height instead of covering
-content, including on narrow screens.
+content, including on narrow screens. The map canvas is the one exception: it keeps its height
+and runs beneath the tray, so opening it moves nothing on the map. `--activity-drawer` is the
+drawer's one height, notices included, and the `activity-open` variant styles anything that
+depends on the tray.
 Shared `DocumentCard` and its native child controls
 own 6px corners, 16px padding (12px at 720px and below) and 12px spacing between content
 groups. Page-level cards are 12px apart; avoid per-route card overrides.

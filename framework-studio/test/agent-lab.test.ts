@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -319,6 +320,7 @@ test("CLI children receive a small environment without application or API creden
     const environment = agentLabEnvironment();
     for (const name of names) assert.equal(environment[name], undefined);
     assert.equal(environment.HOME, process.env.HOME);
+    assert.equal(environment.USER, process.env.USER);
     assert.equal(environment.PATH, process.env.PATH);
   } finally {
     names.forEach((name, index) => {
@@ -342,7 +344,7 @@ interface CliCall {
 /** Exercise the real spawn/parse adapter using local scripts, never a model or real login. */
 function fakeClis(
   t: TestContext,
-  output: { stdout?: string; stderr?: string; code?: number } = {},
+  output: { stdout?: string; stderr?: string; code?: number; claudeLoggedIn?: boolean } = {},
 ) {
   const item = fixture(t, { plan: undefined });
   const bin = path.join(item.root, "bin"),
@@ -354,6 +356,7 @@ function fakeClis(
   const keys = [
     "PATH",
     "HOME",
+    "USER",
     "CODEX_HOME",
     "CLAUDE_CONFIG_DIR",
     "AWS_ACCESS_KEY_ID",
@@ -372,6 +375,7 @@ function fakeClis(
   Object.assign(process.env, {
     PATH: bin,
     HOME: home,
+    USER: "agent-lab-test-user",
     CODEX_HOME: path.join(home, ".codex"),
     CLAUDE_CONFIG_DIR: path.join(home, ".claude"),
     AWS_ACCESS_KEY_ID: "fake-cli-test-sentinel",
@@ -399,11 +403,15 @@ const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({
   provider: ${JSON.stringify(provider)}, args, cwd: process.cwd(), files: fs.readdirSync(process.cwd()),
   requestedCwd: args.includes("-C") ? fs.realpathSync(args[args.indexOf("-C") + 1]) : process.cwd(),
-  environment: { PATH: process.env.PATH, HOME: process.env.HOME, CODEX_HOME: process.env.CODEX_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR },
+  environment: { PATH: process.env.PATH, HOME: process.env.HOME, USER: process.env.USER, CODEX_HOME: process.env.CODEX_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR },
   credentialNames: ["AWS_ACCESS_KEY_ID", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DATABASE_URL"].filter(key => process.env[key] !== undefined)
 }) + "\\n");
 if (${JSON.stringify(provider)} === "claude") {
-  process.stdout.write(JSON.stringify({ loggedIn: false, authMethod: "none" })); process.exit(1);
+  if (!process.env.USER) { process.stdout.write(JSON.stringify({ loggedIn: false })); process.exit(1); }
+  if (args[0] === "auth" && args[1] === "status") {
+    process.stdout.write(JSON.stringify({ loggedIn: ${output.claudeLoggedIn ?? false} })); process.exit(${output.claudeLoggedIn ? 0 : 1});
+  }
+  process.stdout.write(JSON.stringify({ subtype: "success", structured_output: ${JSON.stringify(valid)} })); process.exit(0);
 }
 if (args[0] === "login" && args[1] === "status") {
   process.stderr.write("Logged in using ChatGPT\\n"); process.exit(0);
@@ -500,6 +508,54 @@ test(
     }
   },
 );
+
+test("standalone CLIs in ~/.local/bin use saved login and can plan", {
+  skip: process.platform === "win32",
+}, async (t) => {
+  const item = fakeClis(t, { claudeLoggedIn: true });
+  const local = path.join(item.home, ".local/bin");
+  mkdirSync(local, { recursive: true });
+  for (const provider of ["codex", "claude"] as const) symlinkSync(path.join(item.bin, provider), path.join(local, provider));
+  process.env.PATH = "";
+  assert.ok((await item.service.status()).providers.every(provider => provider.available));
+  for (const provider of ["codex", "claude"] as const) {
+    const plan = await item.service.plan({ provider, prompt: "Update the demo only" });
+    assert.equal(plan.message, valid.message);
+  }
+  assert.equal(item.contents(), original);
+});
+
+test("editor bundles are excluded from discovery, PATH and symlink aliases", {
+  skip: process.platform === "win32",
+}, async (t) => {
+  const item = fakeClis(t, { claudeLoggedIn: true });
+  const bundled = path.join(item.home, ".vscode/extensions/bundled/bin");
+  const local = path.join(item.home, ".local/bin");
+  mkdirSync(bundled, { recursive: true });
+  mkdirSync(local, { recursive: true });
+  for (const provider of ["codex", "claude"]) {
+    renameSync(path.join(item.bin, provider), path.join(bundled, provider));
+    symlinkSync(path.join(bundled, provider), path.join(local, provider));
+  }
+  process.env.PATH = bundled;
+  const availability = await item.service.status();
+  assert.ok(availability.providers.every(provider => !provider.available));
+  assert.ok(availability.providers.every(provider => /Standalone.*not found/.test(provider.detail)));
+  assert.deepEqual(item.calls(), []);
+});
+
+test("an empty PATH entry never discovers a CLI in the working directory", {
+  skip: process.platform === "win32",
+}, async (t) => {
+  const item = fakeClis(t);
+  const previous = process.cwd();
+  t.after(() => process.chdir(previous));
+  process.chdir(item.bin);
+  process.env.PATH = "";
+  const availability = await item.service.status();
+  assert.ok(availability.providers.every(provider => !provider.available));
+  assert.deepEqual(item.calls(), []);
+});
 
 test(
   "malformed and failed CLI output returns bounded errors without raw diagnostics",

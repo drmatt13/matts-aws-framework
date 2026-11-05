@@ -162,6 +162,7 @@ The bottom **Activity** tray belongs to `Shell` and is mounted once for every ro
 `GlobalActivity` is memoized and consumes no route or Studio context, so navigation does
 not render it again. Open state, selected job, log DOM, and the reader's scroll position
 survive navigation. Job/log changes and tray interactions still update it normally.
+Opening it shrinks the workspace, except the map's canvas, which [runs beneath it](rendering.md).
 The tray observes `/api/operations` through the shared operation transport and owns the
 global operation-event subscription. Deploy's event observer handles its plan-review/CloudFormation
 callbacks. Operations started from Deploy call `openActivity(job.id)` to reveal their job

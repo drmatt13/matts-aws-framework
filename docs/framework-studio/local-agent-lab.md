@@ -4,6 +4,14 @@ Open `http://127.0.0.1:4590/test` or **Agent test** in Studio. The dropdown
 uses the installed `codex` and `claude` CLIs and their saved login. It does not
 provision API keys or run a local model; inference uses the provider account.
 Sign in through the selected CLI in a terminal, then **Check installation**.
+Studio searches absolute PATH entries and `~/.local/bin` for standalone CLIs.
+Editor extension bundles are excluded, including PATH entries and symlinks to
+those bundles. Login storage stays with each native CLI; Studio does not read
+or copy credentials. Its curated child environment preserves `HOME`, `USER`,
+`CODEX_HOME` and `CLAUDE_CONFIG_DIR`; Claude needs `USER` to locate its saved
+macOS Keychain login. Installation and sign-in are checked separately; finding
+a binary does not imply a saved login. Restart Studio after changing
+its server code; **Check installation** refreshes discovery without another restart.
 
 The current experiment supports one operation: change the string exported by
 `framework-studio/src/agent-lab-message.ts`. Ask for a new demo message, choose

@@ -166,6 +166,16 @@ canvas container. The toolbar participates in normal flow, so wrapping and searc
 feedback reduce the canvas viewport without obscuring resources. Resize, picking,
 hover and fit keep using the inner scene container. Renderer timing remains in
 `window.__studioLandscape.stats()`; normal chrome shows resource/connection counts.
+Activity opens over the map without moving anything on it. The workspace, `main` and the side
+panel shrink as on every route, while `.landscape` adds `--activity-drawer` back to its height
+and `[data-landscape-content]` clips it at the tray, so the canvas never resizes: no observer
+fires, no redraw runs, and the camera, atmosphere and bottom dock stay put. The dock, covered
+by the tray, leaves the tab order; the keyboard navigator rises from the top instead. Layout
+aspect adds the drawer's height back to the workspace, so the tray can never cross an aspect
+bucket and re-solve the islands. Fit, focus and reveal aim at the part of the canvas left
+showing (`visibleViewport`), so they never land behind the tray; closing it then leaves that
+view where it is. A panel stacked beneath a narrow map sits between the canvas and the tray:
+that canvas does shrink, from its foot, with the map anchored to its top.
 Isometric, Studio's home view at `/` (`/isometric` redirects there), uses the shared
 navbar's `SourceEnvironment` selector. `Shell` keeps that selector and source validation
 available on every route, including empty/error maps. The map toolbar contains search,

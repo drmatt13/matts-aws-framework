@@ -164,150 +164,153 @@ export function Activity(props: {
           className="col-start-2 row-start-1 vp-480:col-span-full vp-480:col-start-1 vp-480:row-start-2 vp-480:px-4 vp-480:pb-2"
         />
       </div>
-      {props.open && props.problem ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-4 py-2" role="alert">
-          <span>{props.problem}</span>
-          <button className={buttonClasses({ variant: "quiet", size: "compact" })}
-            disabled={props.retrying} onClick={props.onRetry}>Retry activity</button>
-        </div>
-      ) : null}
-      {props.open && props.actionError ? (
-        <p className="m-0 border-t border-rule px-4 py-2 text-refuse" role="alert">{props.actionError}</p>
-      ) : null}
-      {props.open && props.docker.detail ? (
-        <p className="m-0 border-t border-rule px-4 py-2 text-caption text-graphite wrap-anywhere">{props.docker.detail}</p>
-      ) : null}
       {props.open ? (
-        <div className="grid h-[min(340px,42dvh)] grid-cols-[260px_minmax(0,1fr)] border-t border-rule vp-900:grid-cols-1 vp-900:grid-rows-[minmax(0,1fr)_minmax(0,2fr)]">
-          <ul
-            className="m-0 grid list-none content-start gap-1 overflow-auto border-r border-rule p-2 vp-900:max-h-40 vp-900:border-r-0 vp-900:border-b"
-            aria-label="Operations"
-          >
-            {props.jobs.slice(0, 20).map((entry) => (
-              <li key={entry.id}>
-                <button
-                  data-status={entry.status}
-                  className={cx(
-                    "group/job grid w-full cursor-pointer gap-1 rounded-sm border-0 px-3 py-2 text-left text-inherit hover:bg-wash",
-                    entry.id === job?.id ? "bg-wash" : "bg-transparent",
-                  )}
-                  aria-current={entry.id === job?.id ? "true" : undefined}
-                  onClick={() => props.onSelect(entry.id)}
-                >
-                  <span className="truncate text-step-minus1 font-medium">{entry.title}</span>
-                  <span className="text-meta text-[color-mix(in_srgb,var(--graphite)_85%,var(--ink))] group-data-[status=running]/job:text-[color-mix(in_srgb,var(--local)_60%,var(--ink))] group-data-[status=failed]/job:text-refuse">
-                    {statusLabel(entry)} · {relativeTime(entry.endedAt ?? entry.startedAt)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          {job ? (
-            <div className="flex min-h-0 min-w-0 flex-col">
-              <header className="flex flex-none items-start justify-between gap-3 px-4 pt-3 pb-2 wrap-anywhere vp-480:flex-wrap">
-                <div className="min-w-0">
-                  <strong>{job.title}</strong>
-                  <span
-                    className={cx(
-                      "ml-2 text-meta tracking-[0.06em] uppercase",
-                      job.status === "running"
-                        ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
-                        : job.status === "succeeded" && job.outcome !== "unverified" && job.outcome !== "uncertain"
-                          ? "text-accept"
-                          : job.status === "failed"
-                            ? "text-refuse"
-                            : "text-graphite",
-                    )}
-                  >
-                    {statusLabel(job)}
-                  </span>
-                  {job.origin ? <Link to={job.origin} className={buttonClasses({ variant: "link", className: "mt-1 block w-fit text-caption" })}>Open workspace</Link> : null}
-                  {summary(job, props.docker) ? (
-                    <p className="mt-1 mb-0 text-caption text-graphite">{summary(job, props.docker)}</p>
-                  ) : null}
-                </div>
-                {job.status === "running" && job.execution !== "lost" ? (
+        // One height whatever it holds: the map runs beneath exactly this much of the tray.
+        <div data-ui="activity-drawer" className="flex h-(--activity-drawer) flex-col overflow-y-auto">
+          {props.problem ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-4 py-2" role="alert">
+              <span>{props.problem}</span>
+              <button className={buttonClasses({ variant: "quiet", size: "compact" })}
+                disabled={props.retrying} onClick={props.onRetry}>Retry activity</button>
+            </div>
+          ) : null}
+          {props.actionError ? (
+            <p className="m-0 border-t border-rule px-4 py-2 text-refuse" role="alert">{props.actionError}</p>
+          ) : null}
+          {props.docker.detail ? (
+            <p className="m-0 border-t border-rule px-4 py-2 text-caption text-graphite wrap-anywhere">{props.docker.detail}</p>
+          ) : null}
+          <div className="grid min-h-30 flex-1 grid-cols-[260px_minmax(0,1fr)] border-t border-rule vp-900:grid-cols-1 vp-900:grid-rows-[minmax(0,1fr)_minmax(0,2fr)]">
+            <ul
+              className="m-0 grid list-none content-start gap-1 overflow-auto border-r border-rule p-2 vp-900:max-h-40 vp-900:border-r-0 vp-900:border-b"
+              aria-label="Operations"
+            >
+              {props.jobs.slice(0, 20).map((entry) => (
+                <li key={entry.id}>
                   <button
-                    className={buttonClasses({ variant: "quiet", size: "regular" })}
-                    onClick={() => props.onCancel(job.id)}
-                    disabled={job.cancelRequested}
-                    title={
-                      job.kind.startsWith("deploy") || job.kind === "destroy"
-                        ? "Stops the command. A CloudFormation operation already started continues in AWS."
-                        : undefined
-                    }
+                    data-status={entry.status}
+                    className={cx(
+                      "group/job grid w-full cursor-pointer gap-1 rounded-sm border-0 px-3 py-2 text-left text-inherit hover:bg-wash",
+                      entry.id === job?.id ? "bg-wash" : "bg-transparent",
+                    )}
+                    aria-current={entry.id === job?.id ? "true" : undefined}
+                    onClick={() => props.onSelect(entry.id)}
                   >
-                    <Square size={12} aria-hidden />{" "}
-                    {job.kind.startsWith("deploy") || job.kind === "destroy"
-                      ? "Stop command; AWS may continue"
-                      : job.kind === "local-watch" || job.kind === "local-client"
-                        ? "Stop"
-                        : "Cancel"}
+                    <span className="truncate text-step-minus1 font-medium">{entry.title}</span>
+                    <span className="text-meta text-[color-mix(in_srgb,var(--graphite)_85%,var(--ink))] group-data-[status=running]/job:text-[color-mix(in_srgb,var(--local)_60%,var(--ink))] group-data-[status=failed]/job:text-refuse">
+                      {statusLabel(entry)} · {relativeTime(entry.endedAt ?? entry.startedAt)}
+                    </span>
                   </button>
-                ) : null}
-              </header>
-              {job.observationProblem ? <p role="status" className="m-0 px-4 pb-2 text-caption text-graphite">{job.observationProblem}</p> : null}
-              {job.recovery ? <p role="status" className="m-0 px-4 pb-2 text-caption text-graphite">{job.recovery}</p> : null}
-              {replay.problem ? <div role="alert" className="flex items-center justify-between gap-3 px-4 pb-2 text-caption">
-                <span>{replay.problem}</span>
-                <button className={buttonClasses({ variant: "quiet", size: "compact" })} disabled={replay.retrying} onClick={replay.retry}>Retry log</button>
-              </div> : null}
-              {job.steps?.length ? (
-                <ol className="m-0 flex flex-none list-none flex-wrap gap-x-4 gap-y-1 px-4 pt-0 pb-2 text-step-minus1 text-graphite">
-                  {job.steps.map((step, index) => (
-                    <li
-                      key={index}
+                </li>
+              ))}
+            </ul>
+            {job ? (
+              <div className="flex min-h-0 min-w-0 flex-col">
+                <header className="flex flex-none items-start justify-between gap-3 px-4 pt-3 pb-2 wrap-anywhere vp-480:flex-wrap">
+                  <div className="min-w-0">
+                    <strong>{job.title}</strong>
+                    <span
                       className={cx(
-                        "inline-flex items-center gap-1",
-                        step.status === "running"
+                        "ml-2 text-meta tracking-[0.06em] uppercase",
+                        job.status === "running"
                           ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
-                          : step.status === "done"
+                          : job.status === "succeeded" && job.outcome !== "unverified" && job.outcome !== "uncertain"
                             ? "text-accept"
-                            : step.status === "failed"
+                            : job.status === "failed"
                               ? "text-refuse"
-                              : undefined,
+                              : "text-graphite",
                       )}
                     >
-                      <StepIcon status={step.status} /> {step.label}
-                    </li>
-                  ))}
-                </ol>
-              ) : null}
-              <pre
-                ref={log}
-                className={cx(logClasses, "min-h-0 flex-1")}
-                tabIndex={0}
-                aria-label="Log"
-                onScroll={(event) => {
-                  const element = event.currentTarget;
-                  pinned.current =
-                    element.scrollHeight - element.scrollTop - element.clientHeight < 24;
-                }}
-              >
-                {lines.map((line) => (
-                  <span
-                    key={line.seq}
-                    className={
-                      line.stream === "err"
-                        ? FAILURE.test(line.text)
-                          ? "text-refuse"
-                          : "text-[color-mix(in_srgb,var(--local)_70%,var(--graphite))]"
-                        : line.stream === "info"
-                          ? "text-graphite"
+                      {statusLabel(job)}
+                    </span>
+                    {job.origin ? <Link to={job.origin} className={buttonClasses({ variant: "link", className: "mt-1 block w-fit text-caption" })}>Open workspace</Link> : null}
+                    {summary(job, props.docker) ? (
+                      <p className="mt-1 mb-0 text-caption text-graphite">{summary(job, props.docker)}</p>
+                    ) : null}
+                  </div>
+                  {job.status === "running" && job.execution !== "lost" ? (
+                    <button
+                      className={buttonClasses({ variant: "quiet", size: "regular" })}
+                      onClick={() => props.onCancel(job.id)}
+                      disabled={job.cancelRequested}
+                      title={
+                        job.kind.startsWith("deploy") || job.kind === "destroy"
+                          ? "Stops the command. A CloudFormation operation already started continues in AWS."
                           : undefined
-                    }
-                  >
-                    {line.text}
-                    {"\n"}
-                  </span>
-                ))}
-              </pre>
-            </div>
-          ) : (
-            <p className="text-graphite p-4" role={props.loading ? "status" : undefined}>
-              {props.loading ? "Reading activity…" : props.problem ? "Restore the connection to read recorded operations." : "Operations you start in Studio appear with their steps and log."}
-            </p>
-          )}
+                      }
+                    >
+                      <Square size={12} aria-hidden />{" "}
+                      {job.kind.startsWith("deploy") || job.kind === "destroy"
+                        ? "Stop command; AWS may continue"
+                        : job.kind === "local-watch" || job.kind === "local-client"
+                          ? "Stop"
+                          : "Cancel"}
+                    </button>
+                  ) : null}
+                </header>
+                {job.observationProblem ? <p role="status" className="m-0 px-4 pb-2 text-caption text-graphite">{job.observationProblem}</p> : null}
+                {job.recovery ? <p role="status" className="m-0 px-4 pb-2 text-caption text-graphite">{job.recovery}</p> : null}
+                {replay.problem ? <div role="alert" className="flex items-center justify-between gap-3 px-4 pb-2 text-caption">
+                  <span>{replay.problem}</span>
+                  <button className={buttonClasses({ variant: "quiet", size: "compact" })} disabled={replay.retrying} onClick={replay.retry}>Retry log</button>
+                </div> : null}
+                {job.steps?.length ? (
+                  <ol className="m-0 flex flex-none list-none flex-wrap gap-x-4 gap-y-1 px-4 pt-0 pb-2 text-step-minus1 text-graphite">
+                    {job.steps.map((step, index) => (
+                      <li
+                        key={index}
+                        className={cx(
+                          "inline-flex items-center gap-1",
+                          step.status === "running"
+                            ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
+                            : step.status === "done"
+                              ? "text-accept"
+                              : step.status === "failed"
+                                ? "text-refuse"
+                                : undefined,
+                        )}
+                      >
+                        <StepIcon status={step.status} /> {step.label}
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
+                <pre
+                  ref={log}
+                  className={cx(logClasses, "min-h-0 flex-1")}
+                  tabIndex={0}
+                  aria-label="Log"
+                  onScroll={(event) => {
+                    const element = event.currentTarget;
+                    pinned.current =
+                      element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+                  }}
+                >
+                  {lines.map((line) => (
+                    <span
+                      key={line.seq}
+                      className={
+                        line.stream === "err"
+                          ? FAILURE.test(line.text)
+                            ? "text-refuse"
+                            : "text-[color-mix(in_srgb,var(--local)_70%,var(--graphite))]"
+                          : line.stream === "info"
+                            ? "text-graphite"
+                            : undefined
+                      }
+                    >
+                      {line.text}
+                      {"\n"}
+                    </span>
+                  ))}
+                </pre>
+              </div>
+            ) : (
+              <p className="text-graphite p-4" role={props.loading ? "status" : undefined}>
+                {props.loading ? "Reading activity…" : props.problem ? "Restore the connection to read recorded operations." : "Operations you start in Studio appear with their steps and log."}
+              </p>
+            )}
+          </div>
         </div>
       ) : null}
     </section>
