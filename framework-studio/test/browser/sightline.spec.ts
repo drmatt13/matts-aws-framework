@@ -13,6 +13,12 @@ const sightline = (page: Page) => page.getByRole("region", { name: "Sightline", 
 const conversation = (page: Page) => tray(page).getByRole("tab", { name: "Conversation", exact: true });
 const toggle = (page: Page) => tray(page).getByRole("button", { name: /^(Activity|Agent): (expand|collapse) panel$/ });
 const question = (page: Page) => agent(page).getByRole("textbox", { name: "Ask the agent", exact: true });
+/** Enter does nothing until the agent check has finished, which Send shows by enabling. */
+async function ask(page: Page, text: string) {
+  await question(page).fill(text);
+  await expect(agent(page).getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  await question(page).press("Enter");
+}
 
 test.beforeEach(async ({ context, studio }) => {
   await context.addInitScript(() => {
@@ -163,8 +169,7 @@ test("Sightline preserves conversation, draft and scroll and leaves the chat req
   studio.reply("POST", "/api/agent-lab/chat", route => route.fulfill({ json: { answer } }));
   await studio.goto("/graphql");
   await openAgent(page);
-  await question(page).fill("Explain the framework.");
-  await question(page).press("Enter");
+  await ask(page, "Explain the framework.");
   await expect(agent(page).getByRole("article", { name: "Codex answer", exact: true })).toContainText("Paragraph 35");
   await question(page).fill("An unfinished follow-up");
   const transcript = agent(page).locator('[data-ui="agent-panel"] [aria-label="Conversation"]');
@@ -199,8 +204,7 @@ test("a reply arriving while Sightline is visible stays unread until Conversatio
   });
   await studio.goto("/graphql");
   await openAgent(page);
-  await question(page).fill("Explain this declaration.");
-  await question(page).press("Enter");
+  await ask(page, "Explain this declaration.");
   await expect.poll(() => studio.requests.filter(request => request.path === "/api/agent-lab/chat").length).toBe(1);
   await tray(page).getByRole("tab", { name: "Sightline", exact: true }).click();
   await expect(sightline(page)).toBeVisible();
