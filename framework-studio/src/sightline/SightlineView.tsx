@@ -11,7 +11,7 @@ export function SightlineView() {
   const [display, setDisplay] = useState({ key: 0, collapsed: 1 as boolean | number });
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   return <section aria-label="Sightline" className="flex min-h-0 min-w-0 flex-1 flex-col">
-    <div className="flex flex-none flex-wrap items-center gap-2 border-b border-rule px-3 py-2">
+    <div className="flex flex-none flex-wrap items-center gap-2 border-b border-rule px-4 py-2">
       <Button type="button" size="compact" onClick={() => {
         void navigator.clipboard.writeText(json).then(() => setCopyState("copied"), () => setCopyState("failed"));
       }}>Copy JSON</Button>

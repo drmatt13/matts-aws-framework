@@ -9,6 +9,7 @@ import { Activity } from "./deploy/Activity";
 import { useDockerStart, useDockerStatus } from "../machine/docker";
 import { dockerPresence } from "../../shared/machine";
 import { useAgentChat } from "../agent-chat";
+import { AgentViewTabs, type AgentView } from "./agent/AgentViewTabs";
 const AgentPanel = lazy(() => import("../sightline/AgentViews").then(module => ({ default: module.AgentViews })));
 
 const NO_JOBS: readonly JobView[] = [];
@@ -31,9 +32,9 @@ export const GlobalActivity = memo(function GlobalActivity() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"activity" | "agent">("activity");
   const [agentVisited, setAgentVisited] = useState(false);
-  const [conversationVisible, setConversationVisible] = useState(true);
+  const [agentView, setAgentView] = useState<AgentView>("conversation");
   const agentVisible = open && mode === "agent";
-  const chat = useAgentChat(agentVisible && conversationVisible);
+  const chat = useAgentChat(agentVisible && agentView === "conversation");
   const [selected, setSelected] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [retrying, setRetrying] = useState(false);
@@ -89,7 +90,8 @@ export const GlobalActivity = memo(function GlobalActivity() {
     onToggle={toggle}
     mode={mode}
     onModeChange={value => { setMode(value); if (value === "agent") setAgentVisited(true); }}
-    agent={agentVisited ? <Suspense fallback={<p role="status" className="m-auto text-caption text-graphite">Opening agent…</p>}><AgentPanel chat={chat} visible={agentVisible} onConversationVisibilityChange={setConversationVisible} /></Suspense> : <></>}
+    agent={agentVisited ? <Suspense fallback={<p role="status" className="m-auto text-caption text-graphite">Opening agent…</p>}><AgentPanel chat={chat} visible={agentVisible} view={agentView} /></Suspense> : <></>}
+    agentViews={<AgentViewTabs view={agentView} onChange={setAgentView} />}
     agentPending={chat.pending}
     agentUnread={chat.unread}
     agentSummary={chat.pending ? `${chat.provider === "codex" ? "Codex" : "Claude"} is thinking…` : chat.unread ? chat.problem ? "Response needs attention" : "Reply ready" : chat.messages.length ? "Continue your conversation" : "A question, an idea, a next step"}

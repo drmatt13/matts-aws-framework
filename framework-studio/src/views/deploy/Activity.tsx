@@ -94,6 +94,8 @@ export function Activity(props: {
   readonly mode?: "activity" | "agent";
   readonly onModeChange?: (mode: "activity" | "agent") => void;
   readonly agent?: ReactNode;
+  /** The open Agent panel's own views, shown in the bar in place of its summary. */
+  readonly agentViews?: ReactNode;
   readonly agentSummary?: string;
   readonly agentPending?: boolean;
   readonly agentUnread?: boolean;
@@ -153,6 +155,7 @@ export function Activity(props: {
   );
   const headlines = (entry: JobView) => !coveredByDockerStatus(entry, props.jobs, props.docker);
   const headline = running.find(headlines) ?? (job && headlines(job) ? job : props.jobs.find(headlines));
+  const agentViews = mode === "agent" && props.open ? props.agentViews : undefined;
 
   return (
     <section className="min-h-0 min-w-0 border-t border-rule-strong bg-sheet" aria-label="Activity" onKeyDown={event => {
@@ -174,13 +177,17 @@ export function Activity(props: {
           {(["activity", "agent"] as const).map(value => <button key={value} type="button" role="tab" data-mode={value}
             id={`studio-${value}-tab`} aria-label={value === "activity" ? "Activity" : "Agent"} aria-controls={`studio-${value}-panel`} aria-selected={mode === value} tabIndex={mode === value ? 0 : -1}
             onClick={() => props.onModeChange?.(value)}
-            className={cx("inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-3 py-1 text-label transition-colors vp-480:px-2", mode === value ? "border-rule-strong bg-wash font-semibold text-ink" : "border-transparent bg-transparent text-graphite hover:bg-wash hover:text-ink")}>
+            className={cx("inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-3 py-1 text-label font-medium transition-colors vp-480:px-2", mode === value ? "border-rule-strong bg-wash text-ink" : "border-transparent bg-transparent text-graphite hover:bg-wash hover:text-ink")}>
             {value === "activity" ? <ListTodo size={14} aria-hidden /> : <Sparkles size={14} aria-hidden />}
             {value === "activity" ? "Activity" : "Agent"}
             {value === "activity" && running.length ? <span className="rounded-sm bg-paper px-1.5 text-meta" aria-label={`${running.length} running`}>{running.length}</span> : null}
             {value === "agent" && props.agentPending ? <LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" aria-label="Thinking" /> : null}
             {value === "agent" && props.agentUnread && !props.agentPending ? <span className="size-1.5 rounded-full bg-accept" aria-label="New reply" /> : null}
           </button>)}
+        </div> : null}
+        {agentViews ? <div className="relative z-1 col-start-2 row-start-1 flex items-center gap-3 justify-self-start vp-480:col-start-1 vp-480:row-start-2 vp-480:pb-1">
+          <span aria-hidden className="h-4 w-px bg-rule-strong vp-480:hidden" />
+          {agentViews}
         </div> : null}
         <button
           className={cx("row-start-1 grid min-h-9 min-w-0 cursor-pointer grid-cols-subgrid items-center border-0 bg-transparent py-2 text-left text-inherit hover:bg-wash", props.agent ? "col-start-2 -col-end-1 pr-3" : "col-span-full px-4")}
@@ -191,7 +198,7 @@ export function Activity(props: {
         >
           <span className={cx("col-start-1 flex min-w-0 items-center gap-3", !!props.agent && "pl-3 vp-480:invisible")}>
             {!props.agent ? <strong className="flex-none">Activity</strong> : null}
-            {mode === "agent" ? <span className="truncate text-caption text-graphite">{props.agentSummary ?? "Ask a question"}</span> : headline ? (
+            {agentViews ? null : mode === "agent" ? <span className="truncate text-caption text-graphite">{props.agentSummary ?? "Ask a question"}</span> : headline ? (
               <span
                 className={cx(
                   "block min-w-0 items-center gap-[6px] overflow-hidden text-step-minus1 text-ellipsis whitespace-nowrap",
@@ -230,7 +237,9 @@ export function Activity(props: {
           presence={props.docker}
           onStart={props.onStartDocker}
           onCheck={props.onCheckDocker}
-          className={cx("row-start-1 vp-480:col-span-full vp-480:col-start-1 vp-480:row-start-2 vp-480:px-2 vp-480:pb-2", props.agent ? "col-start-3" : "col-start-2")}
+          className={cx("row-start-1 vp-480:row-start-2", !props.agent ? "col-start-2 vp-480:col-span-full vp-480:col-start-1 vp-480:px-2 vp-480:pb-2"
+            // One row height whether or not the views share it, so changing mode moves nothing.
+            : cx("col-start-3 vp-480:min-h-9 vp-480:pb-1", agentViews ? "vp-480:col-span-3 vp-480:col-start-2 vp-480:justify-end vp-480:pr-2" : "vp-480:col-span-full vp-480:col-start-1 vp-480:px-2"))}
         />
       </div>
       <div ref={drawer} id="studio-activity-drawer" data-ui={visible ? "activity-drawer" : undefined}

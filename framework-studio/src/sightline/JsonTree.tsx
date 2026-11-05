@@ -36,7 +36,7 @@ export function JsonTree({ value, collapsed }: { value: object; collapsed: boole
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, [id]);
-  return <div ref={container} className="min-w-max p-3" onKeyDown={event => {
+  return <div ref={container} className="min-w-max px-4 py-3" onKeyDown={event => {
     const element = event.target;
     if (!(element instanceof HTMLElement) || !element.matches(".icon-container")) return;
     const expanded = element.getAttribute("aria-expanded") === "true";

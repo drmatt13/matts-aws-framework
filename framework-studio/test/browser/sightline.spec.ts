@@ -10,7 +10,7 @@ import { NOW, discoveryFor, workbench } from "./support/scenarios";
 const tray = (page: Page) => page.getByRole("region", { name: "Activity", exact: true });
 const agent = (page: Page) => tray(page).getByRole("tabpanel", { name: /^Agent/ });
 const sightline = (page: Page) => page.getByRole("region", { name: "Sightline", exact: true });
-const conversation = (page: Page) => agent(page).getByRole("tab", { name: "Conversation", exact: true });
+const conversation = (page: Page) => tray(page).getByRole("tab", { name: "Conversation", exact: true });
 const toggle = (page: Page) => tray(page).getByRole("button", { name: /^(Activity|Agent): (expand|collapse) panel$/ });
 const question = (page: Page) => agent(page).getByRole("textbox", { name: "Ask the agent", exact: true });
 
@@ -36,7 +36,7 @@ async function openAgent(page: Page) {
 
 async function openSightline(page: Page) {
   await openAgent(page);
-  await agent(page).getByRole("tab", { name: "Sightline", exact: true }).click();
+  await tray(page).getByRole("tab", { name: "Sightline", exact: true }).click();
   await expect(sightline(page)).toBeVisible();
 }
 
@@ -172,7 +172,7 @@ test("Sightline preserves conversation, draft and scroll and leaves the chat req
   await transcript.evaluate(element => { element.scrollTop = 180; element.dispatchEvent(new Event("scroll")); });
   const scroll = await transcript.evaluate(element => element.scrollTop);
   expect(scroll).toBeGreaterThan(0);
-  await agent(page).getByRole("tab", { name: "Sightline", exact: true }).click();
+  await tray(page).getByRole("tab", { name: "Sightline", exact: true }).click();
   await matches(page, { location: { workspace: "graphql" } });
   await page.getByRole("navigation", { name: "Views", exact: true }).getByRole("link", { name: "WebSockets", exact: true }).click();
   await matches(page, { location: { workspace: "websockets" } });
@@ -202,7 +202,7 @@ test("a reply arriving while Sightline is visible stays unread until Conversatio
   await question(page).fill("Explain this declaration.");
   await question(page).press("Enter");
   await expect.poll(() => studio.requests.filter(request => request.path === "/api/agent-lab/chat").length).toBe(1);
-  await agent(page).getByRole("tab", { name: "Sightline", exact: true }).click();
+  await tray(page).getByRole("tab", { name: "Sightline", exact: true }).click();
   await expect(sightline(page)).toBeVisible();
   release();
   await expect(tray(page).getByLabel("New reply", { exact: true })).toBeVisible();
@@ -224,7 +224,7 @@ test("opening Sightline adds no API reads or event streams compared with the clo
   await page.waitForTimeout(600);
   const closed = studio.requests.slice(beforeClosed).map(request => `${request.method} ${request.path}`);
   const beforeOpen = studio.requests.length;
-  await agent(page).getByRole("tab", { name: "Sightline", exact: true }).click();
+  await tray(page).getByRole("tab", { name: "Sightline", exact: true }).click();
   await expect(sightline(page)).toBeVisible();
   await page.waitForTimeout(600);
   const opened = studio.requests.slice(beforeOpen).map(request => `${request.method} ${request.path}`);

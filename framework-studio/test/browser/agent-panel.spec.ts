@@ -266,6 +266,71 @@ for (const width of [1440, 390]) test(`Agent composer, keyboard sending and answ
   await assertAccessible(page);
 });
 
+for (const width of [1440, 390]) test(`The Agent panel keeps one left edge and gives the drawer to its transcript at ${width}px`, async ({ page, studio }) => {
+  await page.setViewportSize({ width, height: 900 });
+  installAgents(studio);
+  await studio.goto("/graphql");
+  await openAgent(page);
+  await expect(agentPanel(page).getByText("Checking your local agents…")).toHaveCount(0);
+  // The views belong to the bar: the panel below it starts with its transcript.
+  const views = tray(page).getByRole("tablist", { name: "Agent view" });
+  await expect(views).toBeVisible();
+  expect(await agentPanel(page).getByRole("tab").count()).toBe(0);
+  await expect(tray(page).getByText("A question, an idea, a next step")).toHaveCount(0);
+  const geometry = await page.evaluate(() => {
+    const box = (element: Element) => { const { left, top, right, bottom, width, height } = element.getBoundingClientRect(); return { left, top, right, bottom, width, height }; };
+    const panel = document.querySelector('[data-ui="agent-panel"]')!;
+    const composer = panel.querySelector("form > div")!;
+    const title = panel.querySelector("h2")!;
+    return {
+      panel: box(panel), composer: box(composer), title: box(title), chips: box(panel.querySelector('[aria-label="Suggested questions"] button')!),
+      help: box(panel.querySelector("#agent-composer-help")!), transcript: box(panel.querySelector('[aria-label="Conversation"]')!),
+      model: box(panel.querySelector("#studio-agent-model")!), titleSize: getComputedStyle(title).fontSize, helpSize: getComputedStyle(panel.querySelector("#agent-composer-help")!).fontSize,
+    };
+  });
+  for (const edge of [geometry.title.left, geometry.chips.left, geometry.help.left]) expect(edge).toBe(geometry.composer.left);
+  expect(geometry.titleSize).toBe("15px");
+  expect(geometry.helpSize).toBe("12px");
+  expect(geometry.model.width).toBeLessThanOrEqual(180);
+  expect(geometry.transcript.height).toBeGreaterThanOrEqual(geometry.panel.height * (width > 650 ? 0.7 : 0.6));
+  // Centred in the transcript, not pinned against the bar.
+  expect(geometry.title.top - geometry.transcript.top).toBeGreaterThanOrEqual(12);
+  await assertAccessible(page);
+});
+
+test("Why the agent can't be asked replaces the composer's description, and a conversation starts at the top", async ({ page, studio }) => {
+  studio.reply("GET", "/api/agent-lab/status", route => route.fulfill({ json: availability(false) }));
+  await studio.goto("/graphql");
+  await openAgent(page);
+  const description = agentPanel(page).locator("#agent-composer-help");
+  await expect(agentPanel(page).getByRole("status").filter({ hasText: "Fixture CLI needs a terminal login." })).toBeVisible();
+  await expect(agentPanel(page).getByRole("button", { name: "Check again", exact: true })).toBeVisible();
+  expect((await description.boundingBox())!.width).toBeLessThanOrEqual(1);
+  await expect(question(page)).toHaveAttribute("aria-describedby", "agent-composer-help");
+  await expect(agentPanel(page).getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+});
+
+test("A short conversation starts at the top of the transcript and code blocks drop the inline highlight", async ({ page, studio }) => {
+  installAgents(studio);
+  studio.reply("POST", "/api/agent-lab/chat", route => route.fulfill({ json: { answer: "Use `npm` here.\n\n```\nnpm run verify\n```" } }));
+  await studio.goto("/graphql");
+  await openAgent(page);
+  await question(page).fill("Which command?");
+  await agentPanel(page).getByRole("button", { name: "Send", exact: true }).click();
+  await expect(agentPanel(page).locator("pre")).toContainText("npm run verify");
+  const layout = await page.evaluate(() => {
+    const panel = document.querySelector('[data-ui="agent-panel"]')!;
+    return {
+      gap: panel.querySelector("article")!.getBoundingClientRect().top - panel.querySelector('[aria-label="Conversation"]')!.getBoundingClientRect().top,
+      inline: getComputedStyle(panel.querySelector("p code")!).backgroundColor,
+      block: getComputedStyle(panel.querySelector("pre code")!).backgroundColor,
+    };
+  });
+  expect(layout.gap).toBe(12);
+  expect(layout.inline).not.toBe("rgba(0, 0, 0, 0)");
+  expect(layout.block).toBe("rgba(0, 0, 0, 0)");
+});
+
 test("Agent replies finish in the background and conversation plus draft survive navigation and collapse", async ({ page, studio }) => {
   installAgents(studio);
   let finish!: () => void;

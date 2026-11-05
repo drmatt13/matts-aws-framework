@@ -23,11 +23,19 @@ export function inputClasses({
 export function textareaClasses(options: ControlAppearance = {}): string {
   return cx(inputClasses(options), "resize-y");
 }
+/**
+ * A setting inside another control's frame, such as the model beside a composer: no box of its
+ * own until pointed at, as wide as its value. The caller bounds its width.
+ */
+const quietSelect =
+  "min-w-0 appearance-none rounded-md border border-transparent bg-transparent bg-(image:--select-chevron) bg-no-repeat bg-position-[right_6px_center] bg-size-[14px] py-0.5 pr-6 pl-2 text-graphite text-ellipsis field-sizing-content enabled:cursor-pointer enabled:hover:bg-wash enabled:hover:text-ink disabled:opacity-55 disabled:cursor-not-allowed aria-invalid:border-refuse forced-colors:appearance-auto forced-colors:bg-none";
 export function selectClasses({
+  appearance = "field",
   multiple,
   size,
   ...options
-}: ControlAppearance & { multiple?: boolean; size?: number } = {}): string {
+}: ControlAppearance & { appearance?: "field" | "quiet"; multiple?: boolean; size?: number } = {}): string {
+  if (appearance === "quiet") return cx(quietSelect, sizes[options.controlSize ?? "regular"], options.className);
   return cx(
     inputClasses(options),
     !multiple &&
@@ -90,18 +98,19 @@ export function UnitInput({
   );
 }
 export function Select({
+  appearance,
   controlSize,
   className,
   multiple,
   size,
   ...props
-}: ComponentPropsWithRef<"select"> & ControlAppearance) {
+}: ComponentPropsWithRef<"select"> & ControlAppearance & { appearance?: "field" | "quiet" }) {
   return (
     <select
       {...props}
       multiple={multiple}
       size={size}
-      className={selectClasses({ controlSize, className, multiple, size })}
+      className={selectClasses({ appearance, controlSize, className, multiple, size })}
     />
   );
 }

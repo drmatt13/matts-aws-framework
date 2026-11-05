@@ -4,14 +4,20 @@ import Markdown from "react-markdown";
 import type { AgentChat } from "../../agent-chat";
 import type { AgentLabProvider } from "../../agent-lab-api";
 import { Button, buttonClasses } from "../../ui/Button";
+import { cx } from "../../ui/classes";
 import { IconButton } from "../../ui/IconButton";
 import { Select } from "../../ui/FormControls";
+import { Notice } from "../../ui/Surface";
+import { documentSupportClasses, documentTitleClasses } from "../DocumentUI";
 
 const starters = [
   { label: "Understand this project", question: "How is an AWS Studio project organized, and where should I start?" },
   { label: "Local vs. production", question: "How do local development and production differ in this framework?" },
   { label: "Talk through an idea", question: "Help me think through adding a new API endpoint. What should I consider?" },
 ];
+
+/** One column for reading and asking: wide enough for a code example, near 100 characters of prose. */
+const columnClasses = "mx-auto w-full max-w-[752px] px-4";
 
 function Answer({ text }: { text: string }) {
   return <Markdown skipHtml disallowedElements={["img"]} components={{
@@ -21,7 +27,7 @@ function Answer({ text }: { text: string }) {
     h3: ({ children }) => <h3 className="mt-4 mb-2 text-body font-semibold first:mt-0">{children}</h3>,
     ul: ({ children }) => <ul className="mt-0 mb-3 grid gap-1 pl-5 last:mb-0">{children}</ul>,
     ol: ({ children }) => <ol className="mt-0 mb-3 grid gap-1 pl-5 last:mb-0">{children}</ol>,
-    pre: ({ children }) => <pre tabIndex={0} aria-label="Code example" className="my-3 max-w-full overflow-auto rounded-md border border-rule bg-paper p-3 font-mono text-caption">{children}</pre>,
+    pre: ({ children }) => <pre tabIndex={0} aria-label="Code example" className="my-3 max-w-full overflow-auto rounded-md border border-rule bg-paper p-3 font-mono text-caption [&_code]:rounded-none [&_code]:bg-transparent [&_code]:p-0">{children}</pre>,
     code: ({ children }) => <code className="rounded-sm bg-wash px-1 py-0.5 font-mono text-caption">{children}</code>,
     a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer" className="underline decoration-rule-strong underline-offset-3 hover:decoration-ink">{children}</a>,
     blockquote: ({ children }) => <blockquote className="mx-0 my-3 border-l-2 border-rule-strong pl-3 text-graphite">{children}</blockquote>,
@@ -42,6 +48,8 @@ export function AgentPanel({ chat, visible }: { chat: AgentChat; visible: boolea
   const otherBusy = chat.status.data?.busy && !chat.pending;
   const canSend = available && !!chat.draft.trim() && chat.draft.length <= 4000 && !otherBusy && !chat.modelUnavailable;
   const modelProblem = chat.catalog.error?.message ?? chat.catalog.data?.problem;
+  const blocked = chat.status.isPending || !available || !!otherBusy || !!chat.status.error;
+  const modelNotice = available && (!!modelProblem || chat.modelUnavailable);
   const last = chat.messages.at(-1);
 
   useLayoutEffect(() => {
@@ -61,7 +69,7 @@ export function AgentPanel({ chat, visible }: { chat: AgentChat; visible: boolea
     if (element && pinned.current) {
       const answer = last?.role === "assistant" ? element.querySelector("article:last-of-type") : null;
       // A complete answer arrives at once: put its beginning in view so reading starts there.
-      element.scrollTop = answer ? element.scrollTop + answer.getBoundingClientRect().top - element.getBoundingClientRect().top - 16 : element.scrollHeight;
+      element.scrollTop = answer ? element.scrollTop + answer.getBoundingClientRect().top - element.getBoundingClientRect().top - 16 : chat.messages.length ? element.scrollHeight : 0;
       setBelow(false);
     } else if (last?.role === "assistant") setBelow(true);
   }, [chat.messages, chat.pending, chat.problem, chat.stopped, visible]);
@@ -82,59 +90,56 @@ export function AgentPanel({ chat, visible }: { chat: AgentChat; visible: boolea
   const send = () => { pinned.current = true; setConfirmClear(false); chat.send(); composer.current?.focus(); };
 
   return <div className="flex min-h-0 flex-1 flex-col bg-sheet" data-ui="agent-panel">
-    <div ref={transcript} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" aria-label="Conversation" tabIndex={0}
+    <div ref={transcript} className="min-h-0 flex-1 overflow-y-auto overscroll-contain focus-visible:outline-offset-[-2px]" aria-label="Conversation" tabIndex={0}
       onScroll={event => {
         const element = event.currentTarget;
         pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 32;
         if (pinned.current) setBelow(false);
       }}>
-      <div className="mx-auto w-full max-w-[860px] px-5 py-4 vp-480:px-4">
-        {!chat.messages.length ? <div className="grid gap-3 py-1">
-          <div className="flex items-start gap-3">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-rule bg-wash"><Sparkles size={16} aria-hidden /></span>
-            <div>
-              <h2 className="m-0 text-subtitle font-semibold">A little help, right where you work.</h2>
-              <p className="mt-1 mb-0 text-caption text-graphite">Ask a question, untangle a concept, or think through your next step.</p>
-            </div>
+      <div className={cx(columnClasses, "flex min-h-full flex-col py-3", !chat.messages.length && "justify-center")}>
+        {!chat.messages.length ? <div className="grid gap-3">
+          <div className="grid gap-1">
+            <h2 className={documentTitleClasses}>A little help, right where you work.</h2>
+            <p className={documentSupportClasses}>Ask a question, untangle a concept, or think through your next step.</p>
           </div>
-          <div className="flex flex-wrap gap-2 pl-11 vp-480:pl-0" aria-label="Suggested questions">
+          <div className="flex flex-wrap gap-2" aria-label="Suggested questions">
             {starters.map(starter => <Button key={starter.label} type="button" size="compact" variant="quiet" onClick={() => useStarter(starter.question)}>{starter.label}</Button>)}
           </div>
-        </div> : <div className="grid gap-5">
+        </div> : <div className="grid gap-4">
           {chat.messages.map(message => <article key={message.id} className="min-w-0" aria-label={message.role === "user" ? "Your question" : `${message.provider === "codex" ? "Codex" : "Claude"} answer`}>
-            <div className="mb-1.5 flex min-h-6 items-center gap-2 text-caption">
+            <div className="mb-1 flex min-h-7 items-center gap-2 text-caption">
               {message.role === "assistant" ? <Sparkles size={13} aria-hidden /> : null}
               <span className="font-semibold">{message.role === "user" ? "You" : message.provider === "codex" ? "Codex" : "Claude"}</span>
               {message.role === "assistant" && message.modelLabel ? <span className="text-graphite">{message.modelLabel}</span> : null}
               {message.replyState ? <span className="text-graphite">{message.replyState === "stopped" ? "Reply stopped" : "Reply failed"}</span> : null}
-              {message.role === "assistant" ? <IconButton type="button" variant="quiet" size="compact" aria-label={copied === message.id ? "Answer copied" : "Copy answer"} title="Copy answer" onClick={() => void copy(message.id, message.content)}>
+              {message.role === "assistant" ? <IconButton type="button" variant="quiet" size="compact" className="ml-auto" aria-label={copied === message.id ? "Answer copied" : "Copy answer"} title="Copy answer" onClick={() => void copy(message.id, message.content)}>
                 {copied === message.id ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
               </IconButton> : null}
             </div>
             <div className="text-body leading-relaxed wrap-anywhere">
-              {message.role === "user" ? <p className="m-0 whitespace-pre-wrap">{message.content}</p> : <Answer text={message.content} />}
+              {message.role === "user" ? <p className="m-0 w-fit max-w-full rounded-md bg-wash px-3 py-2 whitespace-pre-wrap">{message.content}</p> : <Answer text={message.content} />}
             </div>
           </article>)}
           {chat.pending ? <div role="status" className="flex items-center gap-2 text-caption text-graphite"><LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" aria-hidden />{name} is thinking…</div> : null}
-          {chat.problem || chat.stopped ? <div className="flex flex-wrap items-center gap-3 rounded-md border border-rule bg-paper px-3 py-2 text-caption" role={chat.problem ? "alert" : "status"}>
-            <span className="min-w-0 flex-1 wrap-anywhere">{chat.problem ?? "Response stopped."}</span>
+          {chat.problem || chat.stopped ? <Notice tone={chat.problem ? "error" : "neutral"} className="flex flex-wrap items-center gap-3" role={chat.problem ? "alert" : "status"}>
+            <span className="min-w-0 flex-1">{chat.problem ?? "Response stopped."}</span>
             <Button type="button" size="compact" variant="quiet" disabled={!available || !!otherBusy || chat.modelUnavailable} onClick={chat.retry}><RefreshCw size={12} aria-hidden />Try again</Button>
-          </div> : null}
+          </Notice> : null}
         </div>}
       </div>
     </div>
-    <div className="relative flex-none border-t border-rule bg-sheet" onKeyDown={event => {
+    <div className={cx("flex-none bg-sheet", !!chat.messages.length && "border-t border-rule")} onKeyDown={event => {
       if (event.key === "Escape" && confirmClear) { event.stopPropagation(); setConfirmClear(false); }
     }}>
-      {below ? <Button type="button" size="compact" variant="neutral" className="absolute right-5 -top-9 shadow-sm" onClick={() => {
-        if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
-        pinned.current = true; setBelow(false);
-      }}><ArrowDown size={12} aria-hidden />Latest reply</Button> : null}
-      <form className="mx-auto grid w-full max-w-[860px] gap-2 px-5 pt-3 pb-2 vp-480:px-3" onSubmit={event => { event.preventDefault(); send(); }}>
-        <div className="rounded-lg border border-rule-strong bg-paper focus-within:border-graphite">
+      <form className={cx(columnClasses, "relative grid gap-1 pt-2 pb-3")} onSubmit={event => { event.preventDefault(); send(); }}>
+        {below ? <Button type="button" size="compact" variant="neutral" className="absolute right-4 -top-7 shadow-sm" onClick={() => {
+          if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
+          pinned.current = true; setBelow(false);
+        }}><ArrowDown size={12} aria-hidden />Latest reply</Button> : null}
+        <div className="flex items-end rounded-lg border border-rule-strong bg-paper focus-within:border-faint vp-650:flex-wrap">
           <label htmlFor="studio-agent-question" className="sr-only">Ask the agent</label>
           <textarea ref={composer} id="studio-agent-question" value={chat.draft} maxLength={4000} rows={1}
-            className="block min-h-10 w-full resize-none rounded-t-lg border-0 bg-transparent px-3 pt-2.5 pb-1 text-body leading-relaxed outline-none placeholder:text-faint focus-visible:outline-none"
+            className="block min-h-11 min-w-0 flex-1 resize-none rounded-lg border-0 bg-transparent px-3 py-3 text-body leading-5 outline-none placeholder:text-faint focus-visible:outline-none vp-650:basis-full vp-650:pb-1"
             placeholder={chat.messages.length ? "Ask a follow-up…" : "Ask a question…"}
             aria-describedby="agent-composer-help"
             onChange={event => chat.setDraft(event.target.value)}
@@ -143,41 +148,42 @@ export function AgentPanel({ chat, visible }: { chat: AgentChat; visible: boolea
                 event.preventDefault(); if (!chat.pending && canSend) send();
               }
             }} />
-          <div className="flex min-w-0 items-center justify-between gap-2 px-2 pb-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <label className="sr-only" htmlFor="studio-agent-provider">Agent provider</label>
-              <Select id="studio-agent-provider" controlSize="compact" className="w-[100px] shrink-0 text-caption vp-480:w-[88px]" value={chat.provider} disabled={chat.pending}
-                onChange={event => chat.setProvider(event.target.value as AgentLabProvider)}><option value="codex">Codex</option><option value="claude">Claude</option></Select>
-              <label className="sr-only" htmlFor="studio-agent-model">Agent model</label>
-              <Select id="studio-agent-model" controlSize="compact" className="min-w-0 max-w-[240px] flex-1 text-caption" value={chat.model}
-                disabled={chat.pending || !available} title={chat.selectedModel?.description ?? "Choose a model"}
-                onChange={event => chat.setModel(event.target.value)}>
-                <option value="">CLI default</option>
-                {chat.model && !chat.selectedModel ? <option value={chat.model}>{chat.model}{chat.modelUnavailable ? " (unavailable)" : ""}</option> : null}
-                {chat.catalog.data?.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
-                {chat.catalog.isFetching && !chat.catalog.data ? <option disabled>Loading models…</option> : null}
-              </Select>
-            </div>
-            {chat.pending ? <Button type="button" size="compact" onClick={chat.stop}><Square size={12} aria-hidden />Stop</Button>
-              : <Button type="submit" variant="primary" size="compact" disabled={!canSend}><ArrowUp size={14} aria-hidden />Send</Button>}
+          <div className="flex min-w-0 flex-none items-center gap-1 p-2 vp-650:w-full vp-650:flex-1 vp-650:pt-0">
+            <label className="sr-only" htmlFor="studio-agent-provider">Agent provider</label>
+            <Select id="studio-agent-provider" appearance="quiet" controlSize="compact" className="max-w-full text-caption" value={chat.provider} disabled={chat.pending}
+              onChange={event => chat.setProvider(event.target.value as AgentLabProvider)}><option value="codex">Codex</option><option value="claude">Claude</option></Select>
+            <label className="sr-only" htmlFor="studio-agent-model">Agent model</label>
+            <Select id="studio-agent-model" appearance="quiet" controlSize="compact" className="max-w-45 text-caption" value={chat.model}
+              disabled={chat.pending || !available} title={chat.selectedModel?.description ?? "Choose a model"}
+              onChange={event => chat.setModel(event.target.value)}>
+              <option value="">CLI default</option>
+              {chat.model && !chat.selectedModel ? <option value={chat.model}>{chat.model}{chat.modelUnavailable ? " (unavailable)" : ""}</option> : null}
+              {chat.catalog.data?.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}
+              {chat.catalog.isFetching && !chat.catalog.data ? <option disabled>Loading models…</option> : null}
+            </Select>
+            {chat.pending ? <IconButton type="button" size="compact" className="ml-1 vp-650:ml-auto" aria-label="Stop" title="Stop" onClick={chat.stop}><Square size={12} aria-hidden /></IconButton>
+              : <IconButton type="submit" variant={canSend ? "primary" : "quiet"} size="compact" className="ml-1 vp-650:ml-auto" aria-label="Send" title="Send" disabled={!canSend}><ArrowUp size={14} aria-hidden /></IconButton>}
           </div>
         </div>
-        {available && (modelProblem || chat.modelUnavailable) ? <div role="status" className="flex items-center justify-between gap-3 text-caption text-graphite">
-          <span className="min-w-0 wrap-anywhere">{chat.modelUnavailable ? "This model is no longer listed. Choose another model or CLI default." : `${modelProblem} You can still use CLI default.`}</span>
-          <button type="button" className={buttonClasses({ variant: "link", className: "shrink-0" })} disabled={chat.catalog.isFetching} onClick={chat.refreshModels}>{chat.catalog.isFetching ? "Refreshing…" : "Refresh models"}</button>
-        </div> : null}
-        <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-meta text-graphite">
-          <span id="agent-composer-help">{chat.messages.length ? "Enter to send · Shift+Enter for a new line" : "Questions and answers · No changes to your project"}</span>
+        <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 text-caption text-graphite">
+          <div className="grid min-w-0 flex-1 gap-1">
+            {blocked ? <div role={chat.status.error ? "alert" : "status"} className={cx("flex flex-wrap items-center gap-x-3", chat.status.error ? "text-refuse" : !chat.status.isPending && !otherBusy && "text-local")}>
+              <span className="min-w-0 wrap-anywhere">{chat.status.isPending ? "Checking your local agents…" : chat.status.error?.message ?? (otherBusy ? "Another agent request is running. Check again when it finishes." : chat.selected?.detail ?? "Check your local CLI installation to get started.")}</span>
+              {!chat.status.isPending ? <button type="button" className={buttonClasses({ variant: "link", className: "shrink-0" })} disabled={chat.status.isFetching} onClick={() => void chat.status.refetch()}>{chat.status.isFetching ? "Checking…" : "Check again"}</button> : null}
+            </div> : null}
+            {modelNotice ? <div role="status" className="flex flex-wrap items-center gap-x-3">
+              <span className="min-w-0 wrap-anywhere">{chat.modelUnavailable ? "This model is no longer listed. Choose another model or CLI default." : `${modelProblem} You can still use CLI default.`}</span>
+              <button type="button" className={buttonClasses({ variant: "link", className: "shrink-0" })} disabled={chat.catalog.isFetching} onClick={chat.refreshModels}>{chat.catalog.isFetching ? "Refreshing…" : "Refresh models"}</button>
+            </div> : null}
+            {copyError ? <span role="status">Couldn’t copy. You can select the answer text to copy it.</span> : null}
+            {/* A reason the composer can't be used takes this line's place; the description stays for the field. */}
+            <span id="agent-composer-help" className={blocked || modelNotice || copyError ? "sr-only" : undefined}>{chat.messages.length ? "Enter to send · Shift+Enter for a new line" : "Questions and answers · No changes to your project"}</span>
+          </div>
           {chat.messages.length ? <div className="flex items-center gap-2">
             {confirmClear ? <><span>Clear this chat?</span><button type="button" className={buttonClasses({ variant: "link" })} onClick={() => { chat.clear(); setConfirmClear(false); composer.current?.focus(); }}>Clear</button><button type="button" className={buttonClasses({ variant: "link" })} onClick={() => setConfirmClear(false)}>Keep</button></>
               : <button type="button" className="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-inherit hover:text-ink disabled:opacity-45" disabled={chat.pending} onClick={() => setConfirmClear(true)}><Plus size={12} aria-hidden />New chat</button>}
           </div> : null}
         </div>
-        {chat.status.isPending || !available || otherBusy || chat.status.error ? <div role={chat.status.error ? "alert" : "status"} className="flex items-center justify-between gap-3 text-caption text-graphite">
-          <span className="min-w-0 wrap-anywhere">{chat.status.isPending ? "Checking your local agents…" : chat.status.error?.message ?? (otherBusy ? "Another agent request is running. Check again when it finishes." : chat.selected?.detail ?? "Check your local CLI installation to get started.")}</span>
-          {!chat.status.isPending ? <button type="button" className={buttonClasses({ variant: "link", className: "shrink-0" })} disabled={chat.status.isFetching} onClick={() => void chat.status.refetch()}>{chat.status.isFetching ? "Checking…" : "Check again"}</button> : null}
-        </div> : null}
-        {copyError ? <span role="status" className="text-caption text-graphite">Couldn’t copy. You can select the answer text to copy it.</span> : null}
       </form>
     </div>
     <span className="sr-only" role="status" aria-live="polite">{last?.role === "assistant" ? "Answer ready." : ""}{copied ? " Answer copied." : ""}</span>
