@@ -37,8 +37,6 @@
 import {
   childrenOf,
   RETRYABLE_NODE_KINDS,
-  type AttemptNode,
-  type ChoiceNode,
   type InvocationNode,
   type MapNode,
   type ParallelNode,

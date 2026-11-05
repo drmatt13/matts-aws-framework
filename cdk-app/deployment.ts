@@ -417,21 +417,6 @@ export function resolveFrontendSettings(
 }
 
 /**
- * A comma-separated list input, as its non-empty entries.
- *
- * Order is preserved and duplicates are dropped: a repeated subnet id is a typo
- * rather than a request to place tasks there twice.
- */
-const splitCsv = (value: string | undefined): readonly string[] => {
-  if (!value) return [];
-  const entries = value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-  return [...new Set(entries)];
-};
-
-/**
  * CDK context keys that differ from the key a declaration derives from its
  * variable name, or older spellings still honored, in the order they are read.
  */

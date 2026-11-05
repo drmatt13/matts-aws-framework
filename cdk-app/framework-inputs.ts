@@ -26,7 +26,6 @@ export const localInputs = () => defineResources({
   localLambdaWarmIdleSeconds: resource.fromEnv("LOCAL_LAMBDA_WARM_IDLE_SECONDS").note("Idle seconds before a warm process exits."),
 });
 
-export type LocalInputDeclarations = ReturnType<typeof localInputs>;
 
 /**
  * What each CDK inputs file must write for the framework itself: the uncommented framework lines of

@@ -1,5 +1,4 @@
 import path from "node:path";
-import ts from "typescript";
 import { locateConfigSource } from "../../../packages/framework/scripts/config-source";
 import type { DraftEdit } from "../../shared/api";
 import type { StudioState } from "../snapshot";

@@ -5,7 +5,6 @@ import {
   getLambdaSection,
   getLambdaTargetIds,
   isNodeLambdaRuntime,
-  isResourceReference,
   resolveLambdaTarget,
   validateFrameworkConfig,
 } from "@repo/framework/config";

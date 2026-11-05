@@ -17,7 +17,6 @@ import {
   type FrameworkConfig,
   type NormalizedTarget,
   type ResourceEnvironmentReaders,
-  type ResolvedCloudValues,
   type SuggestedEventId,
 } from "@repo/framework/config";
 import {
@@ -30,10 +29,7 @@ import { FrameworkTargetRegistry } from "./framework-target-registry";
 import { lambdaPlacement } from "./framework-network";
 import {
   attachLambdaResources,
-  assertLambdaEnvironmentBudget,
   emitCloudOutputs,
-  resolveInvocationDescriptors,
-  resolveTargetCloudValues,
 } from "./framework-cloud";
 
 export type EventTargetId<C extends FrameworkConfig> = Extract<

@@ -12,7 +12,7 @@ import {
   assertRequirementsMet,
   formatResourceReference, frameworkSecretName, getFrameworkTargets, isCdkResource, isCdkResourceGroup,
   isResourceAbsent, isResourceReference, isResourceValueReference, isTargetEnabled,
-  resourceAttributeKey, secretBindingPath, resolveResourceFromEnv, isUnresolvedTokenString, STACK_OWN_VALUE_KEYS,
+  resourceAttributeKey, secretBindingPath, resolveResourceFromEnv, STACK_OWN_VALUE_KEYS,
   type CdkResource, type CdkResourceGroup, type CdkResourceSpec, type CloudMode, type FrameworkConfig,
   type SecretProjections,
   type NativeGrantBinding, type NormalizedTarget, type ResolvedCloudRequirement,

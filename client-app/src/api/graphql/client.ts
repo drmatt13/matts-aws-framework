@@ -72,13 +72,6 @@ export class GraphQLRequestError extends Error {
   }
 }
 
-export function isGraphQLErrorCode(
-  error: unknown,
-  code: GraphQLErrorCode,
-): boolean {
-  return error instanceof GraphQLRequestError && error.code === code;
-}
-
 function toRequestError(
   status: number,
   errors: ReadonlyArray<GraphQLResponseError>,

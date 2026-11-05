@@ -1,5 +1,4 @@
 import { Select, TextInput } from "../ui/FormControls";
-import { cx } from "../ui/classes";
 import {
   inspectorStackedFieldClasses,
   inspectorFieldLabelClasses,

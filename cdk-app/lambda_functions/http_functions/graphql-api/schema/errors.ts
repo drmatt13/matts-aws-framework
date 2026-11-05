@@ -37,15 +37,3 @@ export function notFound(message: string): GraphQLError {
     },
   });
 }
-
-/**
- * The ownership/authorization failure code. Kept alongside the others so the
- * standard set is complete the moment a resolver guards a record it does not own.
- */
-export function forbidden(message: string): GraphQLError {
-  return new GraphQLError(message, {
-    extensions: {
-      code: "FORBIDDEN",
-    },
-  });
-}

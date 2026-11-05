@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import { identityPolicyStatements, type IdentityPolicyEdit, type IdentityPolicySource, type IdentityPolicyStatement } from "../shared/identity-policy";
+import { identityPolicyStatements, type IdentityPolicyEdit, type IdentityPolicySource } from "../shared/identity-policy";
 import type { StudioState } from "./snapshot";
 import { assertStackFile } from "./edits/native-triggers";
 import { EditError } from "./edits/io";

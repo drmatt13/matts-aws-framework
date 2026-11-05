@@ -60,7 +60,7 @@ receive a second pass after accepted changes to catch newly exposed dead code.
 
 ## Changes by commit
 
-Studio legacy removal (commit being recorded): removes the unrouted Board/layout,
+`db5fc10` — Studio legacy removal: removes the unrouted Board/layout,
 exclusive Board helpers and five tests, unused deployment Rail implementation, and
 uncalled private helpers. 35 clean files, 1,006 net lines removed. Current editable
 docs updated; historical evidence, goldens and all 40 protected files unchanged.
@@ -102,3 +102,15 @@ Additional pre-existing focused failures, reproduced in an isolated copy of the
 initial revision plus all protected edits: two draft-ui selectors (required-input
 readiness and Value in development) and two landscape opacity expectations
 (actual 0.045 versus expected 0.075). Tests and behavior remain unchanged.
+
+Unused-source cleanup (commit being recorded): removes unused client PageError,
+Cognito schema types and GraphQL error predicate; unmounted tester ThemeToggle;
+three unused private framework/CDK/GraphQL helpers, two internal types, obsolete
+comment and unused imports. Replaces tester JSON validation with native JSON.parse
+(the thrown error is discarded; 45-case acceptance equivalence passed). All existing
+assertions unchanged. Client/Studio/tester builds pass; client 65, tester 4 and
+GraphQL schema 22 tests pass. Verify repeats baseline TS2339 only. Both synths pass: 
+dev templates are exact, prod differs only in two Docker asset image digests.
+Generated files remain exact. Import-only edits emit byte-identical JS.
+Tester JS: 437,746 -> 423,286 bytes; gzip 140,183 -> 132,113; CSS 16,671 -> 13,767.
+Client built assets remain byte-identical. No startup/FPS speedup claimed.

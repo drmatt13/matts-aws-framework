@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import parseJson from "parse-json";
 
 import { lazy, Suspense } from "react";
 
@@ -7,7 +6,7 @@ const ReactJsonView = lazy(() => import("@microlink/react-json-view"));
 
 const isValidJson = (str: string): boolean => {
   try {
-    parseJson(str);
+    JSON.parse(str);
     return true;
   } catch (e) {
     return false;

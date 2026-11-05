@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from "react";
 import { Compartment, EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import {
   drawSelection, dropCursor, EditorView, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars,

@@ -255,17 +255,6 @@ function literalKey(property: ts.ObjectLiteralElementLike): string | undefined {
 }
 
 /**
- * Fails when a section's keys cannot be read from the source, or when two
- * modules composed into one section declare the same key.
- */
-export function assertSectionModulesAreLiteral(
-  configFile: string,
-  options: AssertSectionModulesOptions = {},
-): void {
-  readSectionKeys(configFile, options);
-}
-
-/**
  * The same pass, returning what it read.
  *
  * A workflow has no source directory, so its id cannot come from a filesystem

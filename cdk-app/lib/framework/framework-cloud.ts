@@ -26,7 +26,7 @@ import { lambdaNetworkEnvironment, lambdaPlacement } from "./framework-network";
 import { connectDatabase } from "./framework-database";
 import { appInvocationRegistry } from "./framework-tasks";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
-import { applyNativeGrant, deferResourceAttachment, hasFrameworkResources, resourceValuesForTarget } from "./framework-resources";
+import { applyNativeGrant, deferResourceAttachment, resourceValuesForTarget } from "./framework-resources";
 
 /**
  * Turning a target's declarations into AWS resources.

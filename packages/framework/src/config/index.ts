@@ -39,7 +39,6 @@ import { isInvocationBinding } from "./resources";
 import { assertFrameworkUserPool, USER_POOL_DECLARATION_EXAMPLE, USER_POOL_ENVIRONMENT, userPoolDelivery, type FrameworkUserPool } from "./user-pool";
 import { resolveDatabasePool, type DatabasePoolSettings } from "../database-pool";
 import { assertDatabaseReference, type DatabaseReference } from "./database";
-import { assertRequirementsMet, describeRequirementFix } from "./requirements";
 import type { CloudRequirement, ResolvedCloudRequirement } from "./requirements";
 import { assertJsonArguments, isCdkResource, isGroupMember, type CdkResource, type NativeGrantBinding } from "./cdk-resources";
 import { normalizeWorkflow } from "./workflows";

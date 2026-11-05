@@ -1,9 +1,9 @@
 import { displayName } from "../naming";
 import { gatewaysOf } from "../../shared/gateways";
 import { drawnAs } from "../drawn-as";
-import type { Diagnostic, Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
+import type { Diagnostic, Lanes, Mode, ModeModel, ModelResource, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
 import { edgeCategory, ROLE_LABEL } from "../lookup";
-import { endpointServiceIcon, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
+import { endpointServiceIcon, resourceIcon, targetIcon, type IconKey } from "../icons";
 import { resourceIssues, targetIssues, type EntityIssue } from "../issues";
 import { endpointServiceDetails } from "../endpoint-services";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";

@@ -16,7 +16,7 @@ export type {
 } from "./draft-entries";
 
 import { networkCreationProblem, unusedNetworkCidr, networkSettings, type NetworkSettings, type PlacementEdit } from "../shared/networks";
-import type { ApplyResponse, BatchPlanResponse, CommentReviewOptions, DraftEdit, EditIntent, LiteralValue } from "../shared/api";
+import type { ApplyResponse, BatchPlanResponse, CommentReviewOptions, DraftEdit, LiteralValue } from "../shared/api";
 import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
 import type { DeploymentInputFileEdits, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { descriptionError } from "../shared/descriptions";

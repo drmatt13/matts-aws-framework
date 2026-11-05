@@ -91,5 +91,3 @@ export const deploymentInputs = (mode: CloudMode) =>
     },
     { mode },
   );
-
-export type DeploymentInputDeclarations = ReturnType<typeof deploymentInputs>;

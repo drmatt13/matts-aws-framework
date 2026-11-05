@@ -1,7 +1,7 @@
 import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
 
-import { TextInput, Select, Textarea } from "../../ui/FormControls";
+import { TextInput, Textarea } from "../../ui/FormControls";
 
 import { statePanelClasses, factsClasses } from "./DeployUI";
 import { documentTitleClasses, documentSubheadingClasses, documentProseClasses, documentSupportClasses, documentSummaryClasses } from "../DocumentUI";
