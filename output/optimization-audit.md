@@ -124,7 +124,7 @@ ledger and lockfile proof are in output/optimization/. Required verify has only
 the baseline TypeScript errors; both synths still match after normalizing only
 container asset image digests. Generated files are unchanged.
 
-Inspector availability optimization (commit being recorded): one fresh dev/prod
+`e3ae88f` — Inspector availability optimization: one fresh dev/prod
 index pair per nonempty Relations render replaces two whole-model derivations per
 row. No retained cache, event reordering or changed output. Three new equivalence
 checks pass; all existing assertions stay intact. Seven alternating quiet-window
@@ -133,3 +133,14 @@ and synthetic500-entity/332-row median 113.265 -> 1.731 ms. Every availability a
 matches. This measures computation, not total UI latency or FPS. Verify retains
 only baseline TS2339. Full Chromium light: 218/233 passed; 15 failures are being
 compared to the exact starting tree before attribution. Goldens unchanged.
+
+Service image optimization (commit being recorded): removes the unused root
+node_modules copy from the runtime stage; keeps the already-complete bundle and
+package metadata. Normal-bundling synth still matches in both modes apart from
+Docker asset digests; verify repeats baseline TS2339. Actual Docker linux/arm64
+Node24.22.2 comparison: 2,112,652,032 -> 253,205,476 bytes (88.01% smaller).
+Bundle JS, sourcemap and package.json hashes are exact. Sixty isolated request,
+auth and error comparisons plus stdout/stderr match byte-for-byte, and both real
+`npm run start` commands have identical startup logs, health200 and hello401.
+Containers used network-none/read-only roots and were removed; the two scoped
+comparison images remain. No image-build speed claim: cache warmth differed.

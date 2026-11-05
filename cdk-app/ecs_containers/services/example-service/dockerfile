@@ -32,15 +32,6 @@ WORKDIR /app
 COPY --from=build /workspace/cdk-app/ecs_containers/services/example-service/dist ./dist
 COPY --from=build /workspace/cdk-app/ecs_containers/services/example-service/package.json ./package.json
 
-# Copy installed dependencies so the app can actually run.
-COPY --from=build /workspace/node_modules ./node_modules
-
-# If a shared package needs runtime files that are not bundled into dist,
-# copy them here with another COPY line.
-#
-# Example:
-# COPY --from=build /workspace/packages/<my-shared-package>/dist ./packages/<my-shared-package>/dist
-
 EXPOSE 5000
 
 CMD ["npm", "run", "start"]
