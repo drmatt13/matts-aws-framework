@@ -11,7 +11,7 @@ import { DEPLOYMENT_METADATA_KEY, FRAMEWORK_OWNER, IDENTITY_TAGS } from "@repo/f
 import {
   assertRequirementsMet,
   formatResourceReference, frameworkSecretName, getFrameworkTargets, isCdkResource, isCdkResourceGroup,
-  isResourceAbsent, isResourceReference, isResourceValueReference, isTargetEnabled,
+  isResourceAbsent, isResourceReference, isResourceValueReference, createTargetAvailability,
   resourceAttributeKey, secretBindingPath, resolveResourceFromEnv, STACK_OWN_VALUE_KEYS,
   type CdkResource, type CdkResourceGroup, type CdkResourceSpec, type CloudMode, type FrameworkConfig,
   type SecretProjections,
@@ -371,8 +371,10 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
   const stacks = scope.node.root.node.findAll().filter(cdk.Stack.isStack);
   if (mode === "dev") {
     const published = new Set<string>();
-    for (const target of getFrameworkTargets(config)) {
-      if (!isTargetEnabled(config, target.kind, target.id, "local", "unconditioned")) continue;
+    const targets = getFrameworkTargets(config);
+    const availability = createTargetAvailability(config);
+    for (const target of targets) {
+      if (!availability.enabled(target.kind, target.id, "local", "unconditioned")) continue;
       const references = [...Object.values(target.environment).filter(isResourceReference), ...Object.values(target.secrets).filter((ref) => !ref.fromEnv)];
       for (const reference of references) {
         if (isResourceAbsent(reference) || isResourceValueReference(reference) || (reference.fromEnv && !reference.secretArn)) continue;
