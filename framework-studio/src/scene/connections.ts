@@ -107,7 +107,7 @@ export function connectionStyle(
  * Provenance describes how a relationship was discovered, not its visual importance: declared, derived and
  * source-discovered connections all use the same resting strength.
  */
-export const EDGE_ALPHA = { resting: 0.3, outOfLens: 0.15 } as const;
+export const EDGE_ALPHA = { resting: 0.3, outOfLens: 0.25 } as const;
 
 /** Hover responds faster than captions; environment and selection changes stay immediate. */
 export const EDGE_HOVER_DURATION = 0.05;
