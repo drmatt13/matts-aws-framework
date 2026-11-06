@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1-labs@sha256:63e440b412b6acba117974e793b7e7f702e58ee65e044bdff1b8d388ee0d853b
-# Pinned by digest, not by tag, as every framework image is. Update it
-# deliberately, with docker pull.
+# The Dockerfile syntax frontend is pinned by digest; update it deliberately.
+# The Node base below uses a floating tag.
 #
 # Applies the committed migrations to the deployment's database. The database
 # sits in the network's isolated subnets and nothing outside the VPC reaches it,
@@ -11,7 +11,8 @@
 FROM node:24-bookworm-slim
 WORKDIR /workspace
 
-# openssl: Prisma's engine. ca-certificates: TLS to the database is verified
+# OpenSSL remains part of the image's existing system toolset; the application
+# database runtime is Rust-free. ca-certificates: TLS to the database is verified
 # against the RDS bundle the framework writes, and to everything else against
 # the system store.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \

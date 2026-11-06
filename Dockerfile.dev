@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1-labs@sha256:63e440b412b6acba117974e793b7e7f702e58ee65e044bdff1b8d388ee0d853b
-# Pinned by digest so `npm run dev:containers` builds from the local content store instead
-# of re-resolving a floating tag at Docker Hub on every rebuild. Update it
-# deliberately, with docker pull.
+# The Dockerfile syntax frontend is pinned by digest; update it deliberately.
+# The Node base and Docker CLI COPY sources below use floating tags.
 #
 # The one image every local container runs. Compose Watch synchronizes source
 # into it; dependencies, the Prisma client and the framework's generated
@@ -9,7 +8,8 @@
 FROM node:24-bookworm-slim
 WORKDIR /workspace
 
-# openssl: Prisma's query engine. docker and buildx: local-invocation-runner builds
+# OpenSSL remains part of the image's existing system toolset; the application
+# database runtime is Rust-free. docker and buildx: local-invocation-runner builds
 # and runs task and container-Lambda images through the mounted socket, and a
 # CLI this recent dispatches `docker build` to the buildx plugin.
 # ca-certificates: the slim base ships none and Node brings its own, but buildx
