@@ -3,16 +3,12 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  endpointServices,
   isNodeLambdaRuntime,
   resolveLambdaTarget,
-  resolveNetwork,
-  subnetEgress,
   type FrameworkConfig,
   type LambdaTarget,
 } from "@repo/framework/config";
 import { resolveLambdaSourcePath } from "@repo/framework/config/source";
-import type { EgressPolicy } from "./egress-guard";
 import { resolveLocalWorkloadEnvironment, type LocalEnvironmentOptions } from "./environment";
 
 /** Fields a caller may pin on the Lambda context. See lambda-child.ts. */
@@ -28,7 +24,6 @@ interface ChildRequest {
   readonly event: unknown;
   readonly context?: PinnedLambdaContext;
   readonly lambda: { readonly functionName: string; readonly memoryLimitInMB: number; readonly timeoutSeconds: number };
-  readonly egress?: EgressPolicy;
 }
 
 interface ChildReply {
@@ -299,35 +294,18 @@ export class LambdaWorkerPool {
   }
 }
 
-/**
- * The egress a handler's process is held to. A Lambda in the VPC (`subnet:
- * "private"` or `"isolated"`, or `database: true`) runs in that subnet in AWS,
- * so it gets that subnet's egress here too. Undefined where IPv4 leaves (a
- * private subnet with a NAT gateway), which reaches everything.
- */
-export function localLambdaEgress(config: FrameworkConfig, target: LambdaTarget): EgressPolicy | undefined {
-  const { subnet, vpc } = resolveLambdaTarget(config, target.slice("lambda:".length));
-  if (subnet === "none") return undefined;
-  const network = resolveNetwork(config, vpc);
-  const egress = subnetEgress(network, subnet);
-  if (egress.ipv4) return undefined;
-  return { subnet, ipv6: egress.ipv6, endpoints: [...endpointServices(network)] };
-}
-
 export async function invokeLocalNodeLambda(config: FrameworkConfig, target: LambdaTarget, event: unknown, options: LocalLambdaInvocationOptions): Promise<unknown> {
   const id = target.slice("lambda:".length);
   const spec = resolveLambdaTarget(config, id);
   if (spec.packaging !== "zip" || !isNodeLambdaRuntime(spec.runtime)) throw new Error(`${target} has no local Node zip execution lane.`);
   const environment = await resolveLocalWorkloadEnvironment(config, target, options);
   if (options.signal?.aborted) throw options.signal.reason;
-  const egress = localLambdaEgress(config, target);
   const request: ChildRequest = {
     entry: pathToFileURL(path.join(resolveLambdaSourcePath(config, id, { repositoryRoot: options.repositoryRoot }), "index.ts")).href,
     handler: spec.handler,
     event,
     ...(options.context ? { context: options.context } : {}),
     lambda: { functionName: id, memoryLimitInMB: spec.memorySize, timeoutSeconds: spec.timeoutSeconds },
-    ...(egress ? { egress } : {}),
   };
   return options.pool
     ? options.pool.invoke(target, environment, request, options.signal)

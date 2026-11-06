@@ -1,6 +1,8 @@
-import type { JobView, OperationRequest, PlanSummaryView, PlanView } from "../../shared/deploy";
+import type { JobView, OperationRequest, PlanSummaryView, PlanView, TeardownPlanView } from "../../shared/deploy";
 import { test as base, expect, assertAccessible } from "./support/test";
 import { deploymentPlan, NOW, overview } from "./support/scenarios";
+import { localRuntimeView } from "./support/local-runtime";
+import { inspectionStatus } from "./support/stack-inspection";
 
 interface DeploymentScenario {
   readonly jobs: JobView[];
@@ -265,4 +267,214 @@ test("synthesis errors stay in Activity without creating a review or deployment"
   await expect(page.getByRole("button", { name: "Review plan", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Synthesize", exact: true })).toBeEnabled();
   expect(deployment.submitted.some(request => request.kind === "deploy-apply")).toBe(false);
+});
+
+for (const width of [1440, 390])
+  test(`development synthesis and review stay available while runtime blocks deployment and destruction at ${width}px`, async ({ page, studio, deployment }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    let local = localRuntimeView("ready");
+    studio.reply("GET", "/api/deploy/local", route => route.fulfill({ json: local }));
+    studio.reply("GET", "/api/deploy/status", (route, url) => route.fulfill({ json: { ok: true, value: inspectionStatus(url) } }));
+    deployment.save(prepared());
+    await studio.goto("/deploy");
+    const synthesize = page.getByRole("button", { name: "Synthesize", exact: true });
+    await expect(synthesize).toBeEnabled();
+    const deployed = page.getByRole("group", { name: "Deployed deployment", exact: true });
+    await deployed.locator("summary").click();
+    await expect(deployed.getByRole("button", { name: "Destroy…", exact: true })).toBeDisabled();
+    await expect(deployed).toContainText("Stop local runtime before changing development resources.");
+    expect(studio.requests.some(request => request.path.startsWith("/api/deploy/teardown"))).toBe(false);
+    await synthesize.click();
+    await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["deploy-plan"]);
+    await deployment.finish();
+    await page.getByRole("button", { name: "Review plan", exact: true }).click();
+    const review = page.getByRole("dialog", { name: /^Review deployment for browser-dev\b/ });
+    const apply = review.getByRole("button", { name: "Deploy development", exact: true });
+    await expect(apply).toBeDisabled();
+    await expect(review).toContainText("Stop local runtime before changing development resources.");
+    await assertAccessible(page);
+    await page.screenshot({ path: testInfo.outputPath("runtime-blocks-development-review.png"), fullPage: true });
+    await review.getByRole("button", { name: "Stop local runtime", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["deploy-plan", "local-stop"]);
+    await expect(apply).toBeDisabled();
+    local = localRuntimeView();
+    await deployment.finish();
+    await expect(review).toBeVisible();
+    await expect(apply).toBeEnabled();
+    await expect(apply).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["deploy-plan", "local-stop", "deploy-apply"]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+
+test("a partial local runtime blocks development deployment until cleanup finishes", async ({ page, studio, deployment }) => {
+  let local = localRuntimeView("blocked");
+  studio.reply("GET", "/api/deploy/local", route => route.fulfill({ json: local }));
+  deployment.save(prepared());
+  await studio.goto("/deploy");
+  await page.getByRole("button", { name: "Review plan", exact: true }).click();
+  const review = page.getByRole("dialog", { name: /^Review deployment for browser-dev\b/ });
+  const apply = review.getByRole("button", { name: "Deploy development", exact: true });
+  await expect(apply).toBeDisabled();
+  await review.getByRole("button", { name: "Stop local runtime", exact: true }).click();
+  await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["local-stop"]);
+  local = localRuntimeView();
+  await deployment.finish();
+  await expect(apply).toBeEnabled();
+  expect(deployment.submitted.some(request => request.kind === "deploy-apply")).toBe(false);
+});
+
+test("unknown local runtime status blocks development confirmation and can be checked again", async ({ page, studio, deployment }) => {
+  let unavailable = true;
+  studio.reply("GET", "/api/deploy/local", route => route.fulfill(unavailable
+    ? { status: 503, json: { error: "Local runtime status could not be read." } }
+    : { json: localRuntimeView() }));
+  deployment.save(prepared());
+  await studio.goto("/deploy");
+  await page.getByRole("button", { name: "Review plan", exact: true }).click();
+  const review = page.getByRole("dialog", { name: /^Review deployment for browser-dev\b/ });
+  const apply = review.getByRole("button", { name: "Deploy development", exact: true });
+  await expect(apply).toBeDisabled();
+  await expect(review).toContainText(/check|unavailable|could not/i);
+  unavailable = false;
+  await review.getByRole("button", { name: "Check again", exact: true }).click();
+  await expect(apply).toBeEnabled();
+  expect(deployment.submitted).toEqual([]);
+});
+
+for (const typed of [true, false])
+test(`an open deletion review reacts when local runtime starts and returns keyboard focus after stopping (${typed ? "confirmed" : "untyped"})`, async ({ page, studio, deployment }) => {
+  let local = localRuntimeView();
+  studio.reply("GET", "/api/deploy/local", route => route.fulfill({ json: local }));
+  studio.reply("GET", "/api/deploy/status", (route, url) => route.fulfill({ json: { ok: true, value: inspectionStatus(url) } }));
+  const deletion: TeardownPlanView = { key: "runtime-delete-review", deployment: "browser-dev", mode: "dev", account: "123456789012", region: "us-east-1",
+    createdAt: NOW, expiresAt: "2030-01-01T00:00:00Z", digest: "fixture-runtime-delete", stacks: [], leftInPlace: [], remains: [], secrets: [], record: true };
+  studio.reply("GET", "/api/deploy/teardown", route => route.fulfill({ json: { ok: true, value: deletion } }));
+  await studio.goto("/deploy");
+  const deployed = page.getByRole("group", { name: "Deployed deployment", exact: true });
+  await deployed.locator("summary").click();
+  await deployed.getByRole("button", { name: "Destroy…", exact: true }).click();
+  const review = page.getByRole("dialog", { name: /^Delete browser-dev\b/ });
+  const remove = review.getByRole("button", { name: "Delete browser-dev", exact: true });
+  const confirmation = review.getByRole("textbox", { name: "Type browser-dev to delete it", exact: true });
+  if (typed) {
+    await confirmation.fill("browser-dev");
+    await expect(remove).toBeEnabled();
+  } else await expect(remove).toBeDisabled();
+  local = localRuntimeView("ready");
+  await studio.emit("deploy-changed", { profile: "browser", deployment: "browser-dev" });
+  await expect(remove).toBeDisabled();
+  await review.getByRole("button", { name: "Stop local runtime", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["local-stop"]);
+  local = localRuntimeView();
+  await deployment.finish();
+  if (typed) {
+    await expect(remove).toBeEnabled();
+    await expect(remove).toBeFocused();
+  } else {
+    await expect(remove).toBeDisabled();
+    await expect(confirmation).toBeFocused();
+  }
+  expect(deployment.submitted.some(request => request.kind === "destroy")).toBe(false);
+  await assertAccessible(page);
+});
+
+test("development runtime does not block an independent production deployment review", async ({ page, studio, deployment }) => {
+  studio.reply("GET", "/api/deploy/local", route => route.fulfill({ json: localRuntimeView("ready") }));
+  const prod = prepared({ key: "prepared-production", planId: "prepared-production-id", identity: { ...deploymentPlan().identity, deployment: "browser-prod", mode: "prod" } });
+  deployment.save(prod);
+  await studio.goto("/deploy");
+  await page.getByRole("group", { name: "Source environment", exact: true }).getByRole("button", { name: "Production", exact: true }).click();
+  await page.getByRole("button", { name: "Review plan", exact: true }).click();
+  const review = page.getByRole("dialog", { name: /^Review deployment for browser-prod\b/ });
+  await expect(review.getByRole("button", { name: "Deploy production", exact: true })).toBeEnabled();
+  await expect(review.getByRole("button", { name: "Stop local runtime", exact: true })).toHaveCount(0);
+  expect(deployment.submitted).toEqual([]);
+});
+
+for (const kind of ["secret creation", "change-set preparation"] as const)
+  test(`runtime blocks ${kind} while ordinary template synthesis stays available`, async ({ page, studio, deployment }) => {
+    studio.reply("GET", "/api/deploy/local", route => route.fulfill({ json: localRuntimeView("ready") }));
+    deployment.save(prepared(kind === "secret creation" ? {
+      status: "needs-secrets", secrets: [{ name: "fixture-secret", variable: "FIXTURE_SECRET", action: "create" }],
+    } : { status: "blocked", review: "change-set", synthesis: { current: false, reason: "Prepare the new change set." } }));
+    await studio.goto("/deploy");
+    await expect(page.getByRole("button", { name: "Synthesize", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Review plan", exact: true }).click();
+    const review = page.getByRole("dialog", { name: /^Review deployment for browser-dev\b/ });
+    await expect(review.getByRole("button", { name: kind === "secret creation" ? "Create secrets and plan again" : "Synthesize again", exact: true })).toBeDisabled();
+    await expect(review.getByRole("button", { name: "Stop local runtime", exact: true })).toBeVisible();
+    expect(deployment.submitted).toEqual([]);
+  });
+
+test("the complete development journey deploys, runs locally, stops and destroys explicitly", async ({ page, studio, deployment }, testInfo) => {
+  let cloudExists = false;
+  let local = localRuntimeView();
+  studio.reply("GET", "/api/deploy/local", route => route.fulfill({ json: local }));
+  studio.reply("GET", "/api/deploy/status", (route, url) => {
+    const value = inspectionStatus(url);
+    return route.fulfill({ json: { ok: true, value: cloudExists ? { ...value, detail: { ...value.detail!, local: {
+      compatible: true, exported: { deployment: "browser-dev", client: true, fresh: true },
+    } } } : { ...value, deployments: [], detail: undefined, targets: value.targets.map(target => ({ ...target, status: "absent" })) } } });
+  });
+  const initial = prepared();
+  const applied = prepared({ result: { status: "succeeded", deferred: [], verification: { verified: true, stacks: [] } } });
+  deployment.save(initial);
+  await studio.goto();
+  const runtime = page.getByRole("switch", { name: "Local runtime", exact: true, includeHidden: true });
+  await expect(runtime).toBeDisabled();
+  const navigation = page.getByRole("navigation", { name: "Views", exact: true });
+  await navigation.getByRole("link", { name: "Deploy", exact: true }).click();
+  await page.getByRole("button", { name: "Review plan", exact: true }).click();
+  await page.getByRole("dialog", { name: /^Review deployment for browser-dev\b/ }).getByRole("button", { name: "Deploy development", exact: true }).click();
+  await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["deploy-apply"]);
+  await navigation.getByRole("link", { name: "Map", exact: true }).click();
+  await expect(runtime).toBeDisabled();
+  cloudExists = true;
+  await deployment.finish(applied);
+  const collapseActivity = async () => {
+    const collapse = page.getByRole("region", { name: "Activity", exact: true }).getByRole("button", { name: "Activity: collapse panel", exact: true });
+    await expect(collapse).toBeVisible();
+    await collapse.click();
+  };
+  await collapseActivity();
+  await expect(runtime).toBeEnabled();
+  await runtime.click();
+  await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["deploy-apply", "local-start"]);
+  local = localRuntimeView("ready");
+  await deployment.finish(applied);
+  await collapseActivity();
+  await expect(runtime).toBeChecked();
+  await expect(runtime).toContainText("Running");
+  await runtime.click();
+  await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["deploy-apply", "local-start", "local-stop"]);
+  local = localRuntimeView();
+  await deployment.finish(applied);
+  await collapseActivity();
+  await expect(runtime).not.toBeChecked();
+  await navigation.getByRole("link", { name: "Deploy", exact: true }).click();
+  const deployed = page.getByRole("group", { name: "Deployed deployment", exact: true });
+  await deployed.locator("summary").click();
+  const deletion: TeardownPlanView = { key: "journey-delete-review", deployment: "browser-dev", mode: "dev", account: "123456789012", region: "us-east-1",
+    createdAt: NOW, expiresAt: "2030-01-01T00:00:00Z", digest: "fixture-journey-delete", stacks: [], leftInPlace: [], remains: [], secrets: [], record: true };
+  studio.reply("GET", "/api/deploy/teardown", route => route.fulfill({ json: { ok: true, value: deletion } }));
+  await deployed.getByRole("button", { name: "Destroy…", exact: true }).click();
+  const deletionReview = page.getByRole("dialog", { name: /^Delete browser-dev\b/ });
+  const remove = deletionReview.getByRole("button", { name: "Delete browser-dev", exact: true });
+  await expect(remove).toBeDisabled();
+  await deletionReview.getByRole("textbox", { name: "Type browser-dev to delete it", exact: true }).fill("browser-dev");
+  await expect(remove).toBeEnabled();
+  await remove.click();
+  await expect.poll(() => deployment.submitted.map(request => request.kind)).toEqual(["deploy-apply", "local-start", "local-stop", "destroy"]);
+  cloudExists = false;
+  await deployment.finish(applied);
+  await collapseActivity();
+  await navigation.getByRole("link", { name: "Map", exact: true }).click();
+  await expect(runtime).not.toBeChecked();
+  await expect(runtime).toBeDisabled();
+  await expect(runtime).toContainText(/Deploy development first/);
+  await assertAccessible(page);
+  await page.screenshot({ path: testInfo.outputPath("development-journey-destroyed.png"), fullPage: true });
 });

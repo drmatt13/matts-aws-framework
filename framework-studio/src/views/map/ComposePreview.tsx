@@ -2,6 +2,9 @@ import { useCallback, useEffect, useId, useRef, useState, type CSSProperties } f
 import { cx } from "../../ui/classes";
 import { DockerStartPopover } from "./DockerStartPopover";
 import { useDockerStatus } from "../../machine/docker";
+import { useLocalRuntime } from "../../deploy/local-runtime";
+import { LocalRuntimePopover } from "./LocalRuntimePopover";
+import { buttonClasses } from "../../ui/Button";
 
 /*
  * Motion. Every state change is a CSS transition with per-part delays, so a second
@@ -13,7 +16,6 @@ import { useDockerStatus } from "../../machine/docker";
 const EXPO_OUT = "cubic-bezier(.16,1,.3,1)";
 const EASE_IN = "cubic-bezier(.5,0,.75,0)";
 const IN_OUT = "cubic-bezier(.65,0,.35,1)";
-const SPRING = "var(--spring)";
 const BOUNCE = "var(--spring-bounce)";
 
 /** Container positions on the whale's back, in loading order: bottom row left to right, then the top row. */
@@ -32,12 +34,19 @@ const PIVOT = "[transform-box:view-box] origin-[22px_30px]";
 
 const timing = (on: boolean, whenOn: string, whenOff: string): CSSProperties => ({ transition: on ? whenOn : whenOff });
 
-/** Visual runtime prototype, gated by the real Docker prerequisite. It does not launch Compose. */
+/** The checkout's real development runtime; motion follows confirmed readiness. */
 export function ComposePreview({ motion }: { readonly motion: boolean }) {
   const docker = useDockerStatus();
-  const [on, setOn] = useState(false);
-  const [dockerHelp, setDockerHelp] = useState(false);
+  const runtime = useLocalRuntime();
+  const on = runtime.ready;
+  const engaged = runtime.on;
+  const blocked = !engaged && !runtime.canStart && !runtime.busy;
+  const statusLabel = blocked && !runtime.problem ? runtime.startHint : runtime.label;
+  const [help, setHelp] = useState<"docker" | "runtime">();
   const trigger = useRef<HTMLButtonElement>(null);
+  const detailsTrigger = useRef<HTMLButtonElement>(null);
+  const helpTrigger = useRef<HTMLButtonElement | null>(null);
+  const submitting = useRef(false);
   // Remounts the one-shot accents so each turn-on plays them once.
   const [launches, setLaunches] = useState(0);
   // The hover spout waits until the pointer has left after a turn-on, so the click itself never plays it.
@@ -45,42 +54,50 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
   const descriptionId = useId();
   const dockerHelpId = useId();
   const loops = motion && cx(!on && "[animation-play-state:paused]");
-  const enablePreview = useCallback(() => {
-    setLaunches((count) => count + 1);
-    setArmed(false);
-    setOn(true);
-    setDockerHelp(false);
-    trigger.current?.focus({ preventScroll: true });
-  }, []);
+  const previouslyOn = useRef(on);
   useEffect(() => {
-    if (docker.status?.docker.engine === "stopped" || docker.status?.docker.engine === "missing") setOn(false);
-  }, [docker.status?.docker.engine]);
+    if (on && !previouslyOn.current) { setLaunches(count => count + 1); setArmed(false); }
+    previouslyOn.current = on;
+  }, [on]);
   const closeHelp = useCallback(() => {
-    setDockerHelp(false);
+    setHelp(undefined);
     // Light dismissal keeps focus on the clicked control; Escape and Close return to the switch.
-    if (document.activeElement === document.body || document.activeElement?.closest('[data-ui="compose-docker-help"]')) trigger.current?.focus({ preventScroll: true });
+    if (document.activeElement === document.body || document.activeElement?.closest('[data-ui="compose-docker-help"], [data-ui="local-runtime-help"]'))
+      [helpTrigger.current, detailsTrigger.current, trigger.current].find(element => element?.isConnected && !element.disabled)?.focus({ preventScroll: true });
   }, []);
+  const operate = async (kind: "start" | "stop") => {
+    if (submitting.current || runtime.busy) return;
+    submitting.current = true; setHelp(undefined);
+    try { await runtime[kind](); }
+    catch { setHelp("runtime"); }
+    finally { submitting.current = false; }
+  };
 
   return (
-    <div className="pointer-events-auto max-w-full">
+    <div className="pointer-events-auto flex min-w-min max-w-full flex-wrap items-end gap-1">
       <button
         ref={trigger}
         type="button"
         role="switch"
-        aria-checked={on}
+        aria-checked={engaged}
         aria-label="Local runtime"
         aria-describedby={descriptionId}
         aria-haspopup="dialog"
-        aria-expanded={dockerHelp}
-        aria-controls={dockerHelp ? dockerHelpId : undefined}
-        title="Local runtime preview · Docker must be running; app containers are not started or stopped"
+        aria-expanded={Boolean(help)}
+        aria-controls={help ? dockerHelpId : undefined}
+        aria-busy={runtime.busy}
+        disabled={runtime.busy || blocked}
+        title={blocked ? runtime.blocker : engaged ? "Stop local development" : "Start local development"}
         data-ui="compose-preview"
-        data-state={on ? "on" : "off"}
+        data-state={engaged ? "on" : "off"}
+        data-phase={runtime.label}
         data-motion={motion ? "on" : "off"}
         onClick={() => {
-          if (on) setOn(false);
-          else if (docker.status?.docker.engine === "running" && !docker.isStale) enablePreview();
-          else setDockerHelp((current) => !current);
+          if (help) { closeHelp(); return; }
+          helpTrigger.current = trigger.current;
+          if (engaged) void operate("stop");
+          else if (docker.status?.docker.engine !== "running" || docker.isStale) setHelp("docker");
+          else if (runtime.canStart) void operate("start");
         }}
         onPointerLeave={() => setArmed(true)}
         className={cx(
@@ -92,6 +109,8 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
             : "border-map-rule/80 bg-map-surface/95 shadow-[0_4px_16px_#0003,inset_0_1px_0_#ffffff06] hover:border-map-muted/60 hover:bg-map-panel/95",
           !motion && "active:scale-100 [&_*]:transition-none! [&_*]:animate-none!",
           "motion-reduce:active:scale-100 motion-reduce:[&_*]:animate-none!",
+          runtime.busy && "disabled:cursor-wait",
+          blocked && "disabled:cursor-not-allowed opacity-65",
         )}
       >
         {/* Light from the water spills onto the card. */}
@@ -241,25 +260,7 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
 
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="truncate text-label leading-none font-medium text-map-ink">Local runtime</span>
-          {/* The status rolls up when turning on and back down when turning off. */}
-          <span aria-hidden className="grid text-caption leading-none">
-            <span
-              data-slot="compose-status"
-              data-current={!on}
-              className={cx("col-start-1 row-start-1 text-map-muted", on ? "-translate-y-1 opacity-0" : "translate-y-0 opacity-100")}
-              style={timing(on, `opacity 120ms linear, translate 260ms ${EXPO_OUT}`, `opacity 220ms linear 160ms, translate 440ms ${SPRING} 160ms`)}
-            >
-              Stopped
-            </span>
-            <span
-              data-slot="compose-status"
-              data-current={on}
-              className={cx("col-start-1 row-start-1 text-map-compose", on ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0")}
-              style={timing(on, `opacity 220ms linear 300ms, translate 440ms ${SPRING} 300ms`, `opacity 120ms linear, translate 260ms ${EXPO_OUT}`)}
-            >
-              Running
-            </span>
-          </span>
+          <span aria-hidden data-slot="compose-status" data-current="true" className={cx("text-caption leading-none", on ? "text-map-compose" : "text-map-muted")}>{statusLabel}</span>
         </span>
 
         {/* The knob stretches under a press and springs across on release. */}
@@ -267,7 +268,7 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
           aria-hidden
           className={cx(
             "relative h-[22px] w-[38px] shrink-0 rounded-full inset-ring transition-[background-color,box-shadow] duration-200 forced-colors:border forced-colors:border-[ButtonText]",
-            on
+            engaged
               ? "bg-map-compose shadow-compose-glow inset-ring-white/12 forced-colors:bg-[Highlight]"
               : "bg-map-ground inset-ring-map-rule group-hover/compose:inset-ring-map-muted/50",
           )}
@@ -275,13 +276,20 @@ export function ComposePreview({ motion }: { readonly motion: boolean }) {
           <span
             className={cx(
               "absolute top-[2px] left-[2px] h-[18px] w-[18px] rounded-full bg-map-ink shadow-[0_1px_3px_#0008,0_0_0_.5px_#0000002e] [transition:translate_440ms_var(--spring),width_240ms_var(--spring)] group-active/compose:w-[22px] forced-colors:bg-[ButtonText]",
-              on ? "translate-x-4 group-active/compose:translate-x-3" : "translate-x-0",
+              engaged ? "translate-x-4 group-active/compose:translate-x-3" : "translate-x-0",
             )}
           />
         </span>
       </button>
-      <span id={descriptionId} className="sr-only">Checks Docker before enabling the visual preview. No app containers are started or stopped.</span>
-      {dockerHelp ? <DockerStartPopover id={dockerHelpId} anchor={trigger} onEnablePreview={enablePreview} onClose={closeHelp} /> : null}
+      <span id={descriptionId} className="sr-only">{statusLabel}. {blocked ? runtime.blocker : "Starts or stops local development for the selected Development deployment. Progress and logs are in Activity."}</span>
+      <span role="status" aria-live="polite" className="sr-only">{statusLabel}</span>
+      {blocked || runtime.problem || runtime.error || runtime.active && !runtime.ready || runtime.job?.status === "failed" ? <button
+        ref={detailsTrigger} type="button" aria-label="Local runtime details" aria-haspopup="dialog" aria-expanded={help === "runtime"}
+        aria-controls={help === "runtime" ? dockerHelpId : undefined}
+        className={buttonClasses({ variant: "link", size: "custom", className: "ml-auto min-h-6 shrink-0 px-2 text-caption text-map-text" })}
+        onClick={event => { helpTrigger.current = event.currentTarget; setHelp(help === "runtime" ? undefined : "runtime"); }}>Details</button> : null}
+      {help === "docker" ? <DockerStartPopover id={dockerHelpId} anchor={trigger} onClose={closeHelp} /> : null}
+      {help === "runtime" ? <LocalRuntimePopover id={dockerHelpId} anchor={trigger} runtime={runtime} onClose={closeHelp} onStop={() => void operate("stop")} /> : null}
     </div>
   );
 }

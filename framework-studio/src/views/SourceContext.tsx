@@ -23,7 +23,7 @@ export function SourceEnvironment() {
       aria-describedby={descriptionId} title={indicator.description}
       // While open, native show-only invokers keep mode clicks inside the popover's dismissal boundary.
       popoverTarget={profileOpen ? profileId : undefined} popoverTargetAction="show"
-      onClick={() => setMode(candidate)}><span className={cx("size-1.5 shrink-0 rounded-full", indicator.state === "deployed" ? "bg-accept" : indicator.state === "absent" ? "bg-refuse" : indicator.state === "attention" ? "bg-local" : "bg-faint", indicator.state === "pending" && "animate-deploy-pulse motion-reduce:animate-none")} data-deployment-state={indicator.state} aria-hidden="true" />{candidate === "dev" ? "Development" : "Production"}</button><span id={descriptionId} className="sr-only">{indicator.description}</span></span>;
+      onClick={() => setMode(candidate)}><span className={cx("size-1.5 shrink-0 rounded-full", indicator.state === "deployed" ? "bg-accept" : indicator.state === "attention" ? "bg-refuse" : "bg-faint", indicator.state === "pending" && "animate-deploy-pulse motion-reduce:animate-none")} data-deployment-state={indicator.state} aria-hidden="true" />{candidate === "dev" ? "Development" : "Production"}</button><span id={descriptionId} className="sr-only">{indicator.description}</span></span>;
     })}</span>
     <AwsProfileMenu id={profileId} open={profileOpen} onOpenChange={setProfileOpen} />
   </div>;

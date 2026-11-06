@@ -6,8 +6,8 @@ import { defineNetwork } from "@repo/framework/config";
  * Built only by a production deployment (-c prodDeployment=true), and only once a
  * workload is placed in it: a Lambda with subnet: "private" or "isolated" (see
  * defaults.lambda.subnet) or database: true, or any container. A dev deployment
- * never builds it: the database runs under Compose, where the local lane
- * enforces the same rules.
+ * never builds it: the database runs under Compose, and local workloads use
+ * ordinary host and Docker networking without emulating VPC egress rules.
  *
  * Every zone has a public, a private and an isolated subnet. Public subnets
  * reach the internet directly (a container there has its own public IPv4).

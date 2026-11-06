@@ -97,7 +97,7 @@ AWS read. The diagram shows dependencies, not an automatic deploy or export on s
 | Task/workflow/agent binding | Local runner descriptors with declared caller/target | AWS descriptors and narrowly derived invoke permissions |
 | User-pool binding | Declared application pool references | Same application pool supplied by CDK; never paste pool IDs |
 
-`readLocalResourceManifest` checks the exported resource document; absent/optional resources are handled deliberately. Conditional `cloud.requirements` are evaluated using the same declared references. `TRUSTED_FRONTEND_ORIGINS` has a deliberate local-browser-origin override. Dual-stack endpoint behavior derives from framework network/placement, not ad hoc application environment branches.
+`readLocalResourceManifest` checks the exported resource document; absent/optional resources are handled deliberately. Conditional `cloud.requirements` are evaluated using the same declared references. `TRUSTED_FRONTEND_ORIGINS` has a deliberate local-browser-origin override. Deployed Lambda dual-stack endpoint behavior derives from framework network/placement. Local workloads use ordinary host and Docker networking; the local runtime does not inject `AWS_USE_DUALSTACK_ENDPOINT` based on cloud placement.
 
 Standalone `resource.value(...)` inputs are resolved from `authoredValue` (and `modes.value`
 when graphs differ). `resolveInput` reports them as supplied without consulting environment
@@ -108,7 +108,7 @@ work for environment-linked inputs, whose legacy variable-name aliases remain co
 
 A task calling AWS locally declares `local: { resources: ["awsCredentials"] }`; [tasks.ts](../../../local-invocation-runner/src/tasks.ts) mounts the discovered profile directory read-only only for that local resource. [docker.ts](../../../local-invocation-runner/src/docker.ts) passes resolved environment values through the Docker CLI environment rather than value-bearing argv. The runner's Docker socket/profile mounts in [Compose](../../../docker-compose.yml) make it a trusted developer process, not a hostile-workload isolation boundary.
 
-[runtime/database.ts](../../../packages/framework/src/runtime/database.ts) resolves IAM credentials in deployed workloads. Never deliver the database master password to a framework workload. Networking remains [framework-owned](../framework/resources-and-cdk.md); an SDK custom endpoint inside a VPC Lambda needs `useDualstackEndpoint: false` as required by the framework guide.
+[runtime/database.ts](../../../packages/framework/src/runtime/database.ts) resolves IAM credentials in deployed workloads. Never deliver the database master password to a framework workload. Cloud networking remains [framework-owned](../framework/resources-and-cdk.md); an SDK custom endpoint inside a deployed VPC Lambda needs `useDualstackEndpoint: false` as required by the framework guide.
 
 Common failures: stale/wrong-identity manifest, absent required catalog field, invalid enum/default, missing local secret field, unauthorized stack-secret read, undeclared invocation capability, or missing dev AWS bridge. Debug names, presence and identity first; do not print resolved environment objects or credential values.
 

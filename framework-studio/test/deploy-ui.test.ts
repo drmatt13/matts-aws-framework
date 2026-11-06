@@ -1,11 +1,11 @@
 import assert from "./support/assert";
 import { createRequire } from "node:module";
 import { after, afterEach, before, test } from "node:test";
-import { createElement as h, type ReactNode } from "react";
+import { createElement as h, useState, type ReactNode } from "react";
 import type { DeployOverview, DiscoveryView, DiscoveredDeploymentView, PlanSummaryView, PlanView, TeardownPlanView } from "../shared/deploy";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 import { DEFAULT_FRONTEND_RELEASE } from "../shared/frontend-release";
-import { snapshot as snapshotFixture } from "./browser/support/scenarios";
+import { snapshot as snapshotFixture, deploymentPlan } from "./browser/support/scenarios";
 import { connectionCatalogFixture } from "./browser/support/aws-connections";
 
 /**
@@ -120,6 +120,7 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
     "/frontend-release/history": [],
     ...scripted };
   const machineOverview = scripted["/deploy/overview"] as DeployOverview | undefined;
+  answers["/deploy/local"] ??= machineOverview?.local ?? overview().local;
   answers["/aws-connections"] ??= () => connectionCatalogFixture(
     typeof answers["/deploy/overview"] === "object" ? (answers["/deploy/overview"] as DeployOverview).profiles : machineOverview?.profiles ?? [],
   );
@@ -138,6 +139,89 @@ function render(scripted: Record<string, unknown>, content?: ReactNode, associat
 }
 
 const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => { const { requestKey, ...intent } = entry.body; assert.equal(typeof requestKey, "string"); return intent; });
+
+test("stale local exports stay guarded while active compute offers an explicit stop", async () => {
+  const target = deployed("my-aws-app", "dev");
+  const local: DeployOverview["local"] = { ...overview().local,
+    exported: { deployment: target.name, account: context.account, region: context.region, client: true },
+    startedBy: "studio", profile: "dev", watch: { running: true }, client: { running: true },
+    binding: { deployment: target.name, profile: "dev", account: context.account, region: context.region, startedAt: "2026-11-05T00:00:00Z" },
+    services: [{ name: "api", container: "api", state: "running", health: "healthy", oneShot: false, ports: "" }],
+    readiness: { state: "ready", observedAt: "2026-11-05T00:00:01Z", message: "Ready" },
+  };
+  render({ "/deploy/overview": overview({ local }), "/deploy/local": local,
+    "/deploy/discover": { ok: true, value: discovery([target]) },
+    "/deploy/status": { ok: true, value: { ...discovery([target]), deployment: target.name, detail: { ...target, events: [], changeSets: [],
+      local: { compatible: true, exported: { deployment: target.name, manifest: "manifest", client: true, fresh: false } } } } },
+  });
+  const refresh = await ui.screen.findByRole("button", { name: "Refresh settings" });
+  await ui.waitFor(() => assert.equal((refresh as HTMLButtonElement).disabled, true));
+  ui.fireEvent.click(refresh);
+  assert.equal(operations().length, 0, "manual export cannot rewrite settings under active compute");
+  ui.fireEvent.click(ui.within(refresh.closest("article")!).getByRole("button", { name: "Stop local runtime" }));
+  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "local-stop", params: {} }));
+});
+
+for (const scenario of ["secret creation", "change-set preparation", "template synthesis"] as const) test(`runtime gate distinguishes ${scenario} from cloud mutations`, async () => {
+  const { PlanReview } = await import("../src/views/deploy/PlanReview");
+  const plan: PlanView = { ...deploymentPlan(), status: scenario === "secret creation" ? "needs-secrets" : "blocked",
+    review: scenario === "change-set preparation" ? "change-set" : "template" };
+  let replanned = false;
+  render({ [`/deploy/plans/${plan.key}`]: plan }, h(PlanReview, {
+    planKey: plan.key, busy: undefined, onClose() {}, onDiscard() {}, onApply() {},
+    onReplan() { replanned = true; },
+    runtimeGate: { reason: "Stop local runtime before changing development resources.", action: "Stop local runtime", onAction() {} },
+  }));
+  const action = await ui.screen.findByRole("button", { name: scenario === "secret creation" ? "Create secrets and plan again" : "Synthesize again" });
+  assert.equal((action as HTMLButtonElement).disabled, scenario !== "template synthesis");
+  ui.fireEvent.click(action);
+  assert.equal(replanned, scenario === "template synthesis");
+});
+
+for (const movedAway of [false, true]) test(`runtime stop completion ${movedAway ? "keeps deliberately moved focus" : "hands focus to the enabled deployment action"}`, async () => {
+  const { PlanReview } = await import("../src/views/deploy/PlanReview");
+  const plan = { ...deploymentPlan(), confirmation: { level: "click" as const, reasons: [] } };
+  let finish!: () => void;
+  function Review() {
+    const [blocked, setBlocked] = useState(true), [waiting, setWaiting] = useState(false);
+    finish = () => setBlocked(false);
+    return h(PlanReview, { planKey: plan.key, busy: undefined, onClose() {}, onDiscard() {}, onApply() {}, onReplan() {},
+      runtimeGate: blocked ? { reason: "Stop local runtime before changing development resources.", action: waiting ? "Waiting for local runtime…" : "Stop local runtime", disabled: waiting, onAction: () => setWaiting(true) } : undefined,
+    });
+  }
+  render({ [`/deploy/plans/${plan.key}`]: plan }, h(Review));
+  const stop = await ui.screen.findByRole("button", { name: "Stop local runtime" });
+  ui.act(() => stop.focus());
+  ui.fireEvent.click(stop);
+  assert.equal((stop as HTMLButtonElement).disabled, true);
+  const close = ui.screen.getByRole("button", { name: "Close" });
+  if (movedAway) ui.act(() => close.focus());
+  ui.act(() => finish());
+  const deploy = ui.screen.getByRole("button", { name: "Deploy development" });
+  await ui.waitFor(() => assert.equal(document.activeElement, movedAway ? close : deploy));
+});
+
+for (const confirmed of [false, true]) test(`runtime stop completion returns deletion focus to ${confirmed ? "the confirmed delete action" : "the required confirmation input"}`, async () => {
+  const teardown: TeardownPlanView = { key: "focus-review", expiresAt: "2099-01-01T00:00:00Z", deployment: "my-aws-app", mode: "dev",
+    account: context.account, region: context.region, stacks: [], leftInPlace: [], remains: [], secrets: [], record: true };
+  let finish!: () => void;
+  function Review() {
+    const [blocked, setBlocked] = useState(true), [waiting, setWaiting] = useState(false);
+    finish = () => setBlocked(false);
+    return h(dialogs.Teardown, { deployment: teardown.deployment, mode: "dev", profile: "dev", busy: undefined, onClose() {}, onDelete() {},
+      runtimeGate: blocked ? { reason: "Stop local runtime before changing development resources.", action: waiting ? "Waiting for local runtime…" : "Stop local runtime", disabled: waiting, onAction: () => setWaiting(true) } : undefined,
+    });
+  }
+  render({ "/deploy/teardown": { ok: true, value: teardown } }, h(Review));
+  const input = await ui.screen.findByLabelText("Type my-aws-app to delete it");
+  if (confirmed) ui.fireEvent.change(input, { target: { value: teardown.deployment } });
+  const stop = ui.screen.getByRole("button", { name: "Stop local runtime" });
+  ui.act(() => stop.focus());
+  ui.fireEvent.click(stop);
+  ui.act(() => finish());
+  const remove = ui.screen.getByRole("button", { name: "Delete my-aws-app" });
+  await ui.waitFor(() => assert.equal(document.activeElement, confirmed ? remove : input));
+});
 
 test("unapplied frontend settings block env generation and builds with a source-review explanation", async () => {
   const { FrontendRelease } = await import("../src/views/deploy/FrontendRelease");

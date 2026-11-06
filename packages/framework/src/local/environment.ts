@@ -3,7 +3,7 @@ import path from "node:path";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { readAuthoredInputs } from "@repo/framework/config/source";
 import {
-  getConnectsToBindings, normalizeFrameworkConfig, resolveLambdaTarget, resolveNetwork, usesDualStackEndpoints, isResourceAbsent, isResourceReference, isResourceValueReference, resourceAttributeKey, DEFAULT_DATABASE_POOL,
+  getConnectsToBindings, normalizeFrameworkConfig, isResourceAbsent, isResourceReference, isResourceValueReference, resourceAttributeKey, DEFAULT_DATABASE_POOL,
   formatResourceReference, resolveResourceFromEnv, parseResourceManifest, RESOURCE_MANIFEST_FILE,
   type FrameworkConfig, type ResourceManifest, type ResourceReference, type TargetReference,
 } from "@repo/framework/config";
@@ -100,19 +100,15 @@ export async function resolveLocalWorkloadEnvironment(config: FrameworkConfig, t
     }
   }
   if (Object.prototype.hasOwnProperty.call(target.environment, "TRUSTED_FRONTEND_ORIGINS") && platform.LOCAL_BROWSER_ORIGINS) environment.TRUSTED_FRONTEND_ORIGINS = platform.LOCAL_BROWSER_ORIGINS;
-  // The network's rules hold here as they do in AWS, so a workload that works
-  // locally works there. The Compose database stands in for the application's
-  // database, and only for a workload that declares database: true: one that
-  // does not gets nothing here, as it would get no route there. A Lambda in
-  // the VPC calls AWS's dual-stack endpoints where its subnet sends IPv6 out,
-  // as it does in AWS.
+  // Local workloads use the host/Compose network, without emulating VPC
+  // egress or forcing AWS dual-stack endpoints. Database access still comes
+  // only from the workload's declared database binding.
   if (getConnectsToBindings(target.cloud.bindings).length > 0) {
     environment.PRIMARY_DATABASE_URL = platform.PRIMARY_DATABASE_URL ?? LOCAL_PRIMARY_DATABASE_URL;
     const binding = getConnectsToBindings(target.cloud.bindings)[0]!;
     environment.PRIMARY_DATABASE_POOL_OPTIONS = JSON.stringify(binding.pool ?? DEFAULT_DATABASE_POOL);
     if (binding.readers) environment.PRIMARY_DATABASE_READ_URLS = "[]";
   }
-  if (target.kind === "lambda" && target.vpc && usesDualStackEndpoints(resolveNetwork(config, target.vpc), resolveLambdaTarget(config, target.id).subnet)) environment.AWS_USE_DUALSTACK_ENDPOINT = "true";
   if (target.kind !== "workflow") Object.assign(environment, localInvocationDescriptors(config, targetId, options.runnerUrl ?? platform.LOCAL_INVOCATION_RUNNER_URL ?? "http://local-invocation-runner:8090"));
   return environment;
 }

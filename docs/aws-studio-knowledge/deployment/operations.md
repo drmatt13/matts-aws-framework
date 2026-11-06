@@ -12,6 +12,8 @@ source:
   - framework-studio/shared/stack-inspection.ts
   - framework-studio/src/deploy/stack-inspection.ts
   - framework-studio/src/views/deploy/StackInspector.tsx
+  - framework-studio/server/deploy/local.ts
+  - framework-studio/src/deploy/local-runtime.ts
   - framework-studio/shared/operations.ts
   - framework-studio/server/operations/coordinator.ts
   - framework-studio/server/operations/worker.ts
@@ -94,6 +96,13 @@ region changes clear it. Source-mode dots use these shared observations: green m
 owned stacks are ready, red means confirmed absent, amber means failed, in progress or
 unreadable, and muted means unconfigured or not yet observed. Green reports deployed
 infrastructure, not application health.
+
+The development map's Local runtime switch submits the same guarded local start/stop
+operations as Deploy. Its lightweight `/deploy/local` read observes the checkout's
+Compose project and captured runtime destination without AWS reads. Startup verifies
+the exact dev destination and compatibility before exporting current outputs and
+starting compute. Readiness, partial startup and unknown observations remain separate
+states; progress/logs live in Activity. See [local execution](../runtime/local-execution.md).
 
 Activity is a persistent shell tray on every route. `GlobalActivity` owns its job-query
 observer and presentation state; it is memoized independently of route/source context.

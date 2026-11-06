@@ -31,6 +31,7 @@ interface StudioContextValue {
   readonly live: LiveState;
   readonly toast: (text: string, tone?: Toast["tone"]) => void;
   readonly toasts: readonly Toast[];
+  readonly dismissToast: (id: number) => void;
   readonly draft: InspectorDraft;
   readonly draftState: DraftState;
   readonly entityAliases: DisplayNames;
@@ -61,6 +62,9 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   const [mode, setMode] = useState<Mode>("dev");
   const aws = useAwsProfileSelection(response.snapshot.repositoryRoot);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((item) => item.id !== id));
+  }, []);
   const nextToast = useRef(1);
   const toast = useCallback((text: string, tone: Toast["tone"] = "plain") => {
     const id = nextToast.current++;
@@ -141,6 +145,6 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
       else onAccepted?.();
     },
     model, index, selected: draftState.selected, select: inspection.select, inspect: inspection.inspect,
-    inspectorNavigation: inspection.navigation, live, toast, toasts, draft, draftState, applyDraft, created: draftState.applied?.names ? undefined : created, entityAliases, namingRevision,
+    inspectorNavigation: inspection.navigation, live, toast, toasts, dismissToast, draft, draftState, applyDraft, created: draftState.applied?.names ? undefined : created, entityAliases, namingRevision,
   }}>{props.children}</StudioContext.Provider>;
 }

@@ -19,6 +19,12 @@ source:
   - framework-studio/src/deploy/stack-inspection.ts
   - framework-studio/src/views/deploy/Detail.tsx
   - framework-studio/src/views/deploy/StackInspector.tsx
+  - framework-studio/src/deploy/local-runtime.ts
+  - framework-studio/src/deploy/local-runtime-state.ts
+  - framework-studio/src/views/map/ComposePreview.tsx
+  - framework-studio/src/views/map/LocalRuntimePopover.tsx
+  - framework-studio/src/deploy/dev-lifecycle.ts
+  - framework-studio/src/views/deploy/RuntimeMutationNotice.tsx
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
   - framework-studio/src/views/SourceContext.tsx
@@ -128,10 +134,29 @@ explicit loading, empty and error states. The inspector pins the immutable stack
 and clears when the deployment destination or credential generation changes. Deployment
 destruction stays in the parent card's separately confirmed teardown flow.
 Each Source mode's dot subscribes to the same destination-scoped observations: ready
-owned stacks are green, confirmed absence is red, failed/in-progress/unreadable evidence
-is amber, and unconfigured/loading evidence is muted. A source-only refresh retains the
+owned stacks are green, failed/in-progress/unreadable evidence is red, and confirmed
+absence or unconfigured/loading evidence is gray. Yellow is reserved for future use.
+A source-only refresh retains the
 last observation; changing the destination or credential generation clears it. Retained
 evidence is labeled as last observed and does not establish current application health.
+The Development map's **Local runtime** switch starts/stops the checkout's actual local
+compute through the existing operations pipeline. It is disabled until the selected
+AWS development deployment is fully completed and compatible, with a visible reason
+and keyboard-accessible **Details** action. It shows checking, starting, running,
+stopping and attention states from local observations; Docker availability alone never
+enables startup. Its compact popover explains blockers, offers Docker setup or links to Deploy,
+and provides an explicit stop for partially running or differently bound services.
+Startup validates the dev destination and compatibility and exports current outputs;
+Activity shows its steps and logs. Running requires health/readiness and the exact
+captured/exported profile, deployment, account and region. Failed reads and changed
+bindings clear the healthy indication. The switch remains on for active or starting/stopping
+work, including partial failures, until shutdown is confirmed. Source changes do not erase
+the checkout's actual runtime evidence. Stopping preserves local containers and data.
+Development deploy/destroy/export and cloud-writing preparation actions require shutdown;
+their compact inline notice offers **Stop local runtime** without dismissing an open review.
+Source edits, normal template synthesis and read-only reviews remain available. Every
+runtime start regenerates settings from the verified deployment, so the ordinary flow
+has no manual export step.
 The account/region line shows a caption-sized loading skeleton while the selected profile
 is first read, preserving the same line height. Expired or missing
 credentials replace that line with a red **AWS sign-in required** text action in the same
@@ -210,7 +235,13 @@ The bottom **Activity** tray belongs to `Shell` and is mounted once for every ro
 Its **Activity** and **Agent** tabs choose operation history or a question-and-answer
 conversation. Selecting a tab preserves the panel's open or closed state; the separate
 summary/chevron control opens and closes it. Arrow keys and Home/End select tabs;
-Escape collapses the panel. The drawer slides with an interruptible 280ms
+Escape collapses the panel. While open, drag the tray's thin highlighted top edge to
+resize it; a drag leaves the panel open and retains its height across collapse,
+mode changes and navigation. The top-edge separator also supports Up/Down arrows
+and Home/End for resizing. The collapsed tray has no resize handle, highlight or
+resize cursor. The summary bar remains a click control. The tray can reach the top
+of the window, covering the navigation, and adapts to window size. Dragging follows
+the pointer immediately. The drawer slides with an interruptible 280ms
 `cubic-bezier(.22,1,.36,1)` transition, disabled under reduced motion. A registered CSS
 length on the shell drives both drawer height and map compensation in the same frame.
 The occlusion marker remains until
@@ -262,15 +293,13 @@ guarantees and the current macOS/Linux boundary.
 ## Reading the map
 
 Resource and connection counts sit at the map's top right. In Development, the
-lower-left **Docker Compose** switch is a visual
-prototype. Its on/off state is local to the mounted map and resets when leaving
-Development. The shared Docker observation gates activation: a fresh running engine enables
-the preview directly; otherwise the existing Docker-help popover offers explicit startup
-or rechecking. Confirmed engine shutdown/missing Docker turns the preview off. Starting
-Docker never automatically enables the preview, and the switch does not start/stop app
-containers. Deploy and the popup share the same startup action and pending operation. Whale motion follows
-the map's motion control and the system's reduced-motion preference. Production
-does not show the switch.
+lower-left **Local runtime** switch controls actual checkout compute and shares its
+observations across navigation. The switch remains engaged for partial startup while
+**Running** and whale animation require confirmed readiness. Its prerequisite state and
+**Details** action explain unavailable startup. Docker help offers explicit Desktop
+startup or rechecking after the AWS prerequisite is satisfied; starting Docker does
+not start application compute. Whale motion follows the map's motion control and
+reduced-motion preference. Production does not show the switch.
 
 The scene combines both modes to stabilize placement while showing the selected mode's
 availability. Islands group entry points, compute, networks, orchestration, resources,

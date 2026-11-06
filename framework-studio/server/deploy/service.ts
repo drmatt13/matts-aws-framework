@@ -16,7 +16,7 @@ import { probeDockerStatus, probePrerequisites } from "./prereqs";
 import { DockerStatus } from "../machine/docker";
 import { withDockerStatus } from "../../shared/machine";
 import { runCommand, Tools, type Runner } from "./process";
-import { buildOperation, exportDirectory, managedSpec, OperationError, type ManagedCommands, type OperationContext, type RepositoryTarget } from "./registry";
+import { assertDevelopmentRuntimeStopped, buildOperation, changesDevelopmentResources, exportDirectory, managedSpec, OperationError, type ManagedCommands, type OperationContext, type RepositoryTarget } from "./registry";
 import type { AwsConnectionsService } from "../aws-connections/service";
 import { StackInspector } from "./stack-inspection";
 import type { StackInspectionRequest } from "../../shared/stack-inspection";
@@ -157,6 +157,12 @@ export class DeployService {
     return last ? { running: false, jobId: last.id, exitCode: last.exitCode ?? null, ...(last.status === "failed" && last.summary ? { summary: last.summary } : {}) } : { running: false };
   }
 
+  /** Local observations do not trigger AWS discovery or machine prerequisite probes. */
+  async localStatus(force = false) {
+    const machine = await this.dockerStatus.read(force);
+    return this.local.view(machine.docker, { watch: this.managed("local-watch"), client: this.managed("local-client") });
+  }
+
   async overview(force = false): Promise<DeployOverview> {
     const [prerequisites, profiles, machine] = await Promise.all([this.probe(force), this.observer.profiles(force), this.dockerStatus.read(force)]);
     const docker = machine.docker;
@@ -238,6 +244,7 @@ export class DeployService {
     if (request.kind === "aws-login") throw new OperationError(400, "Authentication uses AWS connection management. Open Configure AWS profiles.");
     if (this.operationsClient && RUNNER_KINDS.has(request.kind)) {
       if (this.jobs.running().some(job => !["local-watch", "local-client"].includes(job.kind))) throw new OperationError(409, "A local workspace operation is running. Wait for it before starting independent work.");
+      if (changesDevelopmentResources(this.context, request)) await assertDevelopmentRuntimeStopped(this.context);
       const job = await this.operationsClient.submit(request);
       this.operationViews = [job, ...this.operationViews.filter(entry => entry.id !== job.id)];
       this.broadcast("operation-job", job);

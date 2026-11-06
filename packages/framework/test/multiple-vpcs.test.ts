@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { defineFrameworkConfig, defineNetwork, defineResources, getFrameworkTargets, normalizeFrameworkConfig, resource, resolveLambdaTarget, type FrameworkConfigInput } from "../src/config";
-import { localLambdaEgress } from "../src/local/lambda-process";
 import { resolveLocalWorkloadEnvironment } from "../src/local/environment";
 
 const primary = defineNetwork({ id: "primary", cidr: "10.0.0.0/16", zones: 2 });
@@ -74,11 +73,9 @@ test("database VPC boundaries are validated even when the database is absent in 
   }
 });
 
-test("local egress and dual-stack environment use the workload's selected VPC", async () => {
+test("local SDK networking does not depend on the workload's selected VPC", async () => {
   const built = config({ http: [{ "/orders": { ...lambda, vpc: primary }, "/sealed": { ...lambda, directory: "/lambda_functions/http_functions/sealed", vpc: sealed } }] });
-  assert.equal(localLambdaEgress(built, "lambda:orders")?.ipv6, true);
-  assert.equal(localLambdaEgress(built, "lambda:sealed")?.ipv6, false);
   const environment = async (target: "lambda:orders" | "lambda:sealed") => resolveLocalWorkloadEnvironment(built, target, { repositoryRoot: process.cwd(), environment: {}, authored: {} });
-  assert.equal((await environment("lambda:orders")).AWS_USE_DUALSTACK_ENDPOINT, "true");
+  assert.equal((await environment("lambda:orders")).AWS_USE_DUALSTACK_ENDPOINT, undefined);
   assert.equal((await environment("lambda:sealed")).AWS_USE_DUALSTACK_ENDPOINT, undefined);
 });

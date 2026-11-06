@@ -5,7 +5,8 @@ import path from "node:path";
 import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
-import { domainOutcome, prepareIntent, reconcileOutcome } from "../server/operations/adapter";
+import { domainOutcome, executionSpec, prepareIntent, reconcileOutcome } from "../server/operations/adapter";
+import { Tools } from "../server/deploy/process";
 import { processIdentity } from "../server/operations/identity";
 import { OperationStore } from "../server/operations/store";
 import { runWorker } from "../server/operations/worker";
@@ -35,6 +36,38 @@ function fixture(first: string, second = "console.log('second command completed'
     rmSync(root, { recursive: true, force: true });
   } };
 }
+
+test("detached development workers repeat the local-off gate after acceptance and before their command", async context => {
+  const f = fixture("console.log('unused')");
+  let containers: { ID: string; State: string }[] = [];
+  const scriptReads: string[] = [];
+  writeFileSync(path.join(f.root, "cdk-app/cdk.json"), JSON.stringify({ context: { "framework:app": "example", "framework:appId": "00000000-0000-4000-8000-000000000001" } }));
+  const result = (text: string, env: NodeJS.ProcessEnv) => ({ file: process.execPath, args: ["-e", `process.stdout.write(${JSON.stringify(text)})`], cwd: f.root, env, display: "fixture read" });
+  context.mock.method(Tools.prototype, "docker", (args: readonly string[], env: NodeJS.ProcessEnv) => result(args[0] === "version"
+    ? JSON.stringify({ Server: { Version: "fixture", Os: "linux" } })
+    : args[0] === "ps" ? containers.map(container => JSON.stringify(container)).join("\n") : "fixture", env));
+  const original = Tools.prototype.script;
+  context.mock.method(Tools.prototype, "script", function (this: Tools, script: string, args: readonly string[], env: NodeJS.ProcessEnv, cwd?: string) {
+    scriptReads.push(script);
+    if (script === "scripts/deployment-status.ts") return result(JSON.stringify([{ name: "dev" }]), env);
+    return original.call(this, script, args, env, cwd);
+  });
+  try {
+    const request = { kind: "export" as const, params: { deployment: "example-dev", profile: "dev" } };
+    const intent = await prepareIntent(f.root, f.state, request);
+    mkdirSync(path.join(f.state, "jobs"), { recursive: true });
+    const watch = path.join(f.state, "jobs/watch.json");
+    writeFileSync(watch, JSON.stringify({ id: "watch", kind: "local-watch", status: "running" }));
+    await assert.rejects(() => executionSpec(f.root, f.state, intent, () => {}), /Stop local runtime/);
+    writeFileSync(watch, JSON.stringify({ id: "watch", kind: "local-watch", status: "interrupted" }));
+    const accepted = await executionSpec(f.root, f.state, intent, () => {});
+    try {
+      containers = [{ ID: "fixture-active-container", State: "paused" }];
+      await assert.rejects(() => accepted.spec.steps[0]!.run!({ job: "worker", signal: new AbortController().signal, log() {}, setSummary() {}, setPlanId() {} }), /Stop local runtime/);
+    } finally { accepted.close(); }
+    assert.equal(scriptReads.some(script => script.includes("export-cdk-outputs")), false, "no export command is resolved while local runtime is active");
+  } finally { f.close(); }
+});
 
 test("worker captures real subprocess output durably and redacts split sensitive values", async context => {
   if (!canInspect(context)) return;

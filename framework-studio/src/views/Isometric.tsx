@@ -468,10 +468,12 @@ export function Isometric() {
     // Selection, the panel and Activity are presentation; use the containing workspace
     // dimensions, with the tray's share restored, so none of them relayouts the architecture.
     const workspace = container.closest("[data-studio-workspace]")?.getBoundingClientRect();
-    const tray = document.querySelector("[data-ui='activity-drawer']")?.getBoundingClientRect();
+    const traySlot = document.querySelector("[data-ui='activity-slot']")?.getBoundingClientRect();
+    const trayBar = document.querySelector("[data-ui='activity-bar']")?.getBoundingClientRect();
+    const traySpace = Math.max(0, (traySlot?.height ?? 0) - (trayBar?.height ?? 0) - 1);
     const nextAspect = layoutAspect(
       workspace?.width ?? next.width,
-      (workspace?.height ?? next.height) + (tray?.height ?? 0),
+      (workspace?.height ?? next.height) + traySpace,
     );
     window.clearTimeout(aspectTimer.current);
     aspectTimer.current = window.setTimeout(() => {
@@ -1182,7 +1184,7 @@ export function Isometric() {
             "relative flex-1 overflow-hidden bg-map-ground text-map-ink",
             // Activity opens over the map: the canvas keeps its height and runs on beneath the
             // tray, so nothing here moves. A panel stacked under a narrow map sits in between.
-            "activity-open:h-[calc(100%+var(--activity-drawer-visible,var(--activity-drawer)))]",
+            "activity-open:h-[calc(100%+min(var(--activity-drawer-visible,var(--activity-drawer)),max(0px,calc(var(--activity-slot-max,100dvh)-var(--activity-bar-height,40px)-1px))))]",
             view === "closed" && "activity-open:vp-800:flex-none",
             // Keep the dock clear of wrapped connection filters when a phone panel opens.
             model.mode === "dev" ? "min-h-50 vp-800:min-h-70" : "min-h-0 vp-800:min-h-45",
@@ -1289,8 +1291,15 @@ export function Isometric() {
             data-ui="landscape-bar landscape-bottom"
             className={cx(
               "pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 bottom-3 items-end",
-              // Beneath the tray these leave the tab order as well as the eye.
-              view === "closed" ? "activity-open:invisible" : "activity-open:not-vp-800:invisible",
+              // Fade before hiding, then return as the closing tray clears the dock.
+              // Visibility removes covered controls from the tab order after the exit fade.
+              "visible opacity-100",
+              motion
+                ? "transition-[opacity,visibility] duration-[220ms,0ms] delay-[80ms,80ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+                : "transition-none",
+              view === "closed"
+                ? "activity-expanded:invisible activity-expanded:opacity-0 activity-expanded:duration-[140ms,0ms] activity-expanded:delay-[0ms,140ms] activity-expanded:[&_*]:pointer-events-none"
+                : "activity-expanded:not-vp-800:invisible activity-expanded:not-vp-800:opacity-0 activity-expanded:not-vp-800:duration-[140ms,0ms] activity-expanded:not-vp-800:delay-[0ms,140ms] activity-expanded:not-vp-800:[&_*]:pointer-events-none",
             )}
           >
             <div className="flex min-w-0 max-w-[calc(100%-52px)] flex-col items-start gap-2">

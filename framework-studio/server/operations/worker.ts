@@ -5,6 +5,7 @@ import type { JobLogLine, JobView } from "../../shared/operations";
 import { summaryText, type StepContext } from "../deploy/jobs";
 import { lineSplitter, start, stopTree, tethered, type CommandSpec } from "../deploy/process";
 import { domainOutcome, executionSpec, privateValues } from "./adapter";
+import { LocalRuntimeConflict } from "../deploy/local";
 import { processIdentity } from "./identity";
 import { StreamingRedactor } from "./redaction";
 import { OperationStore } from "./store";
@@ -131,11 +132,11 @@ export async function runWorker(root: string, state: string, id: string, token: 
     // Result persistence precedes releasing resource claims. Storage failure leaves recoverable uncertainty.
     update(result);
     try { spec.onSettled?.(store.get(id)!.view); } catch { /* Notification failure cannot change durable completion. */ }
-  } catch {
+  } catch (error) {
     stop();
     // Never persist raw exceptions: SDK/tool errors may contain credential or private input material.
     if (claimed && !storageFailure) {
-      try { store.update(id, { status: "interrupted", execution: "finished", outcome: executing ? "uncertain" : "unverified", endedAt: new Date().toISOString(), summary: "The operation could not finish. Inspect its review, prerequisites and recorded output.", recovery: executing ? "External effects may continue. This attempt will not be replayed." : "Recheck the reviewed inputs and host prerequisites before creating another operation." }); } catch { /* The durable running record becomes uncertain on reconciliation. */ }
+      try { store.update(id, { status: "interrupted", execution: "finished", outcome: executing ? "uncertain" : "unverified", endedAt: new Date().toISOString(), summary: error instanceof LocalRuntimeConflict ? error.message : "The operation could not finish. Inspect its review, prerequisites and recorded output.", recovery: executing ? "External effects may continue. This attempt will not be replayed." : "Recheck the reviewed inputs and host prerequisites before creating another operation." }); } catch { /* The durable running record becomes uncertain on reconciliation. */ }
     }
   } finally {
     closed = true;

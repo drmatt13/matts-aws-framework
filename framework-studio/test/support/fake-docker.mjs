@@ -102,6 +102,14 @@ if (first === "stop") {
   }
   out(args.slice(1).join("\n"));
 }
+if (first === "unpause") {
+  dirty = true;
+  for (const id of args.slice(1)) {
+    const container = state.containers.find((entry) => entry.ID === id);
+    if (container?.State === "paused") Object.assign(container, { State: "running", Status: "Up 1 second" });
+  }
+  out(args.slice(1).join("\n"));
+}
 if (first === "logs") {
   const id = args.at(-1);
   out(state.logs?.[id] ?? `2026-10-17T10:00:00.000000000Z ${id} listening`);
@@ -109,7 +117,10 @@ if (first === "logs") {
 if (first === "image") out("");
 if (first === "compose") {
   if (second === "version") state.compose ? out(state.compose) : fail("docker: unknown command: docker compose");
-  if (second === "config") out(JSON.stringify({ name: project, services: Object.fromEntries((state.services ?? []).map((service) => [service.name, {}])) }));
+  if (second === "config") out(JSON.stringify({ name: project, services: Object.fromEntries((state.services ?? []).map((service) => [service.name, {
+    ...(service.profiles ? { profiles: service.profiles } : {}),
+    ...(!service.oneShot ? { depends_on: Object.fromEntries((state.services ?? []).filter(entry => entry.oneShot && !entry.profiles?.length).map(entry => [entry.name, { condition: "service_completed_successfully" }])) } : {}),
+  }])) }));
   if (second === "watch" && args.includes("--help")) out(`Usage: docker compose watch [SERVICE...]\n${state.noUp === false ? "" : "      --no-up     Do not build & start services before watching\n"}`);
   if (second === "watch") {
     if (!running()) fail(DOWN);

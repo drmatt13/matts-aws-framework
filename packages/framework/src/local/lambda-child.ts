@@ -8,7 +8,6 @@
  * Lambda environment does.
  */
 import { randomUUID } from "node:crypto";
-import { installEgressGuard, type EgressPolicy } from "./egress-guard";
 
 interface LambdaDescription {
   readonly functionName: string;
@@ -33,12 +32,6 @@ interface Request {
   readonly lambda?: LambdaDescription;
   /** Stay alive for the next invocation instead of exiting after this one. */
   readonly keepAlive?: boolean;
-  /**
-   * What leaves the subnet of a handler in the VPC (`subnet: "private"` or
-   * `"isolated"`, or `database: true`) when that is not everything: this
-   * process is held to the same rule. See egress-guard.ts.
-   */
-  readonly egress?: EgressPolicy;
 }
 
 type Handler = (event: unknown, context: unknown) => unknown;
@@ -84,9 +77,6 @@ async function load(request: Request): Promise<Handler> {
     }
     return loaded.handler;
   }
-  // Before the import, so every client the handler builds at module scope
-  // resolves names through the guard.
-  if (request.egress) installEgressGuard(request.lambda?.functionName ?? "This Lambda", request.egress);
   const module = (await import(request.entry)) as Record<string, unknown>;
   const handler = module[request.handler];
   if (typeof handler !== "function") {

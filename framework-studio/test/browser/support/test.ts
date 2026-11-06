@@ -71,6 +71,7 @@ export const test = base.extend<{ studio: StudioFixture }>({
           case "GET /api/source-recovery": value = []; break;
           case "GET /api/machine/docker": value = dockerStatus(); break;
           case "GET /api/deploy/overview": value = overview(); break;
+          case "GET /api/deploy/local": value = overview().local; break;
           case "GET /api/operations": value = { jobs: [] }; break;
           case "GET /api/deploy/profiles": value = overview().profiles; break;
           case "GET /api/aws-connections": value = connectionCatalogFixture(overview().profiles); break;

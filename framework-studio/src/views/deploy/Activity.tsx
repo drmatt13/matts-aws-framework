@@ -21,6 +21,7 @@ import { useOperationLog } from "../../operations/live";
 import { Link } from "@tanstack/react-router";
 import { DockerStatus } from "./DockerStatus";
 import { relativeTime } from "./format";
+import { useActivityResize } from "./useActivityResize";
 
 /** stderr lines that read as a failure, rather than one of the notices tools write there. */
 const FAILURE =
@@ -102,6 +103,8 @@ export function Activity(props: {
 }) {
   const mode = props.mode ?? "activity";
   const drawer = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  const resize = useActivityResize({ drawer, bar, open: props.open });
   const motionRoot = useRef<HTMLElement | undefined>(undefined);
   const [revealed, setRevealed] = useState(props.open);
   const visible = props.open || revealed;
@@ -158,14 +161,21 @@ export function Activity(props: {
   const agentViews = mode === "agent" && props.open ? props.agentViews : undefined;
 
   return (
-    <section className="min-h-0 min-w-0 border-t border-rule-strong bg-sheet" aria-label="Activity" onKeyDown={event => {
+    <div data-ui="activity-slot" className="h-[min(calc(var(--activity-drawer-visible)+var(--activity-bar-height,40px)+1px),var(--activity-slot-max,100dvh))] min-h-0 min-w-0">
+    <section className="absolute inset-x-0 bottom-0 z-10 min-h-0 min-w-0 border-t border-rule-strong bg-sheet" aria-label="Activity" onKeyDown={event => {
       if (event.key === "Escape" && props.open && props.agent) {
         event.preventDefault(); props.onToggle();
         event.currentTarget.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`)?.focus();
       }
     }}>
+      {props.open ? <div role="separator" aria-label="Resize bottom panel" aria-orientation="horizontal"
+        aria-controls="studio-activity-drawer" aria-valuemin={resize.min} aria-valuemax={resize.max} aria-valuenow={Math.round(resize.height)}
+        aria-valuetext={`${Math.round(resize.height)} pixels`} tabIndex={0}
+        title="Drag to resize the bottom panel. Use Up and Down arrow keys when focused."
+        className="absolute -top-1 left-0 z-10 h-2 w-full cursor-row-resize touch-none select-none hover:bg-dev/30 focus-visible:bg-dev/30 focus-visible:-outline-offset-2"
+        {...resize.pointer} onKeyDown={event => { if (resize.resizeByKey(event.key)) event.preventDefault(); }} /> : null}
       {/* Modes and collapse are separate actions; Docker is never nested in either. */}
-      <div className={cx("grid min-w-0 items-center gap-x-3", props.agent ? "grid-cols-[auto_minmax(0,1fr)_auto_32px] pl-3 vp-480:pl-2" : "grid-cols-[minmax(0,1fr)_auto_auto] vp-480:grid-cols-[minmax(0,1fr)_auto]")}>
+      <div ref={bar} data-ui="activity-bar" className={cx("grid min-w-0 items-center gap-x-3", props.agent ? "grid-cols-[auto_minmax(0,1fr)_auto_32px] pl-3 vp-480:pl-2" : "grid-cols-[minmax(0,1fr)_auto_auto] vp-480:grid-cols-[minmax(0,1fr)_auto]")}>
         {props.agent ? <div className="col-start-1 row-start-1 flex items-center gap-1 py-1" role="tablist" aria-label="Panel mode"
           onKeyDown={event => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -399,5 +409,6 @@ export function Activity(props: {
         </div>
       </div>
     </section>
+    </div>
   );
 }

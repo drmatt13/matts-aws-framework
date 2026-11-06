@@ -179,6 +179,34 @@ test("concurrent local dependency work cannot pass an in-flight independent admi
   await assert.rejects(dependency, /still owns this checkout/);
 });
 
+test("local startup cannot pass an in-flight independent admission", async t => {
+  const { service, source } = fixture(t);
+  await service.listOperations();
+  let finish!: (job: JobView) => void;
+  source.submit = () => new Promise(resolve => { finish = resolve; });
+  const independent = service.perform({ kind: "deploy-plan", params: {} });
+  const local = service.perform({ kind: "local-start", params: {} });
+  await Promise.resolve();
+  source.jobs = [operation()]; finish(source.jobs[0]!);
+  await independent;
+  await assert.rejects(local, /still owns this checkout/);
+});
+
+test("development mutation admission sees host sessions while template synthesis remains available", async t => {
+  const { service, source } = fixture(t);
+  await service.listOperations();
+  t.mock.method(service.dockerStatus, "read", async () => ({ docker: { engine: "stopped", desktop: true } }) as any);
+  let finish!: () => void;
+  const watch = service.jobs.start({ kind: "local-watch", title: "Source watch", params: {}, locks: ["local-watch"], steps: [{ label: "watch", run: () => new Promise<void>(resolve => { finish = resolve; }) }] });
+  try {
+    await assert.rejects(service.perform({ kind: "destroy", params: { deployment: "fixture-dev", mode: "dev", profile: "fixture" } }), /Stop local runtime/);
+    assert.equal(source.submitted.length, 0);
+    const deployment = service.targets().find(target => target.mode === "dev")!.name;
+    await service.perform({ kind: "deploy-plan", params: { deployment, profile: "fixture", review: "template" } });
+    assert.equal(source.submitted.length, 1);
+  } finally { finish(); await service.jobs.wait(watch.id); }
+});
+
 test("disposing Studio closes its observer without sending a cancellation to independent work", async t => {
   const { service, source } = fixture(t);
   source.jobs = [operation()];

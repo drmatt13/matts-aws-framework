@@ -44,6 +44,7 @@ export function deployRouter(service: DeployService): express.Router {
   const force = (value: unknown) => value === "1" || value === "true";
 
   router.get("/overview", (request, response) => send(response, () => service.overview(force(request.query.force))));
+  router.get("/local", (request, response) => send(response, () => service.localStatus(force(request.query.force))));
 
   router.get("/profiles", (_request, response) => send(response, () => service.profiles()));
   router.get("/identity", (request, response) => send(response, async () =>

@@ -1,6 +1,7 @@
 import { buttonClasses } from "../ui/Button";
 import { iconButtonClasses } from "../ui/IconButton";
 import { cx } from "../ui/classes";
+import { ToastNotice } from "../ui/ToastNotice";
 import { Link, useLocation } from "@tanstack/react-router";
 import { ClipboardCheck, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -195,7 +196,7 @@ function CommandDrawer(props: {
 
 export function Shell(props: { readonly children: ReactNode; readonly notice?: ReactNode }) {
   const studio = useStudio();
-  const { snapshot, response, live, toast, toasts, selected } = studio;
+  const { snapshot, response, live, toast, toasts, dismissToast, selected } = studio;
   const pathname = useLocation({ select: (location) => location.pathname });
   const databasePage = useLocation({ select: (location) => location.pathname === "/database" });
   // Isometric hosts the inspector in its own side panel, below the map toolbar.
@@ -234,7 +235,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
     <div
       data-ui="shell"
       className={cx(
-        "grid h-full vp-760:[--bar:89px] vp-560:[--bar:129px] transition-[--activity-drawer-visible] duration-280 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        "relative grid h-full vp-760:[--bar:89px] vp-560:[--bar:129px] transition-[--activity-drawer-visible] duration-280 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none [&[data-activity-resizing]]:transition-none",
         props.notice || watchProblem
           ? "grid-rows-[var(--bar)_auto_minmax(0,1fr)_auto]"
           : "grid-rows-[var(--bar)_minmax(0,1fr)_auto]",
@@ -374,6 +375,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         <main
           data-ui="canvas"
           data-stale={studio.model.stale || undefined}
+          tabIndex={0}
           className="relative min-h-0 overflow-auto"
         >
           {studio.model.stale ? (
@@ -418,15 +420,12 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         aria-live="polite"
       >
         {toasts.map((item) => (
-          <div
+          <ToastNotice
             key={item.id}
-            className={cx(
-              "rounded-md px-4 py-3 text-step-minus1 text-sheet shadow-popover wrap-anywhere",
-              item.tone === "refuse" ? "bg-refuse" : "bg-ink",
-            )}
-          >
-            {item.text}
-          </div>
+            text={item.text}
+            tone={item.tone}
+            onDismiss={() => dismissToast(item.id)}
+          />
         ))}
       </div>
     </div>

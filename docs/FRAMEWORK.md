@@ -810,23 +810,19 @@ endpoints too, since a container's SDK calls go out over IPv4.
 ### In development
 
 **A dev deployment builds no network and no database.** The database is absent from the dev
-graph and runs under Compose, so asking for the network there is an error. The local lane
-holds the network's rules instead, which is what keeps "works locally" meaning "works in AWS":
+graph and runs under Compose, so asking for the network there is an error. Local workloads
+use ordinary host and Docker networking. The local runtime does not emulate VPC egress
+restrictions or force dual-stack SDK endpoints; deployed network reachability needs its
+own AWS checks.
 
 - `PRIMARY_DATABASE_URL` (the Compose Postgres) reaches only a workload that declares
   `database: true`.
-- A Lambda in the VPC gets `AWS_USE_DUALSTACK_ENDPOINT=true` exactly where it would in AWS.
-  Unless IPv4 leaves its subnet (a private subnet with `natGateway`), it runs under an egress guard
-  that refuses at once, with the reason, any host its subnet could not reach. That is a host with
-  no IPv6 address where only IPv6 leaves, or anything an endpoint does not answer where nothing
-  leaves. A refused AWS hostname names the endpoint that would reach it, such as
-  `add "cognito-idp" to interfaceEndpoints`.
 - Configuration refuses `database: true` on an agent, a workflow or a cross-language Lambda,
   on an event without `localReplay: true`, and a workload that reads anything else from the
   database's stack without declaring it. It refuses a `subnet` on a cross-language Lambda
   and on an event without `localReplay: true` the same way.
 
-Inside a Lambda in the VPC, an SDK client given its own `endpoint` passes
+Inside a deployed Lambda in the VPC, an SDK client given its own `endpoint` passes
 `useDualstackEndpoint: false`: the SDK refuses the dual-stack setting with a custom endpoint.
 
 ## Events and native infrastructure

@@ -57,6 +57,12 @@ Stale observations, ordinary status messages, operation outcomes and modal error
 their existing components and ARIA behavior. Similar markup alone does not establish
 a shared lifecycle or approval contract.
 
+`ToastNotice` owns transient notification appearance across Shell, Deploy and the
+fullscreen Database editor: a graphite border, wrapping message and a circular
+top-right dismiss button. Callers own dismissal state and existing expiry timers.
+The button has an accessible name, visible keyboard focus and a 44px coarse-pointer
+target; message padding reserves its space.
+
 Dialog primary actions compose `dialogPrimaryActionClasses` directly with
 `buttonClasses`. This preserves their 110px minimum and full row at 420px and below;
 the footer no longer finds them through `data-variant`. `Button` still emits that
@@ -205,6 +211,19 @@ content, including on narrow screens. The map canvas is the one exception: it ke
 and runs beneath the tray, so opening it moves nothing on the map. `--activity-drawer` is the
 drawer's one height, notices included, and the `activity-open` variant styles anything that
 depends on the tray.
+The map's bottom dock fades out over 140ms when the tray opens and returns over
+220ms after an 80ms lead-in as it closes. Opacity reverses from its current value
+on rapid toggles; visibility follows the exit fade and pointer input stops immediately.
+The `activity-expanded` variant follows toggle intent, while `activity-open` retains
+the map's layout through the closing slide. The map's Motion toggle and OS reduced
+motion disable the dock fade. A dock above a stacked phone panel remains available.
+While open, only the thin top-edge separator resizes that shared height, preserving
+it for the mounted shell. The separator supports Up/Down and Home/End; window
+resizing bounds the drawer to the window; it can cover the navigation at full height.
+The shell keeps a small workspace reservation for hidden toolbar layout and caps the map compensation
+at that reservation, preserving its camera even when the tray covers the whole screen.
+Pointer resizing disables
+the shell's height transition until release; opening and closing retain their slide.
 The Agent panel spends the drawer on its transcript. Its Conversation and Sightline views
 are a second tier in the bar, unbordered beside the bordered Activity/Agent modes, and they
 replace the panel's summary while it is open. Heading, suggestions, composer and helper line

@@ -21,6 +21,7 @@ import type { PlanView, ResourceChangeView } from "../../../shared/deploy";
 import { deployApi } from "../../deploy/api";
 import { DeploymentBadge } from "../DeploymentBadge";
 import { relativeTime, shortStack } from "./format";
+import { RuntimeMutationNotice, type RuntimeMutationGate } from "./RuntimeMutationNotice";
 
 function counts(changes: readonly ResourceChangeView[]): string {
   const of = (action: string) => changes.filter((change) => change.action === action).length;
@@ -125,8 +126,11 @@ export function PlanReview(props: {
   /** Ordinary Deploy follows current source; explicit saved-artifact recovery may inspect older bytes. */
   readonly currentSource?: boolean;
   readonly returnFocusRef?: RefObject<HTMLButtonElement | null>;
+  readonly runtimeGate?: RuntimeMutationGate;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const applyButton = useRef<HTMLButtonElement>(null);
+  const confirmationInput = useRef<HTMLInputElement>(null);
   const [typed, setTyped] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const {
@@ -160,6 +164,8 @@ export function PlanReview(props: {
   const needsName = plan?.confirmation.level === "name";
   const sourceChanged = props.currentSource && plan?.synthesis?.current !== true;
   const applicable = plan && !plan.result && !plan.expired && !sourceChanged && plan.status === "ready";
+  const runtimeGate = plan?.identity.mode === "dev" ? props.runtimeGate : undefined;
+  const replanWrites = plan?.review === "change-set";
 
   return (
     <dialog
@@ -477,12 +483,15 @@ export function PlanReview(props: {
         ) : null}
       </div>
       <footer className={dialogFooterClasses}>
+        {runtimeGate && (applicable || plan?.status === "needs-secrets" || replanWrites) ? <RuntimeMutationNotice gate={runtimeGate}
+          focusAfterRemoval={() => applyButton.current && !applyButton.current.disabled ? applyButton.current : confirmationInput.current} /> : null}
         {plan && applicable && needsName ? (
           <label className="grid min-w-0 flex-[1_1_100%] gap-2 wrap-anywhere [&_input]:w-full [&_input]:min-w-0 [&_input]:font-mono">
             <span className="text-caption">
               Type <code>{name}</code> to apply: {plan.confirmation.reasons.join("; ")}.
             </span>
             <TextInput
+              ref={confirmationInput}
               value={typed}
               onChange={(event) => setTyped(event.target.value)}
               aria-label={`Type ${name} to apply`}
@@ -515,8 +524,8 @@ export function PlanReview(props: {
               dialogPrimaryActionClasses,
               buttonClasses({ variant: "primary", size: "regular" }),
             )}
-            onClick={() => props.onReplan(plan, true)}
-            disabled={Boolean(props.busy)}
+            onClick={() => { if (!runtimeGate) props.onReplan(plan, true); }}
+            disabled={Boolean(props.busy) || Boolean(runtimeGate)}
           >
             Create secrets and plan again
           </button>
@@ -528,21 +537,22 @@ export function PlanReview(props: {
               dialogPrimaryActionClasses,
               buttonClasses({ variant: "primary", size: "regular" }),
             )}
-            onClick={() => props.onReplan(plan, false)}
-            disabled={Boolean(props.busy)}
+            onClick={() => { if (!runtimeGate || !replanWrites) props.onReplan(plan, false); }}
+            disabled={Boolean(props.busy) || Boolean(runtimeGate && replanWrites)}
           >
             Synthesize again
           </button>
         ) : null}
         {applicable ? (
           <button
+            ref={applyButton}
             data-variant="primary"
             className={cx(
               dialogPrimaryActionClasses,
               buttonClasses({ variant: "primary", size: "regular" }),
             )}
-            disabled={Boolean(props.busy) || (needsName && typed !== name)}
-            onClick={() => props.onApply(plan, needsName ? typed : undefined)}
+            disabled={Boolean(props.busy) || Boolean(runtimeGate) || (needsName && typed !== name)}
+            onClick={() => { if (!runtimeGate) props.onApply(plan, needsName ? typed : undefined); }}
           >
             Deploy {plan.identity.mode === "dev" ? "development" : "production"}
           </button>

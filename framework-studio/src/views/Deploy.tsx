@@ -6,6 +6,7 @@ import { cx } from "../ui/classes";
 import { PageToolbar, pageBodyClasses, pageTitleClasses, documentProseClasses } from "./DocumentUI";
 import { buttonClasses } from "../ui/Button";
 import { Notice } from "../ui/Surface";
+import { ToastNotice } from "../ui/ToastNotice";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -31,6 +32,10 @@ import { Teardown } from "./deploy/Teardown";
 import { KeepDeployedName } from "./deploy/KeepDeployedName";
 import { useStudio } from "../studio";
 import { openAwsProfileConfiguration } from "../aws-profile-queries";
+import { useLocalRuntime } from "../deploy/local-runtime";
+import { developmentMutationBlocker, runtimeActionRequiresOff } from "../deploy/dev-lifecycle";
+import { operationsQuery } from "../operations/queries";
+import type { RuntimeMutationGate } from "./deploy/RuntimeMutationNotice";
 
 function DeployState({ title, machine, children }: {
   readonly title: string;
@@ -65,6 +70,8 @@ export function Deploy() {
   const queryClient = useQueryClient();
   const machineQuery = useDockerStatus();
   const dockerStart = useDockerStart();
+  const runtime = useLocalRuntime();
+  const runtimeOperations = useQuery({ ...operationsQuery(), enabled: false });
   const overview = overviewQuery.data ? withDockerStatus(overviewQuery.data, machineQuery.status ?? unavailableDockerStatus("Checking Docker…")) : undefined;
   const refreshInFlight = useRef(false);
   const [review, setReview] = useState<{ key: string; currentSource: boolean }>();
@@ -93,6 +100,20 @@ export function Deploy() {
     setToasts((current) => [...current, { id, text, tone }]);
     setTimeout(() => setToasts((current) => current.filter((entry) => entry.id !== id)), 7000);
   }, []);
+  const runtimeBlocker = developmentMutationBlocker({ mode: "dev", local: runtime.local,
+    problem: runtime.problem, operationsKnown: Boolean(runtimeOperations.data) && !runtimeOperations.error,
+    job: runtime.job, submitting: runtime.busy });
+  const runtimeGate: RuntimeMutationGate | undefined = runtimeBlocker ? {
+    reason: runtime.error ? `${runtime.error} ${runtimeBlocker}` : runtimeBlocker,
+    action: runtime.busy ? "Waiting for local runtime…" : runtime.active ? "Stop local runtime" : "Check again",
+    disabled: runtime.busy || (!runtime.active && runtime.checking),
+    onAction: () => {
+      const work = runtime.active ? runtime.stop() : Promise.all([
+        runtime.refresh(), queryClient.fetchQuery({ ...operationsQuery(), staleTime: 0 }),
+      ]);
+      void work.catch(error => toast(error instanceof Error ? error.message : String(error)));
+    },
+  } : undefined;
 
   useEffect(() => {
     setReview(undefined);
@@ -273,7 +294,7 @@ export function Deploy() {
             appId: overview.targets.find((target) => target.appId)?.appId,
             problem,
             profileKind: overview.profiles.find((entry) => entry.name === profile)?.kind,
-            local: overview.local,
+            local: runtime.local ?? overview.local,
             plans: plansQuery.data ?? [],
             jobs,
           })
@@ -289,6 +310,7 @@ export function Deploy() {
       problem,
       plansQuery.data,
       jobs,
+      runtime.local,
     ],
   );
   const planFinding = (finding: typeof findings[number]) => ["PLAN_WAITING", "PLAN_EXPIRED", "PLAN_UNFINISHED"].includes(finding.code);
@@ -305,6 +327,10 @@ export function Deploy() {
 
   const act = (action: Action, trigger?: HTMLButtonElement) => {
     if (!row || !profile) return;
+    if (row.mode === "dev" && runtimeGate && runtimeActionRequiresOff(action.id)) {
+      toast(runtimeGate.reason);
+      return;
+    }
     const name = row.name;
     switch (action.id) {
       case "sign-in":
@@ -445,6 +471,7 @@ export function Deploy() {
                 row={row}
                 context={selectedContext}
                 inspectionScope={observation.scope}
+                runtimeGate={row.mode === "dev" ? runtimeGate : undefined}
                 status={status}
                 record={discovery?.records[row.name]}
                 findings={visibleFindings}
@@ -486,9 +513,11 @@ export function Deploy() {
           planKey={reviewKey}
           busy={reviewBusy}
           currentSource={reviewCurrentSource}
+          runtimeGate={runtimeGate}
           returnFocusRef={reviewButton}
           onClose={() => setReview(undefined)}
           onApply={(plan: PlanView, confirm) => {
+            if (plan.identity.mode === "dev" && runtimeGate) return;
             setReview(undefined);
             void operate("deploy-apply", {
               plan: plan.key,
@@ -545,9 +574,11 @@ export function Deploy() {
           profile={profile}
           region={teardown.region}
           busy={runningFor(teardown.deployment)?.title}
+          runtimeGate={teardown.mode === "dev" ? runtimeGate : undefined}
           returnFocusRef={teardownButton}
           onClose={() => setTeardown(undefined)}
           onDelete={({ confirm, retainFailed, review }) => {
+            if (teardown.mode === "dev" && runtimeGate) return;
             const target = teardown;
             setTeardown(undefined);
             void operate("destroy", {
@@ -568,15 +599,12 @@ export function Deploy() {
         aria-live="polite"
       >
         {toasts.map((entry) => (
-          <div
+          <ToastNotice
             key={entry.id}
-            className={cx(
-              "rounded-md px-4 py-3 text-step-minus1 text-sheet shadow-popover wrap-anywhere",
-              entry.tone === "refuse" ? "bg-refuse" : "bg-ink",
-            )}
-          >
-            {entry.text}
-          </div>
+            text={entry.text}
+            tone={entry.tone}
+            onDismiss={() => setToasts((current) => current.filter((item) => item.id !== entry.id))}
+          />
         ))}
       </div>
     </div>

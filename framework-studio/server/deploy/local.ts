@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseEnv } from "node:util";
 import { parse as parseYaml } from "yaml";
 import { setTimeout as delay } from "node:timers/promises";
-import type { DockerView, LocalRunView, ManagedProcessView, ServiceView } from "../../shared/deploy";
+import type { DockerView, JobView, LocalRunView, ManagedProcessView, ServiceView } from "../../shared/deploy";
 import type { Runner, Tools } from "./process";
 
 /**
@@ -18,7 +18,32 @@ import type { Runner, Tools } from "./process";
 export interface RunRecord {
   readonly profile: string;
   readonly deployment: string;
+  readonly account?: string;
+  readonly region?: string;
   readonly startedAt: string;
+}
+
+/** Safe, actionable lifecycle refusal; no private CLI output is attached. */
+export class LocalRuntimeConflict extends Error {
+  readonly status = 409;
+}
+
+export const activeContainerState = (state: string) => ["running", "restarting", "paused", "removing"].includes(state);
+
+/** A detached worker must not forget watch/client jobs still owned by the Studio host. */
+export function persistedLocalHolder(stateDirectory: string, lock: string): JobView | undefined {
+  const kinds = lock === "local" ? ["local-start", "local-stop", "local-restart", "local-attach-watch"]
+    : lock === "local-watch" || lock === "local-client" ? [lock] : [];
+  if (!kinds.length) return undefined;
+  const directory = path.join(stateDirectory, "jobs");
+  if (!existsSync(directory)) return undefined;
+  for (const file of readdirSync(directory).filter(file => file.endsWith(".json"))) {
+    let value: { id?: unknown; kind?: unknown; status?: unknown };
+    try { value = JSON.parse(readFileSync(path.join(directory, file), "utf8")); } catch { throw new LocalRuntimeConflict("Local operation evidence is unreadable. Open Studio and check local runtime before changing development resources."); }
+    if (value.status === "running" && typeof value.kind === "string" && kinds.includes(value.kind) && typeof value.id === "string")
+      return { id: value.id, kind: value.kind as JobView["kind"], status: "running", title: "Local runtime", params: {}, startedAt: "", lastSeq: 0 };
+  }
+  return undefined;
 }
 
 /** As packages/framework/src/local/paths.ts names the Compose project. */
@@ -94,7 +119,13 @@ export class LocalEnvironment {
   }
 
   runRecord(): RunRecord | undefined {
-    try { return JSON.parse(readFileSync(this.recordFile, "utf8")) as RunRecord; } catch { return undefined; }
+    try {
+      const value = JSON.parse(readFileSync(this.recordFile, "utf8"));
+      if (!value || typeof value.profile !== "string" || typeof value.deployment !== "string" || typeof value.startedAt !== "string") return undefined;
+      return { profile: value.profile, deployment: value.deployment, startedAt: value.startedAt,
+        ...(typeof value.account === "string" ? { account: value.account } : {}),
+        ...(typeof value.region === "string" ? { region: value.region } : {}) };
+    } catch { return undefined; }
   }
 
   writeRunRecord(record: RunRecord): void {
@@ -131,24 +162,48 @@ export class LocalEnvironment {
   async services(): Promise<(ServiceView & { readonly id: string })[]> {
     const listed = await this.run(this.tools.docker(["ps", "-a", "--filter", `label=com.docker.compose.project=${this.project}`, "--format", "{{json .}}"], this.env), { timeoutMs: 15_000 });
     const disabled = this.disabledServices();
-    return listed.code === 0 ? parseServices(listed.stdout, oneShotServices(this.root)).map(service =>
-      disabled.has(service.name) && service.state === "exited" && service.exitCode === 0 ? { ...service, disabledByDeploy: true as const } : service) : [];
+    if (listed.code !== 0) throw new Error("Could not read this checkout's local containers. Check Docker and try again.");
+    return parseServices(listed.stdout, oneShotServices(this.root)).map(service =>
+      disabled.has(service.name) && service.state === "exited" && service.exitCode === 0 ? { ...service, disabledByDeploy: true as const } : service);
   }
 
-  /** Every container of this project: Compose's, and the task and Lambda containers the runner started. */
-  async containerIds(): Promise<string[]> {
-    const ids = new Set<string>();
+  /** Active containers in this checkout, including paused/partial runner work. */
+  async activeContainers(compose?: readonly (ServiceView & { readonly id: string })[]): Promise<{ readonly id: string; readonly state: string }[]> {
+    const active = new Map<string, { id: string; state: string }>();
     for (const label of [`com.docker.compose.project=${this.project}`, `com.matts-aws-framework.project=${this.project}`]) {
-      const listed = await this.run(this.tools.docker(["ps", "-q", "--filter", `label=${label}`], this.env), { timeoutMs: 15_000 });
-      if (listed.code === 0) for (const id of listed.stdout.split(/\s+/).filter(Boolean)) ids.add(id);
+      if (compose && label.startsWith("com.docker.compose.project=")) {
+        for (const service of compose) if (activeContainerState(service.state)) active.set(service.id, { id: service.id, state: service.state });
+        continue;
+      }
+      const listed = await this.run(this.tools.docker(["ps", "-a", "--filter", `label=${label}`, "--format", "{{json .}}"], this.env), { timeoutMs: 15_000 });
+      if (listed.code !== 0) throw new LocalRuntimeConflict("Could not inspect this checkout's local containers. Check Docker before changing development resources.");
+      for (const line of listed.stdout.split(/\r?\n/).filter(Boolean)) {
+        let container: { ID?: unknown; State?: unknown };
+        try { container = JSON.parse(line); } catch { throw new LocalRuntimeConflict("Local container status is unreadable. Check Docker before changing development resources."); }
+        if (typeof container.ID !== "string" || typeof container.State !== "string" || !["created", "running", "restarting", "paused", "removing", "exited", "dead"].includes(container.State)) throw new LocalRuntimeConflict("Local container status is unavailable. Check Docker before changing development resources.");
+        if (activeContainerState(container.State)) active.set(container.ID, { id: container.ID, state: container.State });
+      }
     }
-    return [...ids];
+    return [...active.values()];
+  }
+
+  /** Every active container of this project; stopped/created containers and volumes are kept. */
+  async containerIds(): Promise<string[]> {
+    return (await this.activeContainers()).map(container => container.id);
+  }
+
+  async assertStopped(docker: DockerView, managed: { readonly watch: ManagedProcessView; readonly client: ManagedProcessView }): Promise<void> {
+    if (managed.watch.running || managed.client.running) throw new LocalRuntimeConflict("Stop local runtime before changing development resources.");
+    if (docker.engine === "unknown") throw new LocalRuntimeConflict("Local runtime status is unavailable. Check Docker and stop local runtime before changing development resources.");
+    if (docker.engine !== "running") return;
+    if ((await this.activeContainers()).length) throw new LocalRuntimeConflict("Stop local runtime before changing development resources.");
   }
 
   private async startedAt(ids: readonly string[]): Promise<Map<string, number>> {
     const started = new Map<string, number>();
     if (!ids.length) return started;
     const inspected = await this.run(this.tools.docker(["inspect", "--format", "{{.Id}}|{{.State.StartedAt}}", ...ids], this.env), { timeoutMs: 15_000 });
+    if (inspected.code !== 0) throw new Error("Could not verify when the local containers started. Check Docker and try again.");
     for (const line of inspected.stdout.split(/\r?\n/)) {
       const [id, time] = line.trim().split("|");
       if (id && time) {
@@ -159,28 +214,63 @@ export class LocalEnvironment {
     return started;
   }
 
+  /** Compose resolves generated includes and operator overrides; only names and lifecycle are retained. */
+  private async expectedServices(): Promise<Map<string, { readonly oneShot: boolean }>> {
+    const result = await this.run(this.tools.docker(["compose", "config", "--format", "json"], { ...this.env, COMPOSE_PROFILES: "" }), { timeoutMs: 15_000 });
+    const message = "Could not read the local Compose configuration. Check the exported development settings and Compose files, then try again.";
+    if (result.code !== 0) throw new Error(message);
+    let configuration: { services?: Record<string, any> };
+    try { configuration = JSON.parse(result.stdout); } catch { throw new Error(message); }
+    if (!configuration?.services || typeof configuration.services !== "object" || Array.isArray(configuration.services)) throw new Error(message);
+    const disabled = this.disabledServices();
+    const defaults = Object.entries(configuration.services).filter(([name, service]) => service && typeof service === "object"
+      && !(Array.isArray(service.profiles) && service.profiles.length) && service.scale !== 0 && service.deploy?.replicas !== 0 && !disabled.has(name));
+    const oneShots = new Set<string>();
+    for (const [, service] of defaults) for (const [dependency, requirement] of Object.entries(service.depends_on ?? {})) {
+      if (requirement && typeof requirement === "object" && (requirement as { condition?: string }).condition === "service_completed_successfully") oneShots.add(dependency);
+    }
+    return new Map(defaults.map(([name]) => [name, { oneShot: oneShots.has(name) }]));
+  }
+
   async view(docker: DockerView, managed: { readonly watch: ManagedProcessView; readonly client: ManagedProcessView }): Promise<LocalRunView> {
     const exported = this.exported();
-    const services = docker.engine === "running" ? await this.services() : [];
-    const running = services.filter((service) => service.state === "running" && !service.oneShot);
+    let observationProblem: string | undefined = docker.engine === "unknown" ? docker.problem ?? "Could not determine whether Docker is running. Check Docker and try again." : undefined;
+    const services = docker.engine === "running" ? await this.services().catch(() => {
+      observationProblem = "Could not read this checkout's local containers. Check Docker and try again.";
+      return [];
+    }) : [];
+    const running = services.filter((service) => activeContainerState(service.state) && !service.oneShot);
+    const activeContainerCount = docker.engine === "unknown" || observationProblem ? undefined : docker.engine !== "running" ? 0 : await this.activeContainers(services).then(containers => containers.length).catch(() => {
+      observationProblem = "Could not inspect all of this checkout's local containers. Check Docker and try again.";
+      return undefined;
+    });
     // A service started before the latest export runs with the previous outputs:
     // Compose interpolates the root .env when it creates a container.
-    const started = exported.at !== undefined ? await this.startedAt(running.map((service) => service.id)) : new Map<string, number>();
+    const started = exported.at !== undefined ? await this.startedAt(running.map((service) => service.id)).catch(() => {
+      observationProblem = "Could not verify when the local containers started. Check Docker and try again.";
+      return new Map<string, number>();
+    }) : new Map<string, number>();
     const restartNeeded = running.filter((service) => (started.get(service.id) ?? Infinity) < exported.at! - 1000).map((service) => service.name);
     const record = this.runRecord();
+    const active = Boolean(activeContainerCount) || managed.watch.running || managed.client.running;
     const { at: _at, ...files } = exported;
     return {
       project: this.project,
+      ...(activeContainerCount !== undefined ? { activeContainerCount } : {}),
       docker,
       services: services.map(({ id: _id, ...service }) => service),
       watch: managed.watch,
       client: managed.client,
       exported: files,
-      startedBy: running.length === 0 ? "none" : record ? "studio" : "outside",
+      startedBy: !active ? "none" : record ? "studio" : "outside",
       ...(record?.profile ? { profile: record.profile } : {}),
+      ...(record && active ? { binding: record } : {}),
+      ...(observationProblem ? { observationProblem } : {}),
       ...(running.length || managed.client.running ? { appUrl: this.appUrl() } : {}),
       restartNeeded,
-      readiness: await this.readiness(services, managed),
+      readiness: observationProblem ? { state: "blocked", observedAt: new Date().toISOString(), message: observationProblem }
+        : restartNeeded.length ? { state: "blocked", observedAt: new Date().toISOString(), message: "Local settings changed after these containers started. Restart local runtime to use the current development outputs." }
+        : await this.readiness(services, managed),
     };
   }
 
@@ -192,10 +282,19 @@ export class LocalEnvironment {
     services = services.filter(service => !(disabled.has(service.name) && service.state === "exited" && service.exitCode === 0));
     const observedAt = new Date().toISOString();
     const result = (state: "ready" | "starting" | "blocked" | "stopped", message: string) => ({ state, observedAt, message });
-    if (!services.some(service => service.state === "running") && !managed.client.running) return result("stopped", "Local services are stopped.");
+    if (!services.some(service => activeContainerState(service.state)) && !managed.client.running && !managed.watch.running) return result("stopped", "Local services are stopped.");
+    let expected: Map<string, { readonly oneShot: boolean }>;
+    try { expected = await this.expectedServices(); }
+    catch (error) { return result("blocked", error instanceof Error ? error.message : "Could not read the local Compose configuration."); }
+    // Profiled maintenance containers do not establish compute readiness. A
+    // disabled declaration's genuine failed launcher remains actionable.
+    services = services.filter(service => expected.has(service.name) || disabled.has(service.name))
+      .map(service => ({ ...service, oneShot: expected.get(service.name)?.oneShot ?? service.oneShot }));
     const failed = services.filter(service => service.health === "unhealthy" || service.oneShot && service.exitCode !== undefined && service.exitCode !== 0 || !service.oneShot && service.state === "exited");
     if (failed.length) return result("blocked", `Needs attention: ${failed.map(service => service.name).join(", ")}. Open its logs. Database verification never applies changes; review initialization or migrations in Database.`);
-    if (!services.length || services.some(service => !service.oneShot && (service.state !== "running" || service.health === "starting")) || !managed.watch.running || !managed.client.running) return result("starting", "Waiting for local services, source watch and web client.");
+    const missing = [...expected.keys()].filter(name => !services.some(service => service.name === name));
+    if (missing.length) return result("starting", `Waiting for local containers: ${missing.join(", ")}. Startup is incomplete while required services are missing.`);
+    if (!services.length || services.some(service => service.oneShot ? service.state !== "exited" || service.exitCode !== 0 : service.state !== "running" || service.health === "starting") || !managed.watch.running || !managed.client.running) return result("starting", "Waiting for local services, source watch and web client.");
     try {
       const response = await fetch(this.appUrl(), { signal: AbortSignal.timeout(1500), redirect: "manual" });
       await response.body?.cancel();

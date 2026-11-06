@@ -1,5 +1,5 @@
 import { validateTags, type DeclarationTags } from "./tags";
-/** Independently declared VPCs. Configuration, CDK and local egress share these rules. */
+/** Independently declared VPCs. Configuration validates the rules CDK deploys. */
 import { INTERFACE_ENDPOINT_SERVICES } from "../generated/vpc-endpoint-services";
 
 export { INTERFACE_ENDPOINT_SERVICES };

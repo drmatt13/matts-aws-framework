@@ -2,6 +2,7 @@ import { usePublishSightline } from "../sightline/bridge";
 import { dialogPrimaryActionClasses } from "../inspector-ui";
 import { workbenchNoticeClasses, WorkbenchDialog, SourceComparison } from "./WorkbenchUI";
 import { cx } from "../ui/classes";
+import { ToastNotice } from "../ui/ToastNotice";
 import { buttonClasses } from "../ui/Button";
 import { iconButtonClasses } from "../ui/IconButton";
 import { workspaceToolbarClasses } from "../ui/Surface";
@@ -74,7 +75,7 @@ export const databaseApi = {
 };
 
 export function Database() {
-  const { snapshot, selected, toast, toasts } = useStudio();
+  const { snapshot, selected, toast, toasts, dismissToast } = useStudio();
   const [session] = useState(() => new DatabaseSession(databaseApi));
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const [loadingError, setLoadingError] = useState<string>();
@@ -898,13 +899,12 @@ export function Database() {
           aria-live="polite"
         >
           {toasts.map((item) => (
-            <div
+            <ToastNotice
               key={item.id}
-              data-ui="toast"
-              className={`rounded-md px-4 py-3 text-step-minus1 text-sheet shadow-popover wrap-anywhere ${item.tone === "refuse" ? "bg-refuse" : "bg-ink"}`}
-            >
-              {item.text}
-            </div>
+              text={item.text}
+              tone={item.tone}
+              onDismiss={() => dismissToast(item.id)}
+            />
           ))}
         </div>
       ) : null}

@@ -21,6 +21,7 @@ import type { DeployMode } from "../../../shared/deploy";
 import { deployApi } from "../../deploy/api";
 import { DeploymentBadge } from "../DeploymentBadge";
 import { shortStack } from "./format";
+import { RuntimeMutationNotice, type RuntimeMutationGate } from "./RuntimeMutationNotice";
 
 /**
  * Deleting a deployment: first what AWS says it consists of and what deletion
@@ -34,14 +35,17 @@ export function Teardown(props: {
   readonly region?: string;
   readonly busy: string | undefined;
   readonly returnFocusRef?: RefObject<HTMLButtonElement | null>;
+  readonly runtimeGate?: RuntimeMutationGate;
   readonly onClose: () => void;
   readonly onDelete: (options: { confirm: string; retainFailed: boolean; review: string }) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const deleteButton = useRef<HTMLButtonElement>(null);
+  const confirmationInput = useRef<HTMLInputElement>(null);
   const [typed, setTyped] = useState("");
   const [retainFailed, setRetainFailed] = useState(false);
   const [disableProtection, setDisableProtection] = useState(false);
-  const { data, error, isPending } = useQuery({
+  const { data, error, isPending, isFetching } = useQuery({
     queryKey: [
       "deploy",
       "teardown",
@@ -80,6 +84,7 @@ export function Teardown(props: {
     setTyped("");
   }, [plan?.key]);
   const failed = plan?.stacks.some((stack) => stack.status === "DELETE_FAILED");
+  const runtimeGate = props.mode === "dev" ? props.runtimeGate : undefined;
 
   return (
     <dialog
@@ -249,12 +254,15 @@ export function Teardown(props: {
         ) : null}
       </div>
       <footer className={dialogFooterClasses}>
+        {runtimeGate ? <RuntimeMutationNotice gate={runtimeGate}
+          focusAfterRemoval={() => deleteButton.current && !deleteButton.current.disabled ? deleteButton.current : confirmationInput.current} /> : null}
         {plan ? (
           <label className="grid min-w-0 flex-[1_1_100%] gap-2 wrap-anywhere [&_input]:w-full [&_input]:min-w-0 [&_input]:font-mono">
             <span className="text-caption">
               Type <code>{props.deployment}</code> to delete it.
             </span>
             <TextInput
+              ref={confirmationInput}
               value={typed}
               onChange={(event) => setTyped(event.target.value)}
               aria-label={`Type ${props.deployment} to delete it`}
@@ -272,6 +280,7 @@ export function Teardown(props: {
           Cancel
         </button>
         <button
+          ref={deleteButton}
           data-variant="primary"
           className={cx(
             dialogPrimaryActionClasses,
@@ -279,13 +288,15 @@ export function Teardown(props: {
           )}
           disabled={
             !plan?.key ||
+            isFetching ||
+            Boolean(runtimeGate) ||
             Boolean(plan.blockers?.length) ||
             Boolean(plan.expiresAt && Date.parse(plan.expiresAt) < Date.now()) ||
             typed !== props.deployment ||
             Boolean(props.busy)
           }
           onClick={() =>
-            plan?.key && props.onDelete({ confirm: typed, retainFailed, review: plan.key })
+            !runtimeGate && plan?.key && props.onDelete({ confirm: typed, retainFailed, review: plan.key })
           }
         >
           Delete {props.deployment}

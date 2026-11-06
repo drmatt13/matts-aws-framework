@@ -4,11 +4,10 @@ import { useDockerStart, useDockerStatus } from "../../machine/docker";
 import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
 
-/** A machine prerequisite for the map's visual runtime preview, not a Compose launcher. */
-export function DockerStartPopover({ id, anchor, onEnablePreview, onClose }: {
+/** A machine prerequisite. Starting Docker does not start application compute. */
+export function DockerStartPopover({ id, anchor, onClose }: {
   readonly id: string;
   readonly anchor: RefObject<HTMLButtonElement | null>;
-  readonly onEnablePreview: () => void;
   readonly onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -43,13 +42,10 @@ export function DockerStartPopover({ id, anchor, onEnablePreview, onClose }: {
 
   useEffect(() => {
     let active = true;
-    const startingAtOpen = startup.starting;
-    void machine.refresh().then(status => {
-      if (active && !startingAtOpen && status.docker.engine === "running") onEnablePreview();
-    }).catch(problem => { if (active) setError(problem instanceof Error ? problem.message : "Could not check Docker. Try again."); })
+    void machine.refresh().catch(problem => { if (active) setError(problem instanceof Error ? problem.message : "Could not check Docker. Try again."); })
       .finally(() => { if (active) setChecking(false); });
     return () => { active = false; };
-  }, [onEnablePreview]);
+  }, []);
 
   const retry = async (kind: "check" | "start") => {
     setError(undefined);

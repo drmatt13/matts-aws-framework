@@ -166,10 +166,14 @@ feedback reduce the canvas viewport without obscuring resources. Resize, picking
 hover and fit keep using the inner scene container. Renderer timing remains in
 `window.__studioLandscape.stats()`; normal chrome shows resource/connection counts.
 Activity opens over the map without moving anything on it. The workspace, `main` and the side
-panel shrink as on every route, while `.landscape` adds `--activity-drawer` back to its height
+panel shrink as on every route, while `.landscape` adds the visible drawer's reserved workspace
+share back to its height (capped to retain hidden toolbar layout when the tray fills the window)
 and `[data-landscape-content]` clips it at the tray, so the canvas never resizes: no observer
 fires, no redraw runs, and the camera, atmosphere and bottom dock stay put. The dock, covered
-by the tray, leaves the tab order; the keyboard navigator rises from the top instead. Layout
+by the tray, fades out before leaving the tab order and fades back as the tray closes;
+its pointer targets stop responding on opening. Fade intent uses `activity-expanded`,
+independently of the `activity-open` closing-layout lifetime, and respects Motion off
+and OS reduced motion. The keyboard navigator rises from the top instead. Layout
 aspect adds the drawer's height back to the workspace, so the tray can never cross an aspect
 bucket and re-solve the islands. Fit, focus and reveal aim at the part of the canvas left
 showing (`visibleViewport`), so they never land behind the tray; closing it then leaves that
@@ -179,13 +183,13 @@ Isometric, Studio's home view at `/` (`/isometric` redirects there), uses the sh
 navbar's `SourceEnvironment` selector. `Shell` keeps that selector and source validation
 available on every route, including empty/error maps. The map toolbar contains search,
 tag filters and camera controls. Named AWS targets remain in operational workspaces.
-The Development map's **Local runtime** switch remains a visual preview, but checks
-the live Docker engine before turning on. Its native popover explains the Docker
-prerequisite, offers the existing `docker-start` operation when the Desktop CLI is
-available, follows that job until the engine is ready, and provides manual setup and
-retry guidance otherwise. Starting Docker or checking again only shows readiness;
-the switch stays off until a separate click on **Local runtime**. Dismissing the popover stops observing, not an explicitly
-requested Docker start. It does not start or stop application containers.
+The Development map's **Local runtime** switch controls actual local compute. It requires
+a completed compatible AWS development deployment before startup; **Details** explains
+disabled prerequisites. Confirmed readiness drives whale animation, while partial
+startup stays engaged until explicitly stopped. Shared observations survive navigation.
+Its native Docker popover offers the existing `docker-start` operation after AWS is
+ready, and starting Docker leaves compute startup for another toggle activation.
+See [local execution](../runtime/local-execution.md) for the lifecycle and mutation gates.
 See the [UI design system](../../framework-studio/ui-design-system.md) for route gutters,
 surface and responsive ownership.
 The landscape entity list becomes a bounded visible navigator while it contains

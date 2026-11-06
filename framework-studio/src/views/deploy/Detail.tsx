@@ -27,6 +27,8 @@ import {
 import { callerName, relativeTime, shortStack } from "./format";
 import type { RailRow } from "./Rail";
 import { StackInspector } from "./StackInspector";
+import { RuntimeMutationNotice, type RuntimeMutationGate } from "./RuntimeMutationNotice";
+import { runtimeActionRequiresOff } from "../../deploy/dev-lifecycle";
 
 const SEVERITY_ICON = {
   blocking: <AlertOctagon size={16} aria-hidden />,
@@ -59,7 +61,7 @@ function ActionButton(props: {
   );
 }
 
-function DeployedCard({ finding, deployment, context, busy, stale, onAction, inspectionScope }: {
+function DeployedCard({ finding, deployment, context, busy, stale, onAction, inspectionScope, runtimeGate }: {
   readonly finding: Finding;
   readonly deployment: DiscoveredDeploymentView;
   readonly context?: AccountContext;
@@ -67,6 +69,7 @@ function DeployedCard({ finding, deployment, context, busy, stale, onAction, ins
   readonly stale?: boolean;
   readonly onAction: (action: Action, trigger?: HTMLButtonElement) => void;
   readonly inspectionScope?: DeploymentScope;
+  readonly runtimeGate?: RuntimeMutationGate;
 }) {
   const [selectedStack, setSelectedStack] = useState<string>();
   const stackTrigger = useRef<HTMLButtonElement>(null);
@@ -105,8 +108,9 @@ function DeployedCard({ finding, deployment, context, busy, stale, onAction, ins
             ))}
           </ul>
         </section>
+        {runtimeGate ? <RuntimeMutationNotice gate={runtimeGate} /> : null}
         <div className="flex justify-end">
-          <ActionButton action={{ id: "delete", label: "Destroy…", tone: "danger", ...(stale ? { disabled: "Refresh deployment status before destroying." } : busy ? { disabled: `${busy} is running.` } : {}) }} onAction={onAction} compact />
+          <ActionButton action={{ id: "delete", label: "Destroy…", tone: "danger", ...(runtimeGate ? { disabled: runtimeGate.reason } : stale ? { disabled: "Refresh deployment status before destroying." } : busy ? { disabled: `${busy} is running.` } : {}) }} onAction={onAction} compact />
         </div>
       </div>
     </details>
@@ -119,7 +123,7 @@ function DeployedCard({ finding, deployment, context, busy, stale, onAction, ins
   );
 }
 
-function FindingCards({ findings, onAction, deployment, context, busy, stale, inspectionScope }: {
+function FindingCards({ findings, onAction, deployment, context, busy, stale, inspectionScope, runtimeGate }: {
   readonly findings: readonly Finding[];
   readonly onAction: (action: Action, trigger?: HTMLButtonElement) => void;
   readonly deployment?: DiscoveredDeploymentView;
@@ -127,6 +131,7 @@ function FindingCards({ findings, onAction, deployment, context, busy, stale, in
   readonly busy?: string;
   readonly stale?: boolean;
   readonly inspectionScope?: DeploymentScope;
+  readonly runtimeGate?: RuntimeMutationGate;
 }) {
   const inspectionIdentity = JSON.stringify({
     repository: inspectionScope?.repository, generation: inspectionScope?.generation,
@@ -137,7 +142,7 @@ function FindingCards({ findings, onAction, deployment, context, busy, stale, in
   return (
     <>
       {findings.map((finding) => finding.code === "DEPLOYED" && deployment ? (
-        <DeployedCard key={`${finding.code}-${inspectionIdentity}`} finding={finding} deployment={deployment} context={context} busy={busy} stale={stale} onAction={onAction} inspectionScope={inspectionScope} />
+        <DeployedCard key={`${finding.code}-${inspectionIdentity}`} finding={finding} deployment={deployment} context={context} busy={busy} stale={stale} onAction={onAction} inspectionScope={inspectionScope} runtimeGate={runtimeGate} />
       ) : (
         <article
           key={`${finding.code}-${finding.actions.find(action => action.plan)?.plan ?? finding.title}`}
@@ -159,12 +164,13 @@ function FindingCards({ findings, onAction, deployment, context, busy, stale, in
             {finding.detail ? (
               <p className={documentSupportClasses}>{finding.detail}</p>
             ) : null}
+            {runtimeGate && finding.actions.some(action => runtimeActionRequiresOff(action.id)) ? <RuntimeMutationNotice gate={runtimeGate} /> : null}
           </div>
           <div className="flex flex-wrap justify-end gap-2 vp-900:col-start-2 vp-900:justify-start detail-640:col-start-2 detail-640:justify-start">
             {finding.actions.map((action) => (
               <ActionButton
                 key={`${action.id}-${action.plan ?? ""}`}
-                action={action}
+                action={runtimeGate && runtimeActionRequiresOff(action.id) ? { ...action, disabled: runtimeGate.reason } : action}
                 onAction={onAction}
                 compact
               />
@@ -199,6 +205,7 @@ export function Detail(props: {
   readonly busy?: string;
   readonly deploymentStale?: boolean;
   readonly inspectionScope?: DeploymentScope;
+  readonly runtimeGate?: RuntimeMutationGate;
 }) {
   const { row, context, status, record } = props;
   const authenticationFinding = props.findings.find((finding) => finding.code === "SIGNED_OUT");
@@ -295,7 +302,7 @@ export function Detail(props: {
                 Reading what {context?.account ?? "the account"} holds…
               </Notice>
             ) : null}
-            <FindingCards findings={findings} onAction={props.onAction} deployment={deployment} context={context} busy={props.busy} stale={props.deploymentStale} inspectionScope={props.inspectionScope} />
+            <FindingCards findings={findings} onAction={props.onAction} deployment={deployment} context={context} busy={props.busy} stale={props.deploymentStale} inspectionScope={props.inspectionScope} runtimeGate={props.runtimeGate} />
           </section>
         ) : null}
 

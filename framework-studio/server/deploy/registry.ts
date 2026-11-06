@@ -1,11 +1,12 @@
 import path from "node:path";
 import type { AwsProfileInfo, DeployMode, DockerView, DriftView, JobView, OperationKind, OperationRequest, TargetView } from "../../shared/deploy";
 import type { JobManager, JobSpec, JobStep } from "./jobs";
-import type { LocalEnvironment } from "./local";
+import { LocalRuntimeConflict, type LocalEnvironment } from "./local";
 import { AwsObserver } from "./observe";
 import type { PlanStore, TeardownStore } from "./plans";
 import { clientCommand, composePlugin } from "./local-commands";
 import { studioEnvironment, tethered, type CommandSpec, type Runner, type Tools } from "./process";
+import { readAwsFiles } from "../../../scripts/aws-connections";
 
 /**
  * The operations Deploy & Run can perform, and no others.
@@ -110,11 +111,30 @@ const awsArguments = (profileName: string, regionName: string | undefined) => ["
 
 const CLOUD_CANCEL_NOTE = "Stopped the command. A CloudFormation operation it had already started continues in AWS; Studio keeps showing its stacks.";
 
+/** Read-only synthesis/review is allowed during development; dev mutations require compute off. */
+export function changesDevelopmentResources(context: OperationContext, request: OperationRequest): boolean {
+  const params = request.params ?? {};
+  if (request.kind === "deploy-apply") return typeof params.plan === "string" && context.plans.read(params.plan)?.identity.mode === "dev";
+  if (request.kind === "destroy") return params.mode === "dev";
+  if (request.kind !== "export" && request.kind !== "deploy-plan") return false;
+  const declared = context.targets().find(entry => entry.name === params.deployment);
+  if (request.kind === "export") return declared?.mode !== "prod";
+  return declared?.mode === "dev" && (params.autoApply === true || params.createSecrets === true || params.review === "change-set");
+}
+
+export async function assertDevelopmentRuntimeStopped(context: OperationContext, currentJob?: string): Promise<void> {
+  const localOperation = context.jobs.holder("local");
+  if (localOperation && localOperation.id !== currentJob) throw new LocalRuntimeConflict("Wait for the local runtime operation to finish, then stop local runtime before changing development resources.");
+  const docker = await context.probeDocker();
+  await context.local.assertStopped(docker, { watch: { running: Boolean(context.jobs.holder("local-watch")) }, client: { running: Boolean(context.jobs.holder("local-client")) } });
+}
+
 export async function buildOperation(context: OperationContext, request: OperationRequest): Promise<JobSpec> {
   const params = request.params ?? {};
   if (typeof params !== "object" || Array.isArray(params)) throw new OperationError(400, "An operation's parameters are named values.");
   const builder = Object.hasOwn(BUILDERS, request.kind) ? BUILDERS[request.kind] : undefined;
   if (!builder) throw new OperationError(404, `${String(request.kind)} is not an operation Studio performs.`);
+  if (changesDevelopmentResources(context, request)) await assertDevelopmentRuntimeStopped(context);
   return builder(context, params);
 }
 
@@ -148,7 +168,10 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     const steps: JobStep[] = [
       {
         label: review === "change-set" ? "Synthesize and prepare change sets in AWS" : "Synthesize and compare AWS templates (read-only)",
-        run: async () => { synthesisFingerprint = context.plans.captureSynthesis(declared.mode, credentials.name, declared.inputs); },
+        run: async step => {
+          if (declared.mode === "dev" && (autoApply || createSecrets || review === "change-set")) await assertDevelopmentRuntimeStopped(context, step.job);
+          synthesisFingerprint = context.plans.captureSynthesis(declared.mode, credentials.name, declared.inputs);
+        },
         command: () => context.tools.script("scripts/deploy.ts", [
           "--all", ...cdkContext(name, declared.mode), ...awsArguments(credentials.name, regionName),
           "--plan", directory, ...(review ? ["--review", review] : []), ...(createSecrets ? ["--create-secrets"] : []),
@@ -174,6 +197,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
           if (plan.status === "no-changes") return "Nothing to change.";
           if (plan.status !== "ready") return "The plan needs attention first.";
           if (plan.confirmation.level !== "none") return `Review needed: ${plan.confirmation.reasons.join("; ") || "this change needs a confirmation"}.`;
+          await assertDevelopmentRuntimeStopped(context, step.job);
           stopFollowing = context.followStacks(step.job, credentials.name, name, regionName);
         },
         command: () => context.tools.script("scripts/deploy.ts", ["--apply", directory, ...awsArguments(credentials.name, undefined)], env),
@@ -185,7 +209,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     }
     return {
       kind: "deploy-plan", title: `${autoApply ? "Deploy" : review === "template" ? "Synthesize" : "Plan"} ${name}`, params: { deployment: name, profile: credentials.name, ...(review ? { review } : {}), ...(createSecrets ? { createSecrets } : {}), ...(autoApply ? { autoApply } : {}) },
-      deployment: name, planId: key, locks: [`deployment:${name}`, ...(autoApply ? ["exports"] : [])], steps,
+      deployment: name, planId: key, locks: [`deployment:${name}`, ...(autoApply ? ["exports"] : []), ...(declared.mode === "dev" && (autoApply || createSecrets || review === "change-set") ? ["local"] : [])], steps,
       cancelNote: "Stopped planning. Change sets it had already prepared stay listed as an unfinished plan: discard it to remove them.",
       onSettled: (job) => {
         stopFollowing?.();
@@ -217,10 +241,13 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     let stopFollowing: (() => void) | undefined;
     return {
       kind: "deploy-apply", title: currentSource ? `Deploy ${name}` : `Apply plan to ${name}`, params: { plan: key, deployment: name, profile: credentials.name, ...(currentSource ? { currentSource } : {}) },
-      deployment: name, planId: key, locks: [`deployment:${name}`, ...(plan.identity.mode === "dev" ? ["exports"] : [])], cancelNote: CLOUD_CANCEL_NOTE,
+      deployment: name, planId: key, locks: [`deployment:${name}`, ...(plan.identity.mode === "dev" ? ["exports", "local"] : [])], cancelNote: CLOUD_CANCEL_NOTE,
       steps: [{
         label: plan.review === "change-set" ? "Execute change sets and verify" : "Deploy and verify",
-        run: async (step) => { stopFollowing = context.followStacks(step.job, credentials.name, name, plan.identity.region); },
+        run: async (step) => {
+          if (plan.identity.mode === "dev") await assertDevelopmentRuntimeStopped(context, step.job);
+          stopFollowing = context.followStacks(step.job, credentials.name, name, plan.identity.region);
+        },
         command: () => context.tools.script("scripts/deploy.ts", ["--apply", context.plans.path(key), ...awsArguments(credentials.name, undefined), ...(confirm ? ["--confirm", confirm] : [])], env),
         after: (_result, step) => {
           const result = context.plans.read(key)?.result;
@@ -269,10 +296,13 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     let stopFollowing: (() => void) | undefined;
     return {
       kind: "destroy", title: `Delete ${name}`, params: { deployment: name, mode: deployMode, profile: credentials.name, ...(retainFailed ? { retainFailed } : {}) },
-      deployment: name, locks: [`deployment:${name}`], cancelNote: CLOUD_CANCEL_NOTE,
+      deployment: name, locks: [`deployment:${name}`, ...(deployMode === "dev" ? ["local"] : [])], cancelNote: CLOUD_CANCEL_NOTE,
       steps: [{
         label: "Delete stacks, importers first",
-        run: async (step) => { stopFollowing = context.followStacks(step.job, credentials.name, name, reviewed.region); },
+        run: async (step) => {
+          if (deployMode === "dev") await assertDevelopmentRuntimeStopped(context, step.job);
+          stopFollowing = context.followStacks(step.job, credentials.name, name, reviewed.region);
+        },
         command: () => context.tools.script("scripts/destroy.ts", [
           "--apply", context.teardowns.path(review), ...awsArguments(credentials.name, reviewed.region),
           "--confirm", name,
@@ -287,11 +317,13 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     const name = deploymentName(params);
     const credentials = await profile(context, params);
     const regionName = region(params) ?? context.targets().find((entry) => entry.name === name)?.region;
+    const changesLocal = context.targets().find(entry => entry.name === name)?.mode !== "prod";
     return {
       kind: "export", title: `Export ${name}'s outputs`, params: { deployment: name, profile: credentials.name },
-      deployment: name, locks: ["exports"],
+      deployment: name, locks: ["exports", ...(changesLocal ? ["local"] : [])],
       steps: [{
         label: "Write the local settings files",
+        run: async step => { if (changesLocal) await assertDevelopmentRuntimeStopped(context, step.job); },
         command: () => context.tools.script("scripts/export-cdk-outputs.mjs", ["--deployment", name, ...awsArguments(credentials.name, regionName)], studioEnvironment(context.env, { profile: credentials.name }), context.exportDirectory),
         after: (_result, step) => step.setSummary(`This machine now points at ${name}.`),
       }],
@@ -302,32 +334,67 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
   async "local-start"(context, params) {
     const name = deploymentName(params);
     const declared = target(context, name);
-    if (declared.mode !== "dev") throw new OperationError(400, "Local development runs against a development deployment.");
+    if (declared.mode !== "dev" || text(params, "mode") && text(params, "mode") !== "dev") throw new OperationError(400, "Local development runs against a development deployment.");
     const credentials = await profile(context, params);
-    const exportFirst = flag(params, "export");
+    const selectedAccount = text(params, "account") ?? declared.account;
+    if (selectedAccount && !/^\d{12}$/.test(selectedAccount)) throw new OperationError(400, "Choose a valid AWS account for local development.");
+    let selectedRegion = region(params) ?? declared.region;
+    if (declared.account && selectedAccount !== declared.account || declared.region && selectedRegion !== declared.region) throw new OperationError(409, "The local runtime destination differs from the declared development target.");
+    let account = selectedAccount;
+    flag(params, "export"); // Preserve validation of legacy callers; startup always regenerates settings.
+    let connectionRevision: string | undefined;
     const env = studioEnvironment(context.env, { profile: credentials.name });
-    const steps: JobStep[] = [];
-    if (exportFirst) {
-      steps.push({
+    // Starting compute never opts into migration or identity setup profiles.
+    env.COMPOSE_PROFILES = "";
+    const assertConnection = () => {
+      if (connectionRevision && readAwsFiles(context.env).revision !== connectionRevision) throw new Error("The AWS connection changed during startup. Start local runtime again to verify its destination.");
+    };
+    const assertExports = () => {
+      const exported = context.local.exported();
+      if (exported.deployment !== name || exported.account !== account || exported.region !== selectedRegion || !exported.client) throw new Error("This machine's exported settings do not match the verified development destination. Export its outputs again before starting local runtime.");
+    };
+    const steps: JobStep[] = [{
+      label: "Verify the development deployment and Docker",
+      run: async step => {
+        const docker = await context.probeDocker();
+        if (docker.engine !== "running") throw new Error(docker.engine === "missing" ? "Docker is not installed." : "Docker is not running. Start Docker Desktop, then start development again.");
+        connectionRevision = readAwsFiles(context.env).revision;
+        const observation = await context.observer.status(credentials.name, name, selectedRegion, true);
+        assertConnection();
+        if (!observation.ok) throw new Error(observation.problem.message);
+        const { context: observed, detail } = observation.value;
+        if (observed.profile !== credentials.name || account && observed.account !== account || selectedRegion && observed.region !== selectedRegion) throw new Error("The selected AWS identity or destination changed. Refresh deployment status before starting local runtime.");
+        account = observed.account;
+        selectedRegion = observed.region;
+        if (!detail || detail.name !== name || detail.mode !== "dev" || detail.account !== account || detail.region !== selectedRegion || detail.state.kind !== "ready" || !Array.isArray(detail.stacks) || !detail.stacks.length || !detail.stacks.every(stack => stack.health === "complete" && ["CREATE_COMPLETE", "UPDATE_COMPLETE", "IMPORT_COMPLETE"].includes(stack.status) && stack.evidence !== "none" && stack.identity?.deployment === name && stack.identity.mode === "dev")) throw new Error("Fully deploy the development resources successfully before starting local runtime.");
+        if (declared.appId && detail.appId && declared.appId !== detail.appId || declared.stage && detail.stage && declared.stage !== detail.stage) throw new Error("The deployed resources belong to another application stage.");
+        if (!detail.local?.compatible) throw new Error(detail.local?.problem ?? "The deployed development resources are not compatible with the current declarations. Synthesize and deploy the required changes first.");
+        const active = (await context.local.activeContainers()).length || context.jobs.holder("local-watch") || context.jobs.holder("local-client");
+        const record = context.local.runRecord();
+        const exported = context.local.exported();
+        if (active && (!record || record.profile !== credentials.name || record.deployment !== name || (record.account ?? exported.account) !== account || (record.region ?? exported.region) !== selectedRegion)) throw new Error("This checkout already has local services using another or unverified destination. Stop local runtime before starting this development deployment.");
+        step.setSummary(`Development resources for ${name} are verified. Preparing local runtime.`);
+      },
+    }, {
         label: `Export ${name}'s outputs`,
-        command: () => context.tools.script("scripts/export-cdk-outputs.mjs", ["--deployment", name, ...awsArguments(credentials.name, declared.region)], env, context.exportDirectory),
-      });
-    }
+        run: async () => { assertConnection(); },
+        command: () => context.tools.script("scripts/export-cdk-outputs.mjs", ["--deployment", name, "--expected-mode", "dev", ...awsArguments(credentials.name, selectedRegion)], env, context.exportDirectory),
+        after: () => { assertExports(); },
+    }];
     steps.push(
       {
-        label: "Check Docker",
+        label: "Generate source projections, verify database and start containers",
         run: async () => {
-          const docker = await context.probeDocker();
-          if (docker.engine !== "running") throw new Error(docker.engine === "missing" ? "Docker is not installed." : "Docker is not running. Start Docker Desktop, then start development again.");
-          const exported = context.local.exported();
-          if (exported.deployment !== name) throw new Error(exported.deployment ? `This machine's settings point at ${exported.deployment}, not ${name}. Export ${name} first.` : `This machine has no exported settings. Export ${name} first.`);
+          assertConnection();
+          assertExports();
+          context.local.writeRunRecord({ profile: credentials.name, deployment: name, account, region: selectedRegion, startedAt: new Date().toISOString() });
         },
+        command: () => context.tools.node("scripts/dev.mjs", ["--detach", "--profile", credentials.name], env),
       },
-      { label: "Generate source projections, verify database and start containers", command: () => context.tools.node("scripts/dev.mjs", ["--detach", "--profile", credentials.name], env) },
       {
         label: "Watch source and start the web client",
         run: async (step) => {
-          context.local.writeRunRecord({ profile: credentials.name, deployment: name, startedAt: new Date().toISOString() });
+          assertConnection();
           context.startManaged("local-watch", credentials.name);
           context.startManaged("local-client", credentials.name);
           step.log("Starting local compute. Database migrations, orphan cleanup and test identity setup are separate actions; no startup data writes are authorized.");
@@ -337,9 +404,9 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
       },
     );
     return {
-      kind: "local-start", title: `Start development against ${name}`, params: { deployment: name, profile: credentials.name, ...(exportFirst ? { export: true } : {}) },
-      deployment: name, locks: ["local", ...(exportFirst ? ["exports"] : [])], steps,
-      cancelNote: "Stopped starting. Containers already started keep running; stop development to remove them.",
+      kind: "local-start", title: `Start development against ${name}`, params: { deployment: name, profile: credentials.name, mode: "dev", ...(selectedAccount ? { account: selectedAccount } : {}), ...(selectedRegion ? { region: selectedRegion } : {}), export: true },
+      deployment: name, locks: ["local", "exports"], steps,
+      cancelNote: "Stopped starting. Containers already started keep running; stop development to stop them. Their data is preserved.",
       onSettled: () => context.changed(undefined, undefined),
     };
   },
@@ -352,8 +419,14 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
         {
           label: "Stop containers",
           run: async (step) => {
-            const ids = await context.local.containerIds();
+            const containers = await context.local.activeContainers();
+            const ids = containers.map(container => container.id);
             if (!ids.length) { context.local.clearRunRecord(); return "No containers are running."; }
+            const paused = containers.filter(container => container.state === "paused").map(container => container.id);
+            if (paused.length) {
+              const resumed = await context.run(context.tools.docker(["unpause", ...paused], studioEnvironment(context.env)), { timeoutMs: 30_000 });
+              if (resumed.code !== 0) throw new Error("Paused local containers could not be resumed for a graceful stop. Check Docker and stop local runtime again.");
+            }
             const result = await context.run(context.tools.docker(["stop", ...ids], studioEnvironment(context.env)), { timeoutMs: 120_000 });
             if (result.code !== 0) throw new Error(result.stderr.trim().split(/\r?\n/).pop() || "docker stop failed.");
             step.log(`Stopped ${ids.length} container${ids.length === 1 ? "" : "s"}.`);
@@ -367,34 +440,17 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
   },
 
   async "local-restart"(context, params) {
-    const credentials = await profile(context, params);
-    return {
-      kind: "local-restart", title: "Apply changes to running containers", params: { profile: credentials.name }, locks: ["local"],
-      steps: [{ label: "Verify storage and recreate containers with current settings", command: () => context.tools.node("scripts/dev.mjs", ["--detach", "--profile", credentials.name], studioEnvironment(context.env, { profile: credentials.name })) },
-        { label: "Confirm local application readiness", run: async step => {
-          await context.local.waitUntilReady(step.signal, () => ({ watch: { running: !!context.jobs.holder("local-watch") }, client: { running: !!context.jobs.holder("local-client") } }), Number(context.env.FRAMEWORK_LOCAL_READY_TIMEOUT_MS ?? 60_000));
-          step.setSummary("Containers use current settings and the web client answers HTTP requests. Database and identity writes remain separate.");
-        } }],
-      onSettled: () => context.changed(undefined, undefined),
-    };
+    const name = text(params, "deployment") ?? context.local.exported().deployment;
+    if (!name) throw new OperationError(400, "Choose a development deployment before restarting local runtime.");
+    const spec = await BUILDERS["local-start"]!(context, { ...params, deployment: name });
+    return { ...spec, kind: "local-restart", title: `Restart development against ${name}` };
   },
 
   async "local-attach-watch"(context, params) {
-    const credentials = await profile(context, params);
-    return {
-      kind: "local-attach-watch", title: "Resume watching", params: { profile: credentials.name }, locks: ["local"],
-      steps: [{
-        label: "Watch source and start the web client",
-        run: async (step) => {
-          context.startManaged("local-watch", credentials.name);
-          context.startManaged("local-client", credentials.name);
-          step.setSummary("Source changes sync into the containers again, and the web client is running.");
-          const record = context.local.runRecord();
-          context.local.writeRunRecord({ profile: credentials.name, deployment: record?.deployment ?? context.local.exported().deployment ?? "", startedAt: record?.startedAt ?? new Date().toISOString() });
-        },
-      }],
-      onSettled: () => context.changed(undefined, undefined),
-    };
+    const name = text(params, "deployment") ?? context.local.exported().deployment;
+    if (!name) throw new OperationError(400, "Choose a development deployment before resuming local runtime.");
+    const spec = await BUILDERS["local-start"]!(context, { ...params, deployment: name });
+    return { ...spec, kind: "local-attach-watch", title: `Resume development against ${name}` };
   },
 
   async "deps-install"(context) {

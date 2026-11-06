@@ -71,8 +71,9 @@ update affected knowledge pages when those contracts change.
   cloud.constructId stable. Never set CDK vpc, subnets or security groups on framework
   workloads by hand. Native application resources use `frameworkVpc(this, importedVpc)`;
   only production builds VPCs, lazily when used. Cross-VPC database access is rejected;
-  no automatic peering exists. Compose networking remains shared; existing local Lambda
-  egress rules use the selected VPC. A custom SDK endpoint in a VPC Lambda passes
+  no automatic peering exists. Compose networking remains shared; local workloads use
+  ordinary host/Docker networking without VPC egress emulation. A custom SDK endpoint
+  in a deployed VPC Lambda passes
   `useDualstackEndpoint: false`.
 - Call runTask/startWorkflow through declared bindings, and push to WebSocket clients
   with webSocketConnections(event) from @repo/framework/runtime/websocket. Do not

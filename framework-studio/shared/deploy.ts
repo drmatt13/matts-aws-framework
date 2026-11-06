@@ -166,6 +166,10 @@ export interface ManagedProcessView {
 }
 
 export interface LocalRunView {
+  /** Running processes in this checkout's Compose and invocation-runner containers. */
+  readonly activeContainerCount?: number;
+  /** A failed observation never establishes that this checkout's services stopped. */
+  readonly observationProblem?: string;
   readonly readiness?: { readonly state: "ready" | "starting" | "blocked" | "stopped"; readonly observedAt: string; readonly message: string };
   readonly project: string;
   readonly docker: DockerView;
@@ -177,6 +181,8 @@ export interface LocalRunView {
   /** none: nothing running. studio: started here. outside: containers Studio did not start. */
   readonly startedBy: "none" | "studio" | "outside";
   readonly profile?: string;
+  /** Destination captured when Studio started the active local runtime. */
+  readonly binding?: { readonly deployment: string; readonly profile: string; readonly account?: string; readonly region?: string; readonly startedAt: string };
   readonly appUrl?: string;
   readonly restartNeeded: readonly string[];
 }

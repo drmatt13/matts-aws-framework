@@ -31,3 +31,5 @@
 @custom-variant detail-640 (@container (max-width: 640px));
 /* The Activity tray is open and covers the foot of the workspace. */
 @custom-variant activity-open ([data-ui="shell"]:has([data-ui="activity-drawer"]) &);
+/* Toggle intent changes immediately; activity-open also spans the closing slide. */
+@custom-variant activity-expanded ([data-ui="shell"]:has(#studio-activity-drawer[aria-hidden="false"]) &);

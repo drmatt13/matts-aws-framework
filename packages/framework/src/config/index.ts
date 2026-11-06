@@ -785,7 +785,7 @@ export interface TargetEnvironment<Catalog = AnyResourceCatalog> {
    * security group the database admits, may log in
    * as the database's IAM login and nothing else, and is handed
    * `PRIMARY_DATABASE_URL` with no password in it. Locally it is handed the
-   * Compose Postgres instead, under the network's egress rules. Either way the
+   * Compose Postgres instead, using ordinary local networking. Either way the
    * handler calls `getDatabase(databaseConnection())` and never sees a
    * password or a secret.
    *
@@ -1460,7 +1460,7 @@ export function resolveTargetSettings(
     claimName(name, "environment");
     if (name === "AWS_USE_DUALSTACK_ENDPOINT") {
       throw new Error(
-        `${origin} declares environment "AWS_USE_DUALSTACK_ENDPOINT". The framework sets it, in both lanes, on every Lambda in the VPC whose subnet sends IPv6 out; remove it.`,
+        `${origin} declares environment "AWS_USE_DUALSTACK_ENDPOINT". The framework sets it on AWS Lambdas in a VPC whose subnet sends IPv6 out; remove it.`,
       );
     }
     if ((DATABASE_ENVIRONMENT_KEYS as readonly string[]).includes(name)) {
@@ -3845,8 +3845,8 @@ function assertNetworkEdges(
   // What each deployed workload's subnet lets it reach, against what it has to
   // reach: checked here rather than at a production synth, so the config that
   // runs locally is the config that deploys. Only the AWS calls the framework
-  // itself knows about are checked; the local egress guard holds a Lambda's
-  // own calls to the same rule as it makes them.
+  // itself knows about are checked. Local execution uses ordinary networking;
+  // application calls need separate deployed verification of VPC reachability.
   const endpointList = (services: readonly EndpointService[]): string =>
     services.map((service) => `"${service}"`).join(", ");
   const endpointFix = (network: FrameworkNetwork, services: readonly EndpointService[]): string => {

@@ -30,9 +30,9 @@ import { assertRetainedDatabaseNetwork, type RetainedDatabaseNetwork } from "../
  * application resource or deployed workload selects it explicitly.
  *
  * A development deployment never builds it. The database is absent from the
- * dev graph and runs under Compose instead, where the local
- * lane enforces the same rules — which is why asking for the network in a dev
- * deployment is an error rather than a smaller network.
+ * dev graph and runs under Compose instead, using ordinary local networking.
+ * Asking for the network in a dev deployment is an error rather than a smaller
+ * network; local execution does not emulate its egress restrictions.
  *
  * Everything about its way out belongs to its VPC declaration: the
  * egress-only internet gateway, the NAT gateway, and the gateway and interface
@@ -347,7 +347,8 @@ function placedLambdaSubnet(scope: IConstruct, target: NormalizedTarget): "priva
  * `AWS_USE_DUALSTACK_ENDPOINT=true` for a function in the network's `subnet`
  * when IPv6 leaves it, as several AWS APIs answer IPv6 only on their
  * dual-stack hostnames; otherwise nothing, so the SDK calls the standard
- * hostnames the network's interface endpoints answer. Set in both lanes.
+ * hostnames the network's interface endpoints answer. Applied to AWS workloads;
+ * local execution uses the host's normal networking and default SDK endpoints.
  */
 export function dualStackEnvironment(scope: IConstruct, subnet: "private" | "isolated", reference: FrameworkNetwork): Record<string, string> {
   const options = frameworkResourceOptions(scope);

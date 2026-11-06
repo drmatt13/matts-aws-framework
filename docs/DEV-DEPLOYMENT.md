@@ -323,14 +323,37 @@ git ls-files --eol   # every text file should show w/lf
 
 ## Start development
 
-The shortest path is Framework Studio (`npm run studio`), **Deploy** tab. Choose your AWS
-profile, select your development deployment, and press the action it offers: Deploy
-development, then Start development. Studio exports the outputs when this machine's
-settings are missing or out of date, starts Docker Desktop if it is installed and stopped,
-starts the containers in the background (`npm run dev:containers -- --detach`), then runs
-the source watch (`docker compose watch --no-up`) and the web client for you. Containers
-keep running if Studio closes; the watch and the web client stop with it, and Studio offers
-to resume them when it opens again. See [Deploy & Run](framework-studio/deploy-and-run.md).
+The shortest path is Framework Studio (`npm run studio`). Choose a Development AWS
+profile in the Source selector and deploy its resources from **Deploy**. On the map,
+**Local runtime** becomes available after AWS confirms a fully completed, compatible
+development deployment. Its disabled state explains the prerequisite through **Details**.
+Turn it on: Studio verifies the exact development destination and its
+compatibility, exports its current outputs, starts the containers in the background
+(`npm run dev:containers -- --detach`), then runs the source watch
+(`docker compose watch --no-up`) and web client for you. If Docker is stopped, the
+toggle offers a separate **Start Docker Desktop** action; starting Docker leaves
+application startup for your next toggle activation.
+
+Activity shows startup steps and logs. The switch reports **Running** only after
+container and client readiness checks pass. Every start regenerates root `.env`, the
+local resource manifest and the development client environment from that verified
+deployment; authored inputs stay in `cdk-app/.env.dev`. A failed startup can leave
+containers running; the switch stays on with **Needs attention** until you turn it off,
+preserving containers and data. The
+runtime belongs to this checkout, so changing AWS profiles never silently retargets
+running services. Containers keep running if Studio closes; the watch and web client
+stop with it. Reopening Studio reports those remaining services and offers cleanup
+before a fresh start. Deploy's existing local actions remain available. See
+[Deploy & Run](framework-studio/deploy-and-run.md).
+
+Keep editing local code while the runtime runs. You can also synthesize and review
+infrastructure changes then. Before deploying a new dev stack, applying a dev plan,
+refreshing exported settings or destroying development resources, stop local runtime.
+Deploy shows **Stop local runtime** beside blocked actions and reenables them after
+shutdown is confirmed. It never stops services or deploys as a side effect of editing
+or reviewing. After deployment, turn local runtime on to regenerate settings and run
+against the new outputs. Destroy uses its separate typed confirmation after shutdown;
+generated files alone cannot enable runtime after AWS resources are gone.
 
 From the command line, in one root terminal:
 
@@ -391,7 +414,7 @@ image-owned dependencies. Only the invocation runner gets the Docker socket.
 | Manifests, lockfile, Dockerfile.dev, ignore rules, deleted files while Watch was off | Rebuild and restart with `npm run dev:containers` |
 | A captured event whose handler failed every replay | Fix the handler, then `npm run replay:redrive` (`npm run replay:list` shows what is waiting) |
 | A Deploy condition selector in `.env.dev` | Restart `npm run dev:containers`; Compose Watch excludes input files |
-| Ports, outputs, local secrets | Edit cdk-app/.env.dev, rerun export, recreate containers |
+| Ports, outputs, local secrets | Edit cdk-app/.env.dev, then stop/start Local runtime in Studio to regenerate settings and recreate containers; the CLI equivalent is export followed by container recreation |
 | Local AWS profile | Restart with `npm run dev:containers -- --profile=<PROFILE>`; deploy that account's dev graph first if needed |
 | Database contract | Follow Database planning/application steps and rebuild; Watch does not regenerate it |
 | AWS event handler, Cognito, or infrastructure | Redeploy the dev graph, then re-export changed outputs |

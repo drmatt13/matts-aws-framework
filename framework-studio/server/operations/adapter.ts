@@ -10,7 +10,8 @@ import { OPERATIONS_VERSION } from "../../shared/operations";
 import { buildOperation, exportDirectory, OperationError, type OperationContext } from "../deploy/registry";
 import { PlanStore, TeardownStore } from "../deploy/plans";
 import { AwsObserver } from "../deploy/observe";
-import { LocalEnvironment } from "../deploy/local";
+import { LocalEnvironment, persistedLocalHolder } from "../deploy/local";
+import { probeDocker } from "../deploy/prereqs";
 import { runCommand, Tools } from "../deploy/process";
 import type { JobSpec } from "../deploy/jobs";
 import type { OperationRecord } from "../../shared/operations";
@@ -44,10 +45,10 @@ function contextFor(root: string, state: string, planId?: string, note: (text: s
     root, env, tools, plans, observer, run: runCommand, managed: {},
     teardowns: new TeardownStore(state), exportDirectory: exportDirectory(root, env),
     local: new LocalEnvironment(root, tools, runCommand, env, exportDirectory(root, env), state),
-    jobs: { holder: () => undefined },
+    jobs: { holder: lock => persistedLocalHolder(state, lock) },
     targets: () => repositoryTargets(root).map(entry => ({ ...entry })),
     profiles: () => observer.profiles(),
-    probeDocker: async () => { throw new Error("Docker startup belongs to the host workspace."); },
+    probeDocker: () => probeDocker(tools, runCommand, env),
     startManaged: () => { throw new Error("Persistent development sessions are not runner operations."); },
     stopManaged: async () => { throw new Error("Persistent development sessions are not runner operations."); },
     setDrift: (deployment, view) => {
