@@ -454,7 +454,7 @@ for the reusable reader, runner and current limits.
 ## The isometric view
 
 `/` draws the model as a landscape of floating islands, on a 2D canvas; `/isometric`
-redirects there. The earlier Board view (`src/views/Board.tsx`) is set aside and not routed.
+redirects there.
 
 Relationships between the same visible source and destination share one connection.
 Connection hover popups, inspectors and relationship rows show Dev and Prod pills, with
@@ -472,7 +472,7 @@ and **Permissions** in the inspector.
 
 The backdrop is a thin isometric grid anchored to the terrain's world coordinates.
 Entities use locally bundled official AWS SVG service icons on small plinths, with Lucide
-SVGs for generic framework concepts. Board and Inspector share the icon mapping.
+SVGs for generic framework concepts.
 See [icon sources](public/icons/README.md).
 
 Search at the top of the map highlights matching names, services, paths, input keys,
@@ -555,8 +555,7 @@ The VPC is drawn as a blueprint wherever no deployment builds it. Its gateways a
 endpoints are translucent with dashed plinths in those environments, including Development. Deployment labels are
 quiet by default: no badge means both environments. A teal flask **Dev** badge means
 Development only; a violet diamond **Prod** badge means Production only. **Off** marks
-disabled workloads. Board and Isometric share these badges, including catalog resource absence
-across the two mode models. The Inspector uses two
+disabled workloads. These badges include catalog resource absence across the two mode models. The Inspector uses two
 environment cards. Local and AWS are execution locations within Development, never a
 third environment. The framework's underlying deployment settings are unchanged.
 Workloads and routes share a **Deployment** section directly below their identity,
@@ -827,7 +826,7 @@ and surfaces use `src/ui/` and the existing inspector/workbench/document primiti
 Canvas palettes/geometry stay in TypeScript, and runtime positions stay inline.
 
 `npm --workspace framework-studio run test:browser` builds two isolated previews and
-runs the permanent Playwright suite, including the otherwise unrouted Board gallery.
+runs the permanent Playwright suite and its fixture gallery.
 The test gallery is excluded from production routes and source scanning. All APIs and
 external transports are fixture-backed, including simulated event streams and mocked
 WebSocket sessions. Pinned licensed fonts and platform-specific reference PNGs make

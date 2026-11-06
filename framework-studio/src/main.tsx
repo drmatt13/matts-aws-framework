@@ -100,7 +100,7 @@ const rootRoute = createRootRoute({
   validateSearch: (search: Record<string, unknown>): Search =>
     typeof search.select === "string" ? { select: search.select } : {},
 });
-// The landscape is the home view. The Board (views/Board.tsx) is set aside, unrouted.
+// The landscape is the home view.
 const isometricRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",

@@ -5,7 +5,6 @@ export function relativeTime(value: string | number | undefined, now = Date.now(
   const time = typeof value === "number" ? value : Date.parse(value);
   if (!Number.isFinite(time)) return "";
   const seconds = Math.round((now - time) / 1000);
-  if (seconds < 0) return "just now";
   if (seconds < 45) return "just now";
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} min ago`;
@@ -27,10 +26,4 @@ export function callerName(arn: string | undefined): string {
 
 export function shortStack(name: string, deployment: string): string {
   return name.startsWith(`${deployment}-`) ? name.slice(deployment.length + 1) : name;
-}
-
-export function eventTone(status: string): "ok" | "busy" | "bad" {
-  if (/FAILED/.test(status)) return "bad";
-  if (/IN_PROGRESS/.test(status)) return "busy";
-  return "ok";
 }

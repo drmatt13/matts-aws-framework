@@ -13,7 +13,7 @@ import { EditError } from "./edits/io";
 import { sha256 } from "./files";
 import { compileDatabaseSource, databaseConfigurationRevision, databaseContractPath, DatabaseWorkbenchService, resolvePrivateDatabaseTargets } from "./database-workbench";
 import { DatabaseOperationStore } from "./database-operations";
-import { isDatabaseEmpty } from "./database-empty";
+import { isDatabaseEmpty } from "../../packages/database/scripts/empty-database";
 import { databaseMigrationSourceFiles, digest, guardCloudDatabasePath, planDatabaseInitialization } from "../../packages/database/scripts/studio-migrations";
 
 /** Exact package bytes are approval inputs, including executable migration.ts. */

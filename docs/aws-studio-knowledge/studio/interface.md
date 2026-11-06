@@ -191,8 +191,7 @@ for target resolution, background scheduling and refresh policy.
 
 Authentication deep links are `/cognito/user-pools`, `/cognito/identity-pools`,
 `/cognito/providers` and `/cognito/permissions`. `/identity` and `/identity-pools` redirect
-to the identity-pool workspace; `/isometric` redirects to `/`. `Board.tsx` remains as an
-unrouted implementation and browser-gallery fixture.
+to the identity-pool workspace; `/isometric` redirects to `/`.
 
 `?select=<canonical-id>` identifies the shared Inspector selection. `StudioProvider`
 owns source mode, selection/navigation, the snapshot-derived lookup and one Inspector

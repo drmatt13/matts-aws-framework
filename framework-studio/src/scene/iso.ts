@@ -52,14 +52,3 @@ export function unproject(point: ScreenPoint): GridPoint {
 export function depth(point: GridPoint): number {
   return (point.x + point.y) * 1000 + (point.h ?? 0);
 }
-
-/** A tile's top face as a flat [x, y, ...] list, clockwise from the north corner. */
-export function tileTopPoints(point: GridPoint): number[] {
-  const centre = project(point);
-  return [
-    centre.x, centre.y - HALF_HEIGHT,
-    centre.x + HALF_WIDTH, centre.y,
-    centre.x, centre.y + HALF_HEIGHT,
-    centre.x - HALF_WIDTH, centre.y,
-  ];
-}

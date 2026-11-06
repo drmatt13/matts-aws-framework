@@ -85,8 +85,7 @@ only transient Windows sharing errors; a permanent failure remains visible.
 
 [main.tsx](../../../framework-studio/src/main.tsx) declares seven core workspaces, the
 auxiliary Agent test experiment and compatible redirects listed in the
-[interface guide](interface.md). Board is retained
-but unrouted. [StudioProvider](../../../framework-studio/src/studio.tsx) owns shared
+[interface guide](interface.md). [StudioProvider](../../../framework-studio/src/studio.tsx) owns shared
 selection/mode/draft context; [snapshot.ts](../../../framework-studio/src/snapshot.ts)
 owns the snapshot query and server-event invalidation. The typed endpoint catalog is
 separate in `api.ts`; [http.ts](../../../framework-studio/src/http.ts) owns protocol,

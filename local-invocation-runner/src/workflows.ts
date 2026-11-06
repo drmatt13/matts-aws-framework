@@ -17,7 +17,6 @@ import {
   LocalCallbackBroker,
   newExecution,
   runWorkflow,
-  stepInvocationEnvironment,
   resolveLocalWorkloadEnvironment,
   type LocalAgentInvoker,
   type WorkflowExecution,

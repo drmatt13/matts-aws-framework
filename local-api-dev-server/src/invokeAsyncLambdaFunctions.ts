@@ -6,7 +6,6 @@ import {
   pollReplayQueue,
   REPLAY_MAX_RECEIVE_COUNT,
   type ReplayEnvelope,
-  type ReplayMessage,
   type ReplayResult,
 } from "@repo/framework/runtime/event-replay";
 import type { CallbackReplayEnvelope } from "@repo/framework/runtime/callbacks";

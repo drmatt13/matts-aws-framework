@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { getFrameworkTargets, isTargetEnabled, isResourceReference, listResourceDeclarations, referenceForGraph, resolveInput } from "@repo/framework/config";
+import { getFrameworkTargets, isTargetEnabled, listResourceDeclarations, referenceForGraph, resolveInput } from "@repo/framework/config";
 import framework from "../framework.config";
 
 /**

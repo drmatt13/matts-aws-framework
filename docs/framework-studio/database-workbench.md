@@ -305,7 +305,7 @@ initialization locks provide the cooperating-database boundary.
   comparison and disposable, reviewed migration-artifact planning/installation.
 - `server/database-application.ts` owns separately reviewed local execution through the
   canonical Prisma path and runner.
-- `server/database-empty.ts` performs metadata-only emptiness checks; `server/database-operations.ts`
+- `packages/database/scripts/empty-database.ts` shares metadata-only emptiness checks with the VPC task; `server/database-operations.ts`
   persists redacted effects and the cross-process application lock without replaying writes.
 - `server/database-sql.ts`, `shared/database-sql.ts` and `src/views/DatabaseSql.tsx`
   own reviewed repository commands, local transactional execution and redacted SQL history.

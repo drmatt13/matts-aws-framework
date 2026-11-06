@@ -22,7 +22,7 @@
  * a plan created.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";

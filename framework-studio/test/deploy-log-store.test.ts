@@ -1,7 +1,7 @@
 import assert from "./support/assert";
 import { test } from "node:test";
 import type { JobLogLine } from "../shared/deploy";
-import { LogStore } from "../src/deploy/log-store";
+import { LogStore } from "../src/operations/log-store";
 
 /**
  * A job's log as the page holds it: lines arrive live (from line N, for a page

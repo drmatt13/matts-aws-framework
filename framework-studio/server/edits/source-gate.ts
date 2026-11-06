@@ -245,9 +245,6 @@ export function recoverSourceGate(root: string, approval: string): void {
     finally { db.close(); }
   });
 }
-export function sourceWriteInProgress(root: string): boolean {
-  const state = sourceCoordinationState(root); return state.status !== "ready";
-}
 
 /** Once agent-authored code reaches disk it must never regain privileged evaluation implicitly. */
 export function requireRestrictedSourceEvaluation(root: string): void {
