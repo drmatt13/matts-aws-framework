@@ -1,5 +1,5 @@
 import test from "node:test";
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { deploymentFreshness } from "../src/sightline/freshness";
 
 test("Sightline freshness follows the read owner's policy without enabling a query or clock", () => {

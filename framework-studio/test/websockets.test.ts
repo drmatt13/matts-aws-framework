@@ -19,6 +19,7 @@ const LAUNCH = `http://localhost/websockets?${new URLSearchParams({ localWsUrl: 
 let dom: { window: Window & typeof globalThis };
 let ui: typeof import("@testing-library/react");
 let query: typeof import("@tanstack/react-query");
+const clients: import("@tanstack/react-query").QueryClient[] = [];
 let launch: typeof import("../src/websockets/launch");
 
 class FakeSocket {
@@ -45,10 +46,10 @@ before(() => {
   query = require("@tanstack/react-query");
 });
 after(() => dom.window.close());
-afterEach(() => { ui.cleanup(); mock.restoreAll(); FakeSocket.instances = []; });
+afterEach(async () => { ui.cleanup(); for (const client of clients.splice(0)) { await client.cancelQueries(); client.clear(); } mock.restoreAll(); FakeSocket.instances = []; });
 
 function render(element: ReturnType<typeof h>) {
-  const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, element));
 }
 

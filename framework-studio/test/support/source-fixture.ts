@@ -1,6 +1,29 @@
-import { mkdirSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync, mkdirSync, readdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SnapshotBuilder } from "../../server/snapshot";
+import { readSourceManifest } from "../../server/agent-runtime/workspace";
+
+/** Real declarations with public template inputs, independent of private checkout files. */
+export function createSnapshotFixture(repository: string) {
+  const parent = path.join(repository, ".cache/framework-studio");
+  mkdirSync(parent, { recursive: true });
+  const root = mkdtempSync(path.join(parent, "snapshot-fixture-"));
+  try {
+    for (const name of Object.keys(readSourceManifest(repository).files)) {
+      const file = path.join(root, name);
+      mkdirSync(path.dirname(file), { recursive: true });
+      copyFileSync(path.join(repository, name), file);
+    }
+    for (const mode of ["dev", "prod"]) {
+      copyFileSync(path.join(root, `cdk-app/.env.${mode}.template`), path.join(root, `cdk-app/.env.${mode}`));
+    }
+    return { root, dispose: () => rmSync(root, { recursive: true, force: true }) };
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 
 /** Reset disposable test source directly, independently of Studio's edit APIs. */
 export function sourceFixtureCheckpoint(root: string, builder: SnapshotBuilder): () => Promise<void> {

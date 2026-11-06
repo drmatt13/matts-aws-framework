@@ -1,4 +1,5 @@
 import assert from "./support/assert";
+import { createSnapshotFixture } from "./support/source-fixture";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { after, afterEach, before, mock, test } from "node:test";
@@ -27,11 +28,13 @@ import { CDK_ENVIRONMENT_ID } from "../shared/deployment-inputs";
 import { connectionDescriptionId } from "../shared/descriptions";
 
 let builder: SnapshotBuilder;
+let fixture: ReturnType<typeof createSnapshotFixture>;
 let response: SnapshotResponse;
 let dom: { window: Window & typeof globalThis };
 let ui: typeof import("@testing-library/react");
 let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
+const clients: import("@tanstack/react-query").QueryClient[] = [];
 let studio: typeof import("../src/studio");
 let map: typeof import("../src/views/Isometric");
 let shell: typeof import("../src/views/Shell");
@@ -113,11 +116,12 @@ before(async () => {
   Object.defineProperty(globalThis, "PointerEvent", { configurable: true, value: Pointer });
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   studio = await import("../src/studio"); map = await import("../src/views/Isometric"); shell = await import("../src/views/Shell");
-  builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
+  fixture = createSnapshotFixture(path.resolve(__dirname, "../.."));
+  builder = new SnapshotBuilder(fixture.root);
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
-after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); for (const dispose of disposeHistories.splice(0)) dispose(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; paintOrder.length = 0; glyphWidth = 6; });
+after(async () => { try { await builder?.dispose(); } finally { fixture?.dispose(); dom.window.close(); } });
+afterEach(async () => { ui.cleanup(); for (const client of clients.splice(0)) { await client.cancelQueries(); client.clear(); } for (const dispose of disposeHistories.splice(0)) dispose(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; paintOrder.length = 0; glyphWidth = 6; });
 
 interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string }; tagFilter(): { key: string; value?: string | null; muted: readonly string[] } }
 const debug = () => (dom.window as unknown as { __studioLandscape: Debug }).__studioLandscape;
@@ -150,7 +154,7 @@ async function mount(withInspector = false, selection?: string, initialResponse 
   const history = browserHistory ? router.createBrowserHistory({ window: dom.window }) : router.createMemoryHistory({ initialEntries: [entry] });
   disposeHistories.push(() => history.destroy());
   const app = router.createRouter({ history, routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
-  const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+  const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
   await ui.waitFor(() => assert.ok(document.querySelector("[data-ui~=\"landscape\"], [data-ui~=\"empty\"]"))); await draw();
   return Object.assign(async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); }, { router: app });
@@ -422,7 +426,7 @@ test("new WebSocket creation labels its guarded handshake condition and retains 
   ui.fireEvent.change(wizard.getByRole("combobox", { name: "Function category" }), { target: { value: "webSocket" } });
   const deploy = wizard.getByRole("combobox", { name: "Execution lanes" }) as HTMLSelectElement;
   assert.equal(deploy.selectedOptions[0]!.textContent, "Use $connect condition");
-  assert.match(document.getElementById(deploy.getAttribute("aria-describedby")!)!.textContent!, /enableWebSocketApi equals "true"/);
+  assert.match(document.getElementById(deploy.getAttribute("aria-describedby")!)!.textContent!, /ENABLE_WEB_SOCKET_API equals "true"/);
   for (const value of ["local-only", "cloud-only"]) assert.equal(deploy.querySelector<HTMLOptionElement>(`option[value="${value}"]`)!.disabled, true);
   assert.equal(deploy.querySelector<HTMLOptionElement>('option[value="none"]')!.disabled, false);
   ui.fireEvent.change(deploy, { target: { value: "local-only" } });
@@ -1013,6 +1017,7 @@ test("missing required connections paint red X markers and clicking the marker s
   response = { ...response, snapshot: { ...response.snapshot, models: { ...response.snapshot.models, dev: model } } };
   try {
     await mount();
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fit the whole application" })); await draw();
     ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
     assert.ok(strokes.includes("#ff5f6d"), "the actual renderer strokes the error marker in red");
     const scene = buildScene(model, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
@@ -1417,6 +1422,7 @@ test("connections available in both environments retain two pills in every inspe
 
 test("in Development the real renderer strokes the unbuilt VPC as one deck with a single violet rim", async () => {
   await mount(true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fit the whole application" }));
   await draw();
   const [r, g, b] = hexRgb(ISLAND_TRIM["island:vpc"]!);
   assert.ok(strokes.includes(`rgba(${r}, ${g}, ${b}, ${DECK.rim})`), "the dashed rim of the whole deck");

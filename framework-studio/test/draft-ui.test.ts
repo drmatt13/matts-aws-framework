@@ -1,4 +1,5 @@
 import assert from "./support/assert";
+import { createSnapshotFixture } from "./support/source-fixture";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { after, afterEach, before, beforeEach, mock, test } from "node:test";
@@ -16,10 +17,12 @@ import { frameworkManagedIds } from "../shared/framework-management";
 import { buildScene } from "../src/scene/build";
 
 let builder: SnapshotBuilder;
+let fixture: ReturnType<typeof createSnapshotFixture>;
 let baseline: Snapshot;
 let ui: typeof import("@testing-library/react");
 let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
+const clients: import("@tanstack/react-query").QueryClient[] = [];
 let studio: typeof import("../src/studio");
 let inspector: typeof import("../src/views/Inspector");
 let dialogs: typeof import("../src/views/DraftControls");
@@ -54,10 +57,11 @@ before(async () => {
   ui.configure({ getElementError: (message) => new Error(message ?? "Element not found") });
   studio = await import("../src/studio"); inspector = await import("../src/views/Inspector"); dialogs = await import("../src/views/DraftControls"); review = await import("../src/views/EditDialog"); apiModule = await import("../src/api"); snapshotModule = await import("../src/snapshot");
   addMenu = await import("../src/views/AddMenu");
-  builder = new SnapshotBuilder(path.resolve(__dirname, "../..")); baseline = (await builder.refresh()).snapshot;
+  fixture = createSnapshotFixture(path.resolve(__dirname, "../.."));
+  builder = new SnapshotBuilder(fixture.root); baseline = (await builder.refresh()).snapshot;
 });
-after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); mock.restoreAll(); });
+after(async () => { try { await builder?.dispose(); } finally { fixture?.dispose(); dom.window.close(); } });
+afterEach(async () => { ui.cleanup(); for (const client of clients.splice(0)) { await client.cancelQueries(); client.clear(); } mock.restoreAll(); });
 beforeEach(() => {
   persisted = baseline; planCalls = []; resourceCalls = []; applyCalls = 0; failApply = false; failReview = false; reviewGate = undefined;
   mock.method(apiModule.api, "planBatch", async (edits: readonly DraftEdit[]) => {
@@ -107,7 +111,7 @@ async function mount(selected = target, mode: "dev" | "prod" = "dev", onClient?:
   }
   const root = router.createRootRoute({ component: Root, validateSearch: (search) => ({ select: typeof search.select === "string" ? search.select : undefined }) });
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: [`/?select=${encodeURIComponent(selected)}`] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null }), router.createRoute({ getParentRoute: () => root, path: "/other", component: () => null })]) });
-  const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); client.setQueryData(["snapshot"], response());
+  const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client); client.setQueryData(["snapshot"], response());
   onClient?.(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
   await ui.screen.findByRole("complementary", { name: "Inspector" });
@@ -937,8 +941,8 @@ test("a missing required value links from its connection straight to its open, f
   if (member && !member.open) ui.fireEvent.click(member.querySelector("summary")!);
   ui.fireEvent.click((member ? ui.within(member) : ui.screen).getByRole("button", { name: "Edit .env.dev" }));
   await ui.screen.findByRole("heading", { name: "CDK environment" });
-  const readiness = () => document.querySelector("[data-slot=environment-readiness-row][data-environment=dev]")!.textContent;
-  await ui.waitFor(() => assert.match(readiness(), /1 required value missing/));
+  const readiness = () => document.querySelector("[data-slot=environment-readiness-row][data-environment=dev]");
+  await ui.waitFor(() => assert.match(readiness()!.textContent, /1 required value missing/));
   const row = document.querySelector<HTMLDetailsElement>(`[data-slot=environment-variable][data-variable="${resource.fromEnv}"]`)!;
   assert.equal(row.open, true, "the link opens its variable");
   assert.ok(row.querySelector("summary [data-environment=dev][data-attention]"), "its Dev pill asks for the value");
@@ -946,10 +950,10 @@ test("a missing required value links from its connection straight to its open, f
   await ui.waitFor(() => assert.equal(document.activeElement, field, "and focuses the environment that needs it"));
   assert.equal(field.placeholder, "Required");
   ui.fireEvent.change(field, { target: { value: "8080" } });
-  assert.match(readiness(), /Every required value is set/, "a staged value satisfies the requirement");
+  assert.equal(readiness(), null, "a staged value clears the resolved readiness warning");
   assert.equal(row.querySelector("summary [data-environment=dev][data-attention]"), null);
   ui.fireEvent.change(field, { target: { value: "" } });
-  assert.match(readiness(), /1 required value missing/, "clearing a row without a line drops its edit");
+  assert.match(readiness()!.textContent, /1 required value missing/, "clearing a row without a line drops its edit");
   assert.equal(planCalls.length + resourceCalls.length, 0, "guided editing does not force review");
 });
 
@@ -2205,6 +2209,7 @@ test("conditional Deploy offers only inputs present in both graphs from either s
 });
 
 test("header rename stages beside input settings and Escape restores only its opening names", async () => {
+  useStandaloneFlagFixture();
   await mount("resource:enableWebSocketApi");
   ui.fireEvent.change(descriptionField(), { target: { value: "Keep these notes." } });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Rename enableWebSocketApi" }));

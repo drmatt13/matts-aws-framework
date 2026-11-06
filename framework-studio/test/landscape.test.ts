@@ -2,6 +2,7 @@ import { drawnAs } from "../src/drawn-as";
 import { CDK_ENVIRONMENT_ID } from "../shared/deployment-inputs";
 import { gatewaysOf } from "../shared/gateways";
 import assert from "./support/assert";
+import { createSnapshotFixture } from "./support/source-fixture";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
@@ -36,18 +37,20 @@ import { aggregateConnections, connectionLabel, connectionType } from "../src/co
 
 const repositoryRoot = path.resolve(__dirname, "..", "..");
 let builder: SnapshotBuilder;
+let fixture: ReturnType<typeof createSnapshotFixture>;
 let snapshot: Snapshot;
 let dev: Scene;
 let prod: Scene;
 
 before(async () => {
-  builder = new SnapshotBuilder(repositoryRoot);
+  fixture = createSnapshotFixture(repositoryRoot);
+  builder = new SnapshotBuilder(fixture.root);
   snapshot = (await builder.refresh()).snapshot;
   const resourceAvailability = catalogAvailability(snapshot.models);
   dev = buildScene(snapshot.models.dev, { resourceAvailability, layoutModels: Object.values(snapshot.models) });
   prod = buildScene(snapshot.models.prod, { resourceAvailability, layoutModels: Object.values(snapshot.models) });
 });
-after(() => builder.dispose());
+after(async () => { try { await builder?.dispose(); } finally { fixture?.dispose(); } });
 
 test("connection labels reflect relationships and both endpoints in each graph", () => {
   for (const scene of [dev, prod]) for (const group of scene.edges) {

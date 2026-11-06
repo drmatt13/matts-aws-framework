@@ -1,6 +1,7 @@
 import { gatewayModels } from "../shared/gateways";
 import { frameworkManagedIds } from "../shared/framework-management";
 import assert from "./support/assert";
+import { createSnapshotFixture } from "./support/source-fixture";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Mode, ModeModel, ModelResource, Snapshot } from "../shared/model";
@@ -18,13 +19,15 @@ import { groupHoverDetails, groupHoverEntries, groupHoverLines, nodeHoverFacts, 
 
 const repositoryRoot = path.resolve(__dirname, "..", "..");
 let builder: SnapshotBuilder;
+let fixture: ReturnType<typeof createSnapshotFixture>;
 let snapshot: Snapshot;
 
 before(async () => {
-  builder = new SnapshotBuilder(repositoryRoot);
+  fixture = createSnapshotFixture(repositoryRoot);
+  builder = new SnapshotBuilder(fixture.root);
   snapshot = (await builder.refresh()).snapshot;
 });
-after(async () => { await builder.dispose(); });
+after(async () => { try { await builder?.dispose(); } finally { fixture?.dispose(); } });
 
 const indexes = (models: Readonly<Record<Mode, ModeModel>> = snapshot.models) => ({ dev: indexModel(models.dev), prod: indexModel(models.prod) });
 
@@ -165,7 +168,7 @@ test("a type line never repeats the name above it, and names the catalog entry a
 
 test("an input group's hover counts its entries per graph and names what reads them and what they feed", () => {
   assert.deepEqual(factsOf("resource:langgraph"), { places: [{ env: "dev", where: "4 inputs · cdk-app/.env.dev" }, { env: "prod", where: "4 inputs · cdk-app/.env.prod" }], frameworkManaged: false });
-  assert.deepEqual(factsOf("resource:client").places, [{ env: "dev", where: "4 inputs · cdk-app/.env.dev" }], "development-only URLs light only Dev");
+  assert.deepEqual(factsOf("resource:client").places, [{ env: "dev", where: "3 inputs · cdk-app/.env.dev" }], "development-only URLs light only Dev");
   const model = snapshot.models.dev;
   const group = (id: string, from = model) => from.resources.find((resource) => resource.id === id)!;
   assert.deepEqual(groupHoverLines(group("resource:langgraph"), model, indexModel(model)), {

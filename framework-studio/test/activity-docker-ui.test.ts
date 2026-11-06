@@ -1,11 +1,12 @@
 import assert from "./support/assert";
 import { createRequire } from "node:module";
-import { afterEach, before, beforeEach, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { createElement as h } from "react";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 import type { DockerView, JobView } from "../shared/deploy";
 
 const require = createRequire(import.meta.url);
+let dom: { window: Window & typeof globalThis };
 let ui: typeof import("@testing-library/react");
 let query: typeof import("@tanstack/react-query");
 let view: typeof import("../src/views/GlobalActivity");
@@ -29,7 +30,7 @@ const discard: JobView = {
 
 before(async () => {
   const { JSDOM } = require("jsdom");
-  const dom = new JSDOM(`<!doctype html><html><head><meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}"></head><body></body></html>`,
+  dom = new JSDOM(`<!doctype html><html><head><meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}"></head><body></body></html>`,
     { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "Element", "Node", "Text", "MutationObserver", "getComputedStyle"] as const) {
     Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
@@ -66,7 +67,8 @@ beforeEach(() => {
   submitted = [];
   client = new query.QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 });
-afterEach(() => { ui.cleanup(); client.clear(); });
+afterEach(async () => { ui.cleanup(); await client.cancelQueries(); client.clear(); });
+after(() => dom.window.close());
 
 async function renderTray() {
   ui.render(h(query.QueryClientProvider, { client }, h(view.GlobalActivity)));
