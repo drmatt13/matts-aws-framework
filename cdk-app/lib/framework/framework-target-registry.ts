@@ -7,13 +7,8 @@ import type { IStateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import { markInfrastructure } from "./framework-inventory";
 import { frameworkLambdaInvocation } from "./framework-lambda";
 import {
-  getLambdaTargetIds,
+  createTargetAvailability,
   getFrameworkTargets,
-  getServiceTargetIds,
-  getTaskTargetIds,
-  getWorkflowTargetIds,
-  isTargetDeployed,
-  isTargetEnabled,
   parseTargetReference,
   toTargetReference,
   type CloudMode,
@@ -249,20 +244,17 @@ export function assertFrameworkTargetsComplete(
   const disabled: TargetReference[] = [];
   const notInThisDeployment: TargetReference[] = [];
   const conditionNotMet: TargetReference[] = [];
-  for (const [kind, ids] of [
-    ["lambda", getLambdaTargetIds(config)],
-    ["service", getServiceTargetIds(config)],
-    ["task", getTaskTargetIds(config)],
-    ["workflow", getWorkflowTargetIds(config)],
-    ["agent", getFrameworkTargets(config).filter(target => target.kind === "agent").map(target => target.id)],
-  ] as const) {
-    for (const id of ids) {
+  const availability = createTargetAvailability(config);
+  const declaredIds: Record<TargetKind, string[]> = { lambda: [], service: [], task: [], workflow: [], agent: [] };
+  for (const target of getFrameworkTargets(config)) declaredIds[target.kind].push(target.id);
+  for (const kind of ["lambda", "service", "task", "workflow", "agent"] as const) {
+    for (const id of declaredIds[kind]) {
       const reference = toTargetReference(kind, id);
       // A target that was built anyway is the more dangerous half of both
       // checks below: the point is to remove the resource, not just the route
       // that points at it.
       const registered = Boolean(registry.get(reference));
-      if (!isTargetEnabled(config, kind, id, "cloud", "unconditioned")) {
+      if (!availability.enabled(kind, id, "cloud", "unconditioned")) {
         if (registered) {
           throw new Error(
             `Framework target "${reference}" is disabled for the cloud scope in framework.config.ts but a stack registered it.`,
@@ -271,12 +263,12 @@ export function assertFrameworkTargetsComplete(
         disabled.push(reference);
         continue;
       }
-      if (!isTargetEnabled(config, kind, id, "cloud", options.inputs)) {
+      if (!availability.enabled(kind, id, "cloud", options.inputs)) {
         if (registered) throw new Error(`Framework target "${reference}" was built although its deployment condition is false.`);
         conditionNotMet.push(reference);
         continue;
       }
-      if (!isTargetDeployed(config, kind, id, options.mode, { inputs: options.inputs })) {
+      if (!availability.deployed(kind, id, options.mode, { inputs: options.inputs })) {
         if (registered) {
           throw new Error(
             `Framework target "${reference}" is not built by a ${options.mode} deployment but a stack registered it. A ${options.mode} deployment holds only what AWS invokes; everything else runs under Docker Compose.`,
@@ -293,13 +285,6 @@ export function assertFrameworkTargetsComplete(
     }
   }
 
-  const declaredIds: Readonly<Record<TargetKind, readonly string[]>> = {
-    lambda: getLambdaTargetIds(config),
-    service: getServiceTargetIds(config),
-    task: getTaskTargetIds(config),
-    workflow: getWorkflowTargetIds(config),
-    agent: getFrameworkTargets(config).filter(target => target.kind === "agent").map(target => target.id),
-  };
   for (const [reference] of registry.entries()) {
     const { kind, id } = parseTargetReference(reference);
     if (!declaredIds[kind].includes(id)) {

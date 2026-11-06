@@ -85,6 +85,8 @@ within an operation. Standalone predicates remain fresh, including their existin
 unknown-target behavior. Cloud selection and edge validation use one fresh target
 map; no cache crosses those calls. Studio model projection uses operation-local
 availability and a temporary batch of Lambda settings, restored in `finally`.
+Repository input-template checks and CDK registration checks also create fresh
+availability per invocation; registration retains kind and declaration order.
 
 Extend a DSL field through its type, normalization/defaults, validation, CDK/local consumers, generated projections and Studio projection/editability as applicable; use [extension recipes](../guides/extensions.md). Start from existing [Framework guidance](../../FRAMEWORK.md), then use [change impact](../reference/change-impact.md). Resource references belong to [resources/CDK](resources-and-cdk.md), not new environment-specific import tables.
 

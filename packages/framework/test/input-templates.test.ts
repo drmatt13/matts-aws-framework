@@ -1,7 +1,7 @@
 import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { defineFrameworkConfig, defineResources, resource, type DeploySetting } from "../src/config";
+import { defineFrameworkConfig, defineResources, resource, type DeploySetting, type FrameworkConfig } from "../src/config";
 import { undocumentedRequiredInputs, type InputTemplate } from "../scripts/check-repository";
 import { defaults } from "../../../framework-config/defaults";
 
@@ -13,7 +13,7 @@ const resources = defineResources({
 });
 
 /** One route reading every input, requiring the key when the mode is live. */
-function config(deploy: DeploySetting, requirements = true) {
+function config(deploy: DeploySetting, requirements = true): FrameworkConfig {
   return defineFrameworkConfig({ networks: [fixtureVpc],
     resources, defaults, webSocket: [], events: [], services: [],
     http: [{
@@ -68,4 +68,13 @@ test("an input required only in production is demanded only from the production 
   assert.deepEqual(files(problems), ["prod.example"]);
   assert.deepEqual(undocumentedRequiredInputs(defineFrameworkConfig({ networks: [fixtureVpc], resources: scoped, defaults, webSocket: [], events: [], services: [],
     http: [{ "/partner": { directory: "/lambda_functions/http_functions/partner", methods: ["POST"], environment: { REGION: scoped.region } } }] } as never), templates("", "# PARTNER_REGION=\n")), []);
+});
+
+
+test("input-template checks observe deployment changes on the same config", () => {
+  const built = config("none");
+  const before = undocumentedRequiredInputs(built, templates("", ""));
+  Object.assign(built.http["/partner"]!, { deploy: "both" });
+  assert.deepEqual(files(undocumentedRequiredInputs(built, templates("", ""))), ["dev.example", "prod.example"]);
+  assert.deepEqual(before, []);
 });

@@ -3040,15 +3040,11 @@ function isSegmentPrefix(
  * empty — is handled instead of degenerating into a test for `//`.
  */
 function pathsOverlap(left: string, right: string): boolean {
+  // Callers have already validated canonical literal paths.
+  if (!left.endsWith("/*") && !right.endsWith("/*")) return left === right;
   const first = parseRoutePath(left);
   const second = parseRoutePath(right);
 
-  if (!first.catchAll && !second.catchAll) {
-    return (
-      first.segments.length === second.segments.length &&
-      isSegmentPrefix(first.segments, second.segments)
-    );
-  }
   if (first.catchAll && second.catchAll) {
     return (
       isSegmentPrefix(first.segments, second.segments) ||

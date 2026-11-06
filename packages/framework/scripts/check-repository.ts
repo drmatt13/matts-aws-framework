@@ -1,8 +1,7 @@
 import {
+  createTargetAvailability,
   formatResourceReference,
   getFrameworkTargets,
-  isTargetDeployed,
-  isTargetEnabled,
   type FrameworkConfig,
   type ResourceReference,
 } from "../src/config/index";
@@ -42,10 +41,11 @@ export function undocumentedRequiredInputs(
   templates: readonly InputTemplate[],
 ): readonly string[] {
   const required = new Map<string, { readonly graphs: Set<"dev" | "prod">; readonly origin: string; readonly why: string }>();
+  const availability = createTargetAvailability(config);
   for (const target of getFrameworkTargets(config)) {
     const graphs = new Set<"dev" | "prod">();
-    if (isTargetEnabled(config, target.kind, target.id, "local", "unconditioned") || isTargetDeployed(config, target.kind, target.id, "dev", { inputs: "unconditioned" })) graphs.add("dev");
-    if (isTargetDeployed(config, target.kind, target.id, "prod", { inputs: "unconditioned" })) graphs.add("prod");
+    if (availability.enabled(target.kind, target.id, "local", "unconditioned") || availability.deployed(target.kind, target.id, "dev", { inputs: "unconditioned" })) graphs.add("dev");
+    if (availability.deployed(target.kind, target.id, "prod", { inputs: "unconditioned" })) graphs.add("prod");
     if (graphs.size === 0) continue;
     for (const requirement of target.cloud.requirements) {
       const when = requirement.when
