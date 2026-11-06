@@ -34,14 +34,19 @@ function geometry(islands: readonly IslandFootprint[], positions: readonly Islan
   return { frame, nearest };
 }
 
-test("the composition objective prefers breathing room to legal but tightly packed islands, while bounding sprawl", () => {
+test("the composition objective compacts legal islands while rejecting collisions and sprawl", () => {
   const { islands, graph } = fixture();
   const compact = measureLayout(islands, graph, rectangle(islands, 464, 336));
   const spacious = measureLayout(islands, graph, rectangle(islands, 640, 480));
   const sprawling = measureLayout(islands, graph, rectangle(islands, 3200, 2400));
   assert.equal(compact.islandOverlaps + compact.labelOverlaps, 0, "the compact comparison is legal");
   assert.equal(spacious.islandOverlaps + spacious.labelOverlaps, 0);
-  assert.ok(spacious.cost < compact.cost, `negative space improves the objective: ${compact.cost} -> ${spacious.cost}`);
+  assert.ok(compact.length < spacious.length, "compact routes are shorter");
+  assert.ok(compact.fill > spacious.fill, "compact islands occupy more of the fitted overview");
+  assert.ok(compact.cost < spacious.cost, "unused space does not buy a better connected composition");
+  const colliding = measureLayout(islands, graph, rectangle(islands, 100, 100));
+  assert.ok(colliding.islandOverlaps > 0);
+  assert.ok(colliding.cost > sprawling.cost, "clearance takes priority over short routes and high fill");
   assert.ok(sprawling.cost > spacious.cost, "long routes and excessive empty canvas still have a cost");
 });
 
@@ -49,22 +54,34 @@ test("the composition objective uses horizontal room according to the viewport r
   const { islands, graph } = fixture();
   const narrow = rectangle(islands, 500, 800);
   const wide = rectangle(islands, 1000, 800);
-  const desktop = { narrow: measureLayout(islands, graph, narrow, 16 / 9), wide: measureLayout(islands, graph, wide, 16 / 9) };
-  const portrait = { narrow: measureLayout(islands, graph, narrow, 0.9), wide: measureLayout(islands, graph, wide, 0.9) };
+  // Isolate viewport preference from the longer routes introduced by expansion.
+  const unconnected = { ...graph, links: [], islands: [], flows: [] };
+  const desktop = { narrow: measureLayout(islands, unconnected, narrow, 16 / 9), wide: measureLayout(islands, unconnected, wide, 16 / 9) };
+  const portrait = { narrow: measureLayout(islands, unconnected, narrow, 0.9), wide: measureLayout(islands, unconnected, wide, 0.9) };
   assert.ok(desktop.wide.utilization > desktop.narrow.utilization);
   assert.ok(desktop.wide.cost < desktop.narrow.cost, "a desktop composition can spend spare horizontal space");
   assert.ok(portrait.narrow.cost < portrait.wide.cost, "the same expansion is unnecessary in a tall viewport");
+  const connected = { narrow: measureLayout(islands, graph, narrow, 16 / 9), wide: measureLayout(islands, graph, wide, 16 / 9) };
+  assert.ok(connected.wide.utilization > connected.narrow.utilization);
+  assert.ok(connected.wide.length > connected.narrow.length);
+  assert.ok(connected.wide.cost > connected.narrow.cost, "aspect alone cannot erase the cost of longer wires");
 });
 
-test("preferred spacing responds to labels and connection density even before painted elements overlap", () => {
+test("title envelopes and angular congestion account for names and dense connection corridors", () => {
   const { islands, graph } = fixture();
   const positions = rectangle(islands, 800, 336);
   const shortNames = measureLayout(islands, graph, positions);
   const longNames = measureLayout(islands.map((island) => ({ ...island, title: `${island.title} configuration services` })), graph, positions);
   const busy = measureLayout(islands, fixture(4, true).graph, positions);
   assert.equal(shortNames.islandOverlaps + shortNames.labelOverlaps + longNames.labelOverlaps, 0, "all comparisons are drawable");
-  assert.ok(longNames.crowding > shortNames.crowding, "longer external names ask for more breathing room");
-  assert.ok(busy.crowding > shortNames.crowding, "additional neighbor corridors ask for more breathing room");
+  const shortFrame = geometry(islands, positions).frame;
+  const longFrame = geometry(islands.map(island => ({ ...island, title: `${island.title} configuration services` })), positions).frame;
+  assert.deepEqual(longFrame.bodies, shortFrame.bodies, "labels never resize the terrain");
+  for (const [at, title] of longFrame.titles.entries()) {
+    assert.equal(title.x1, shortFrame.titles[at]!.x1, "both titles anchor to the same island flank");
+    assert.ok(title.x0 < shortFrame.titles[at]!.x0, "longer names reserve more room to the left");
+  }
+  assert.ok(busy.congestion > shortNames.congestion, "more bundles sharing narrow departure angles cost more");
 });
 
 test("fresh compositions retain visible separation across sparse and dense topology and desktop aspects", () => {
@@ -74,8 +91,13 @@ test("fresh compositions retain visible separation across sparse and dense topol
     const { nearest } = geometry(islands, result.positions, aspect);
     assert.equal(result.after.islandOverlaps + result.after.labelOverlaps, 0);
     assert.ok(nearest.every((gap) => gap >= ISLAND_CLEARANCE - 1e-6), "all painted islands retain their hard clearance");
-    const median = [...nearest].sort((a, b) => a - b)[Math.floor(nearest.length / 2)]!;
-    assert.ok(median > ISLAND_CLEARANCE * 1.5, `most islands have breathing room (${dense ? "dense" : "sparse"}, ${aspect}): ${median}`);
+    assert.ok(result.after.cost <= result.before.cost, "the solve does not worsen its legalized semantic seed");
+    assert.deepEqual(result.positions.map(position => position.id).sort(), islands.map(island => island.id).sort(), "every island is placed exactly once");
+    for (const position of result.positions) {
+      const island = islands.find(item => item.id === position.id)!;
+      assert.ok(Number.isInteger(position.left) && Number.isInteger(position.top), "origins lie on the ground lattice");
+      assert.equal(Math.abs((position.left + position.top + island.ground!.length) % 2), 0, "the renderer preserves the evaluated terrain footprint");
+    }
     assert.ok(result.evaluations <= 720);
   }
 });
