@@ -31,7 +31,7 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vite": "^8.2.4",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "optionalDependencies": {
     "@oxc-parser/binding-linux-arm64-musl": "0.120.0",
