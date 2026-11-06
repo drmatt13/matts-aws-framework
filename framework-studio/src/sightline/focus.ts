@@ -638,6 +638,7 @@ function resolve(
     (network || (ISLAND_IDS as readonly string[]).includes(id))
   ) {
     const island = inputs.workspace.map?.islands.find((item) => item.id === id);
+    const members = new Set(island?.members.map((member) => member.id));
     return {
       kind: "island",
       name: island?.title ?? network?.name ?? id,
@@ -647,9 +648,7 @@ function resolve(
         : { availability: "not-applicable" },
       edges: island
         ? model.edges.filter((edge) =>
-            island.members.some(
-              (member) => member.id === edge.from || member.id === edge.to,
-            ),
+            members.has(edge.from) || members.has(edge.to),
           )
         : [],
     };
@@ -904,13 +903,14 @@ export function buildFocus(
   const id = inputs.selected;
   if (!id) return null;
   const model = inputs.snapshot.models[inputs.mode];
+  const indexes = { dev: indexModel(inputs.snapshot.models.dev), prod: indexModel(inputs.snapshot.models.prod) };
   const versions = Object.fromEntries(
     (["dev", "prod"] as const).map((mode) => [
       mode,
       resolve(
         id,
         inputs.snapshot.models[mode],
-        indexModel(inputs.snapshot.models[mode]),
+        indexes[mode],
         inputs,
         omitted,
       ),
@@ -959,7 +959,7 @@ export function buildFocus(
       : [];
   const edgesFor = (mode: Mode) =>
     versions[mode]?.edges ??
-    indexModel(inputs.snapshot.models[mode]).edges.get(id) ??
+    indexes[mode].edges.get(id) ??
     [];
   const connectionChanges = connectionDifferences(
     edgesFor("dev"),
@@ -974,7 +974,7 @@ export function buildFocus(
     changed.push("connections");
   const connections =
     resolved?.edges ??
-    (resolved ? (indexModel(model).edges.get(id) ?? []) : []);
+    (resolved ? (indexes[inputs.mode].edges.get(id) ?? []) : []);
   const description =
     inputs.snapshot.descriptions.values[resolved?.descriptionId ?? id];
   const island =

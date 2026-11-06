@@ -195,10 +195,20 @@ export function withConnectionAuthorizations(model: ModeModel): ModeModel {
     const authorization = describe(source);
     return authorization ? { ...source, authorization } : source;
   });
+  const connectionsByTarget = new Map<string, ModelEdge[]>();
+  for (const edge of edges) {
+    if (!edge.authorization) continue;
+    // A self edge or repeated principal still contributes one row per target.
+    for (const ref of new Set([edge.from, edge.to, ...edge.authorization.grants.map(grant => grant.principalEntity)])) {
+      if (ref === undefined || !targets.has(ref)) continue;
+      const connections = connectionsByTarget.get(ref) ?? [];
+      connections.push(edge);
+      connectionsByTarget.set(ref, connections);
+    }
+  }
   return { ...model, edges, targets: model.targets.map(target => ({ ...target,
     authorizations: [
-      ...edges.filter(edge => edge.authorization && (edge.from === target.ref || edge.to === target.ref || edge.authorization.grants.some(grant => grant.principalEntity === target.ref)))
-        .map(edge => ({ connection: edge.id, authorization: edge.authorization! })),
+      ...(connectionsByTarget.get(target.ref) ?? []).map(edge => ({ connection: edge.id, authorization: edge.authorization! })),
       ...(target.permissionSources ?? []).flatMap((source, index) => {
         const authorization = describe({ id: `permission:${target.ref}:${index}`, relation: source.relation,
           from: source.incoming ? source.peer : target.ref, to: source.incoming ? target.ref : source.peer,

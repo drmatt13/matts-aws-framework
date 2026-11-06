@@ -1,7 +1,7 @@
 import assert from "./support/assert";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import type { ModelResource } from "../shared/model";
+import type { ModelEdge, ModelResource } from "../shared/model";
 import {
   snapshot as browserSnapshot,
   location,
@@ -18,6 +18,8 @@ import {
   sightlineWorkspacePaths,
 } from "../src/sightline/workspace";
 import { omit } from "../src/sightline/safe";
+import { buildFocus } from "../src/sightline/focus";
+import type { SightlineRecord } from "../src/sightline/types";
 
 const paths = [
   "/",
@@ -967,4 +969,61 @@ test("Sightline compares relationship peers across modes and excludes schema typ
         item.reason === "privacy",
     ),
   );
+});
+
+
+test("focus sees target and incident-edge changes when caller models are reused", () => {
+  const { inputs } = fixture();
+  const selected = "lambda:fixture-0";
+  const model = inputs.snapshot.models.dev;
+  const before = buildFocus({ ...inputs, selected }, [])!;
+  const original = JSON.stringify(before);
+  Object.assign(model.targets, { 0: { ...model.targets[0]!, constructId: "ChangedConstruct" } });
+  Object.assign(model, { edges: [{ id: "fresh", from: selected, to: "resource:fresh", relation: "env", provenance: "declared", label: "Fresh" }, ...model.edges] });
+  const after = buildFocus({ ...inputs, selected }, [])!;
+  assert.equal(after.declared!.constructId, "ChangedConstruct");
+  assert.equal((after.declared!.connections as SightlineRecord[])[0]!.id, "fresh");
+  assert.equal(JSON.stringify(before), original);
+});
+
+test("other-mode focus keeps current-mode connections and missing selections retain connection comparisons", () => {
+  for (const mode of ["dev", "prod"] as const) {
+    const { inputs } = fixture();
+    const selected = "lambda:fixture-0";
+    const other = mode === "dev" ? "prod" : "dev";
+    Object.assign(inputs.snapshot.models[mode], { targets: inputs.snapshot.models[mode].targets.filter(target => target.ref !== selected) });
+    for (const key of ["dev", "prod"] as const) Object.assign(inputs.snapshot.models[key], { edges: [
+      { id: `${key}-edge`, from: selected, to: `resource:${key}`, relation: "env", provenance: "declared", label: key },
+    ] });
+    const result = buildFocus({ ...inputs, mode, selected }, [])!;
+    assert.equal(result.status, "other-mode-only");
+    assert.equal(result.declared!.constructId, inputs.snapshot.models[other].targets[0]!.constructId);
+    assert.deepEqual((result.declared!.connections as SightlineRecord[]).map(edge => edge.id), [`${mode}-edge`]);
+    const changes = (result.comparison as SightlineRecord).connections as SightlineRecord;
+    assert.deepEqual((changes.devOnly as SightlineRecord[]).map(edge => edge.id), ["dev-edge"]);
+    assert.deepEqual((changes.prodOnly as SightlineRecord[]).map(edge => edge.id), ["prod-edge"]);
+    Object.assign(inputs.snapshot.models[other], { targets: inputs.snapshot.models[other].targets.filter(target => target.ref !== selected) });
+    const missing = buildFocus({ ...inputs, mode, selected }, [])!;
+    assert.equal(missing.status, "not-found");
+    assert.equal(missing.declared, undefined);
+    assert.deepEqual((missing.comparison as SightlineRecord).connections, changes);
+  }
+});
+
+test("island membership preserves members, duplicate edges, self edges and source order", () => {
+  const { inputs } = fixture();
+  const members = [{ id: "B", name: "B" }, { id: "A", name: "A" }, { id: "A", name: "A again" }];
+  Object.assign(inputs.workspace.map!, { islands: [{ id: "island:lambda", title: "Compute", members }] });
+  const edges: ModelEdge[] = [["first", "outside", "B"], ["second", "A", "outside"], ["self", "A", "A"], ["duplicate", "A", "X"], ["duplicate", "A", "Y"], ["outside", "outside", "elsewhere"]].map(([id, from, to]) => ({ id: id!, from: from!, to: to!, relation: "env", provenance: "declared", label: id! }));
+  for (const model of Object.values(inputs.snapshot.models)) Object.assign(model, { edges });
+  const result = buildFocus({ ...inputs, selected: "island:lambda" }, [])!;
+  const connections = result.declared!.connections as SightlineRecord[];
+  assert.deepEqual(connections.map(edge => [edge.id, edge.to]), edges.slice(0, 5).map(edge => [edge.id, edge.to]));
+  const localView = result.declared!.localView as SightlineRecord;
+  assert.equal(localView.memberCount, 3);
+  assert.deepEqual(localView.members, members);
+  assert.equal(buildFocus({ ...inputs, selected: "duplicate" }, [])!.declared!.to, "X", "direct edge selection retains first-match semantics");
+  Object.assign(inputs.workspace.map!, { islands: [] });
+  Object.assign(inputs.snapshot.models.dev, { edges: [...edges, { ...edges[0]!, from: "island:lambda" }] });
+  assert.deepEqual(buildFocus({ ...inputs, selected: "island:lambda" }, [])!.declared!.connections, []);
 });

@@ -63,6 +63,9 @@ Original relation IDs, labels and description keys stay stable. Database IAM is 
 for `app_user`; its local PostgreSQL derivative carries no AWS grant. Reader access retains
 writer access. Typed secret ARN delivery grants the workload role; container startup injection
 uses the ECS execution role. Pull event arrows and IAM principal direction are independent.
+Target permission lists group enriched edges once per projection, in source edge order.
+Repeated endpoints or principals attach an edge once to each target; distinct edges with
+the same ID remain distinct. Implicit permission sources and explicit policies follow.
 
 `connection-presentation.ts` names every connection as **action: relevant value** while
 retaining authored labels in the model. Routes keep `Routes to: /api/path`; database bindings

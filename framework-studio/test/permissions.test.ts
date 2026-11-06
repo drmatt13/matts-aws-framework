@@ -236,3 +236,35 @@ test("native grant creation dynamically writes the supported helper and refreshe
     }
   } finally { rmSync(root, { recursive: true }); }
 });
+
+
+test("target permissions retain edge multiplicity, principal membership and ordered implicit policies", () => {
+  const worker = target("task:worker", "task", {
+    permissionSources: [
+      { relation: "integration", peer: "table", label: "first", context: { kind: "integration", service: "table", operations: ["get"] } },
+      { relation: "integration", peer: "table", label: "unknown" },
+      { relation: "integration", peer: "table", label: "second", context: { kind: "integration", service: "table", operations: ["put"] } },
+    ],
+    access: [{ actions: ["s3:GetObject"], resources: ["first"] }, { actions: ["s3:PutObject"], resources: ["second"] }],
+  });
+  const model = { ...base(), targets: [target("workflow:parent", "workflow"), worker, target("agent:assistant", "agent"), target("lambda:tool")], edges: [
+    edge("env", undefined, { id: "ignored", from: worker.ref }),
+    edge("step", { kind: "step", target: "task", callback: true }, { id: "duplicate", from: "workflow:parent", to: worker.ref }),
+    edge("usesTool", undefined, { id: "tool", from: "agent:assistant", to: "lambda:tool" }),
+    edge("runsTask", undefined, { id: "self", from: worker.ref, to: worker.ref }),
+    edge("completesCallback", undefined, { id: "duplicate", from: worker.ref }),
+    edge("trigger", { kind: "trigger", adapter: "sqs" }, { id: "incoming", from: "resource:queue", to: "lambda:tool" }),
+  ] };
+  const result = withConnectionAuthorizations(model);
+  assert.deepEqual(result.targets.map(item => item.authorizations!.filter(row => row.connection).map(row => row.connection)), [
+    ["duplicate"], ["duplicate", "self", "duplicate"], ["tool"], ["tool", "incoming"],
+  ]);
+  const rows = result.targets[1]!.authorizations!;
+  assert.deepEqual(rows.map(row => row.authorization.operation), ["Launch ECS task", "Launch ECS task", "Complete workflow callback", "get · table", "put · table", "Explicit IAM policy", "Explicit IAM policy"]);
+  assert.ok(rows.slice(3).every(row => !("connection" in row)));
+  assert.deepEqual(rows.slice(-2).map(row => row.authorization.grants[0]!.scope), ["first", "second"]);
+  Object.assign(worker, { permissionSources: [], access: [] });
+  Object.assign(model, { edges: [] });
+  assert.ok(withConnectionAuthorizations(model).targets.every(item => item.authorizations!.length === 0));
+  assert.equal(rows.length, 7, "earlier output remains independent of the next call");
+});

@@ -13,6 +13,9 @@ retains that exact context. The projection remains evidence, never operational a
 The path remains declaration → normalize/validate → consumer projection. The pure
 `buildSightline(inputs)` accepts the capture time and existing evidence; it imports no
 React, browser APIs, clock or transport. Its output is deterministic and serializable.
+Focus builds one fresh index for each mode and reuses those indexes only within that
+build. Island membership uses the published member IDs without changing member or
+connection order; later builds observe changes even when input objects are reused.
 `useSightlineInputs()` exists only in the visible Sightline or Coding view. It reads the accepted
 `useStudio().selected`, accepted baseline, live publication state, existing cache-only
 deployment subscriptions for **both** modes, and a disabled operation query. It never
