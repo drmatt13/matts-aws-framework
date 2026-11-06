@@ -16,22 +16,41 @@ import {
   dialogPrimaryActionClasses,
 } from "../inspector-ui";
 import { AlertTriangle, Check, ExternalLink, MessageSquare } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SourceDiff } from "./SourceDiff";
 import type { Review } from "../draft";
 import { useStudio } from "../studio";
+import { api } from "../api";
+import { openCodingTask } from "../coding-task-navigation";
 
 
 export function EditDialog({ review }: { readonly review: Review | undefined }) {
   const { snapshot, draft, draftState, applyDraft } = useStudio();
   const dialog = useRef<HTMLDialogElement>(null);
+  const transferRequest = useRef<{ planId: string; requestKey: string } | undefined>(undefined);
+  const transferRunning = useRef(false);
+  const [transferring, setTransferring] = useState(false);
+  const [transferError, setTransferError] = useState<string>();
   useEffect(() => {
     const element = dialog.current!;
     element.showModal();
     return () => element.close();
   }, []);
   const checking = draftState.busy === "review";
-  const writing = draftState.busy === "apply";
+  const applying = draftState.busy === "apply";
+  const writing = applying || transferring;
+  const transferToCoding = async () => {
+    if (transferRunning.current || review?.kind !== "batch" || !review.plan.ok || checking || writing || draftState.error || draft.invalid || draft.conflict) return;
+    transferRunning.current = true; setTransferring(true); setTransferError(undefined);
+    const planId = review.plan.planId;
+    if (transferRequest.current?.planId !== planId) transferRequest.current = { planId, requestKey: crypto.randomUUID() };
+    try {
+      const task = await api.codingReviewBatch(planId, transferRequest.current.requestKey);
+      draft.backToEditing();
+      openCodingTask(snapshot.repositoryRoot, task);
+    } catch (error) { setTransferError(error instanceof Error ? error.message : String(error)); }
+    finally { transferRunning.current = false; setTransferring(false); }
+  };
   const comments = review?.kind === "batch" ? (review.plan.comments ?? []) : [];
   const manualComments = comments.some((comment) => comment.manualReason);
   return (
@@ -52,6 +71,8 @@ export function EditDialog({ review }: { readonly review: Review | undefined }) 
         </h2>
       </header>
       <div className={dialogBodyClasses}>
+        {transferError ? <p role="alert" className="text-refuse wrap-anywhere">{transferError}</p> : null}
+        {transferring ? <p role="status">Creating an isolated coding review. Source approval happens in the Coding panel.</p> : null}
         {checking ? (
           <p role="status">
             {review
@@ -317,6 +338,7 @@ export function EditDialog({ review }: { readonly review: Review | undefined }) 
                 ? "Only these variables are saved, in the files listed. Every other line stays unchanged, and nothing is deployed."
                 : "Only the reviewed source changes will be written. Validation covers the complete proposed configuration; deployment is a separate action."}
             </p>
+            {review.kind === "batch" ? <p className="text-caption text-graphite">Review as coding task copies these changes into an isolated task for validation and explicit approval. Your inspector draft is retained.</p> : null}
           </>
         ) : null}
       </div>
@@ -344,6 +366,14 @@ export function EditDialog({ review }: { readonly review: Review | undefined }) 
           Discard All
         </button>
         <button
+          hidden={review?.kind !== "batch"}
+          className={buttonClasses({ variant: "quiet" })}
+          disabled={!review?.plan.ok || checking || writing || !!draftState.error || draft.invalid || draft.conflict}
+          onClick={() => void transferToCoding()}
+        >
+          {transferring ? "Creating coding review…" : "Review as coding task"}
+        </button>
+        <button
           className={buttonClasses({ variant: "primary", className: dialogPrimaryActionClasses })}
           disabled={
             !review?.plan.ok ||
@@ -356,7 +386,7 @@ export function EditDialog({ review }: { readonly review: Review | undefined }) 
           onClick={() => void applyDraft()}
           data-variant="primary"
         >
-          {writing ? "Applying…" : "Apply All"}
+          {applying ? "Applying…" : "Apply All"}
         </button>
       </footer>
     </dialog>

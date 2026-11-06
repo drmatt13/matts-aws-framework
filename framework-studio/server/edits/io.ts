@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { STUDIO_SCRATCH } from "../inputs";
+import { withSourceWriteSync } from "./source-gate";
 
 export class EditError extends Error {
   constructor(
@@ -20,6 +21,9 @@ export function sourceContents(file: string): string | null {
 
 /** A new file is linked exclusively, so another editor's new file wins. */
 export function writeSourceChange(root: string, file: string, before: string | null, after: string | null): void {
+  return withSourceWriteSync(root, () => writeSourceChangeOwned(root, file, before, after));
+}
+function writeSourceChangeOwned(root: string, file: string, before: string | null, after: string | null): void {
   if (sourceContents(file) !== before) throw new EditError(409, "A source file changed while applying the draft.");
   if (after === null) { unlinkSync(file); return; }
   if (before !== null) { writeAtomically(root, file, after); return; }
@@ -35,6 +39,9 @@ export function writeSourceChange(root: string, file: string, before: string | n
 
 /** Replaces a file by renaming a sibling written outside the watched tree. */
 export function writeAtomically(repositoryRoot: string, file: string, text: string): void {
+  return withSourceWriteSync(repositoryRoot, () => writeAtomicallyOwned(repositoryRoot, file, text));
+}
+function writeAtomicallyOwned(repositoryRoot: string, file: string, text: string): void {
   const directory = path.join(repositoryRoot, STUDIO_SCRATCH, "tmp");
   mkdirSync(directory, { recursive: true });
   const temporary = path.join(directory, `${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);

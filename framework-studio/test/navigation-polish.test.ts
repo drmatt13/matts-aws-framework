@@ -1,10 +1,12 @@
 import assert from "./support/assert";
 import { createRequire } from "node:module";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { after, afterEach, before, mock, test } from "node:test";
 import { createElement as h, useState, type ComponentType } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
+import { readSourceManifest } from "../server/agent-runtime/workspace";
 
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -18,6 +20,8 @@ let database: typeof import("../src/views/DatabaseDiagram");
 let shell: typeof import("../src/views/Shell");
 let navigation: typeof import("../src/views/NavigationStrip");
 let api: typeof import("../src/api");
+let sourceFixture: string | undefined;
+const ownedQueryClients: { clear(): void }[] = [];
 
 before(async () => {
   const require = createRequire(import.meta.url);
@@ -33,15 +37,23 @@ before(async () => {
   shell = await import("../src/views/Shell");
   navigation = await import("../src/views/NavigationStrip");
   api = await import("../src/api");
-  builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
+  // UI assertions need complete source evidence, without competing with the
+  // operations suite's write reservations on the actual checkout.
+  const repository = path.resolve(__dirname, "../.."), cache = path.join(repository, ".cache/framework-studio");
+  mkdirSync(cache, { recursive: true }); sourceFixture = mkdtempSync(path.join(cache, "navigation-source-"));
+  for (const name of Object.keys(readSourceManifest(repository).files)) {
+    const file = path.join(sourceFixture, name); mkdirSync(path.dirname(file), { recursive: true }); copyFileSync(path.join(repository, name), file);
+  }
+  builder = new SnapshotBuilder(sourceFixture);
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
-after(async () => { await builder?.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); mock.restoreAll(); });
+after(async () => { await builder?.dispose(); dom?.window.close(); if (sourceFixture) rmSync(sourceFixture, { recursive: true, force: true }); });
+afterEach(() => { ui.cleanup(); for (const client of ownedQueryClients.splice(0)) client.clear(); mock.restoreAll(); });
 
 async function mount(Component: ComponentType, initial = response) {
   let updateResponse: (next: SnapshotResponse) => void;
-  const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+  const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 }, mutations: { gcTime: 0 } } });
+  ownedQueryClients.push(client);
   function Root() {
     const [current, setCurrent] = useState(initial);
     updateResponse = setCurrent;

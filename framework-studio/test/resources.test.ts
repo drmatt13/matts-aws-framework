@@ -276,10 +276,11 @@ test("failed multi-file resource edits preserve an external deletion and restore
     builder.refresh = refresh;
     writeFileSync(catalog, original);
     writeFileSync(route, http);
-    await builder.refresh();
     const journal = new SourceJournal(fixture), pending = journal.pending();
     assert.equal(pending.length, 1, "conflicted source restoration requires explicit completion");
+    await assert.rejects(builder.refresh(), /source transaction needs recovery/i, "a pending recovery cannot publish current architecture evidence");
     journal.keepCurrent(pending[0]!.id, pending[0]!.fingerprint, "KEEP CURRENT SOURCE");
+    await builder.refresh();
   }
 });
 

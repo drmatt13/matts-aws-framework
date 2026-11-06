@@ -1,5 +1,6 @@
 import { readNetworkDraft } from "../shared/networks";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
@@ -45,6 +46,9 @@ import { webSocketDefaults } from "./websockets";
 import { AwsConnectionsService } from "./aws-connections/service";
 import { awsConnectionsRouter } from "./aws-connections/routes";
 import { AgentLabService, agentLabRouter } from "./agent-lab";
+import { AgentTaskClient } from "./agent-runtime/client";
+import { agentTaskRouter } from "./agent-runtime/router";
+import { processIdentity } from "./operations/identity";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -200,7 +204,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
         server.listen(port, "127.0.0.1", () => { server.off("error", failed); resolve(); });
       });
       if (closing) return;
-      await configureServer(repositoryRoot, port, app, server, (cleanup) => cleanups.push(cleanup), () => closing);
+      await configureServer(repositoryRoot, port, app, server, (cleanup) => cleanups.push(cleanup), () => closing, shutdown);
     })();
     await startup;
     if (closing) { await dispose(); return server; }
@@ -220,8 +224,10 @@ async function configureServer(
   server: Server,
   defer: (cleanup: () => void | Promise<unknown>) => void,
   isClosing: () => boolean,
+  requestRestart: () => void,
 ): Promise<void> {
   const token = randomBytes(24).toString("hex");
+  const restartKey = randomBytes(24).toString("hex"), runtimeId = randomUUID();
   const log = (line: string) => process.stderr.write(`${line}\n`);
 
   // The interactive server owns initialization, after claiming its port and
@@ -253,6 +259,11 @@ async function configureServer(
   defer(() => commands.dispose());
   const agentLab = new AgentLabService(repositoryRoot);
   defer(() => agentLab.dispose());
+  const agentTasks = new AgentTaskClient(repositoryRoot, process.env.FRAMEWORK_STUDIO_AGENT_STATE_DIRECTORY, () => ({
+    id: runtimeId, identity: processIdentity(runtimeId), port, token, protocol: STUDIO_PROTOCOL_VERSION, restartKey,
+    entry: path.join(STUDIO_ROOT, "server/index.ts"), loader: createRequire(path.join(STUDIO_ROOT, "package.json")).resolve("tsx"),
+  }));
+  defer(() => agentTasks.close());
   const clients = new Set<Response>();
   defer(() => { for (const client of clients) client.end(); clients.clear(); });
   let sourceWatch: SourceWatchState | undefined;
@@ -317,6 +328,7 @@ async function configureServer(
   app.disable("x-powered-by");
 
   app.use(hostGuard(port));
+  app.get("/_studio/runtime-ready", (_request, response) => response.json({ pid: process.pid, activation: process.env.FRAMEWORK_STUDIO_ACTIVATION_NONCE ?? null }));
 
   const api = express.Router();
   api.use(express.json({ limit: "640kb" }));
@@ -341,6 +353,12 @@ async function configureServer(
   });
   const send = sendJson;
   api.use("/agent-lab", agentLabRouter(agentLab));
+  api.use("/agent-tasks", agentTaskRouter(agentTasks));
+  api.post("/agent-runtime/restart", (request, response) => {
+    if (request.get("x-studio-agent-restart") !== restartKey) { response.status(403).json({ error: "A registered independent task host must request this restart." }); return; }
+    if (commands.busy || activeAwsRequests || deploy.hasUnobservedOperations() || deploy.activeJobs().some(job => !["local-watch", "local-client"].includes(job.kind))) { response.status(409).json({ error: "Wait for Studio operations to finish before restarting." }); return; }
+    response.status(202).json({ restarting: true }); setTimeout(requestRestart, 100).unref();
+  });
   api.use("/aws-connections", awsConnectionsRouter(connections));
   api.use("/identity-policy", identityPolicyRouter(new IdentityPolicyService(repositoryRoot, () => builder.current)));
   api.use("/database/sql", databaseSqlRouter(repositoryRoot));
@@ -411,6 +429,7 @@ async function configureServer(
     const body: SnapshotResponse = {
       ...recoveryState(),
       sourceWatch,
+      sourcePublication: builder.publicationState,
       snapshot: state.snapshot,
       evaluating,
       commands: Object.fromEntries(
@@ -486,6 +505,11 @@ async function configureServer(
     send(response, () => edits.plan(readIntent(request.body), String((request.body as { revision?: unknown })?.revision ?? ""))),
   );
   api.post("/edits/batch/plan", (request, response) => send(response, () => edits.planBatch(readDraftEdits(request.body?.edits), String(request.body?.revision ?? ""), readCommentOptions(request.body?.options))));
+  api.post("/edits/batch/coding-review", (request, response) => send(response, async () => {
+    if (typeof request.body?.requestKey !== "string") throw new EditError(400, "A source review handoff needs an idempotency key.");
+    const review = await edits.exportReviewedBatch(String(request.body?.planId ?? ""));
+    return agentTasks.submitStructured(review, request.body.requestKey);
+  }));
   api.post("/edits/batch/apply", (request, response) => send(response, async () => {
     const result = await edits.applyBatch(String(request.body?.planId ?? ""));
     published(result.revision);
@@ -591,6 +615,25 @@ async function configureServer(
     if (external.length > 0) void refresh(external);
   }, 200, { onStatus: status => { sourceWatch = status; broadcast("source-watch", status); } });
   defer(stopWatching);
+
+  // The detached importer may finish while no browser or task route is open.
+  // Observe its publication epoch independently of file-watcher coverage, and
+  // retry after a bounded write/recovery lease releases. Retain the last graph
+  // as stale while the batch is incomplete; never publish an intermediate one.
+  let publicationSignature = "";
+  const publicationTimer = setInterval(() => {
+    if (isClosing()) return;
+    const publication = builder.publicationState;
+    const signature = JSON.stringify(publication);
+    if (signature !== publicationSignature) {
+      publicationSignature = signature;
+      broadcast("source-publication", publication);
+      broadcast("snapshot", { revision: builder.current?.snapshot.revision ?? null, external: [] });
+    }
+    if (publication.status === "refresh_required" && !evaluating) void refresh([]);
+  }, 1000);
+  publicationTimer.unref();
+  defer(() => clearInterval(publicationTimer));
 
   log("Evaluating the repository…");
   await refresh([]);

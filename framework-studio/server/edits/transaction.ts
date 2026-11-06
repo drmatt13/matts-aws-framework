@@ -11,6 +11,7 @@ import { planEdit, type EditIntent } from "./plan";
 import { planHttpRoute, validateHttpRoute, type RouteChange } from "./route";
 import { BatchEditor } from "./batch";
 import { SourceJournal } from "./journal";
+import { withSourceWrite } from "./source-gate";
 
 /**
  * Plans and writes field edits — one at a time, and never over a
@@ -106,6 +107,7 @@ export class EditService {
   }
 
   planBatch(edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions) { return this.exclusive(() => this.batches.plan(edits, revision, options)); }
+  exportReviewedBatch(planId: string) { return this.exclusive(async () => this.batches.exportReviewedSource(planId)); }
   applyBatch(planId: string): Promise<ApplyResponse> {
     return this.exclusive(() => this.batches.apply(planId).finally(() => this.plans.clear()));
   }
@@ -197,7 +199,14 @@ export class EditService {
   }
 
   apply(planId: string): Promise<ApplyResponse> {
-    return this.exclusive(async () => {
+    const reviewed = this.plans.get(planId);
+    if (!reviewed) return Promise.reject(new EditError(410, "This preview has expired. The repository changed, or another edit was applied; preview it again."));
+    if (!reviewed.response.ok) return Promise.reject(new EditError(422, "The framework refuses this change, so it cannot be written."));
+    if (reviewed.batchPlanId) return this.exclusive(() => this.batches.apply(reviewed.batchPlanId!).finally(() => this.plans.clear()));
+    try {
+      if (this.state().snapshot.revision !== reviewed.revision || sha256(readFileSync(assertWritable(this.repositoryRoot, reviewed.relativeFile), "utf8")) !== reviewed.beforeHash) throw new EditError(409, "The repository changed since this preview. Nothing was written; preview it again.");
+    } catch (error) { return Promise.reject(error); }
+    return this.exclusive(() => withSourceWrite(this.repositoryRoot, async () => {
       if (new SourceJournal(this.repositoryRoot).pending().length) throw new EditError(409, "Resolve the interrupted source transaction in Source recovery before applying another edit.");
       const plan = this.plans.get(planId);
       if (!plan) throw new EditError(410, "This preview has expired. The repository changed, or another edit was applied; preview it again.");
@@ -224,7 +233,7 @@ export class EditService {
         edit: plan.edit,
       };
       return this.confirm(entry, plan.response.preflight);
-    });
+    }));
   }
 
   /**

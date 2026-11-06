@@ -142,6 +142,7 @@ export interface SnapshotResponse {
   readonly sourceRecovery?: readonly import("./source-recovery").SourceRecovery[];
   readonly sourceRecoveryProblem?: string;
   readonly sourceWatch?: import("./watch").SourceWatchState;
+  readonly sourcePublication?: { readonly status: "ready" | "busy" | "recovery_required" | "unavailable" | "refresh_required"; readonly epoch: string; readonly message?: string };
   readonly snapshot: Snapshot;
   readonly evaluating: boolean;
   readonly commands: Readonly<Record<string, CommandInfo>>;

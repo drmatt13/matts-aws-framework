@@ -21,6 +21,7 @@ import { clientBindingFor } from "../shared/client-environment";
 import { STACK_MEMBER_TAGGING, tagFacts, withAbsentTagging } from "./model/tags";
 import { failedModel } from "./model/project";
 import { replaceFileAtomic } from "../../scripts/atomic-replace.cjs";
+import { ownsSourceGate, publishSourceSnapshot, sourceCoordinationState, sourceOwnedEntryEpoch, sourcePublicationEpoch, SourceGateError, type SourceCoordinationState } from "./edits/source-gate";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -94,6 +95,7 @@ export class SnapshotBuilder {
   private running: Promise<StudioState> | undefined;
   private pending: Promise<StudioState> | undefined;
   private latest: StudioState | undefined;
+  private latestEpoch: string | undefined;
   readonly pool: EvaluatorPool;
 
   constructor(
@@ -105,7 +107,23 @@ export class SnapshotBuilder {
   }
 
   get current(): StudioState | undefined {
-    return this.latest;
+    const current = this.latest;
+    const publication = this.publicationState;
+    if (!current || publication.status === "ready") return current;
+    const error = new Error(publication.message ?? "Source publication is paused. The last complete architecture is retained until a fresh evaluation succeeds.");
+    const dev = failedModel("dev", error, 0), prod = failedModel("prod", error, 0);
+    return { ...current, evaluation: { dev, prod, preflight: async () => ({ dev: { mode: "dev", ok: false, diagnostics: dev.diagnostics }, prod: { mode: "prod", ok: false, diagnostics: prod.diagnostics } }) },
+      snapshot: { ...current.snapshot, models: { dev: { ...current.snapshot.models.dev, status: "error", stale: true, diagnostics: dev.diagnostics }, prod: { ...current.snapshot.models.prod, status: "error", stale: true, diagnostics: prod.diagnostics } } } };
+  }
+
+  get publicationState(): SourceCoordinationState | { readonly status: "refresh_required"; readonly epoch: string; readonly message: string } {
+    const state = sourceCoordinationState(this.repositoryRoot);
+    // An owning editor may use its prior evaluation to finish its bounded edit.
+    // Other request contexts cannot treat that graph as current while it writes.
+    if (ownsSourceGate(this.repositoryRoot) && (this.latestEpoch === state.epoch || this.latestEpoch === sourceOwnedEntryEpoch(this.repositoryRoot))) return { status: "ready", epoch: state.epoch };
+    if (state.status !== "ready") return state;
+    if (this.latestEpoch !== state.epoch) return { status: "refresh_required", epoch: state.epoch, message: "Saved source changed. Refresh Studio to publish a complete architecture before editing it." };
+    return { status: "ready", epoch: state.epoch };
   }
 
   /**
@@ -131,6 +149,9 @@ export class SnapshotBuilder {
   private start(): Promise<StudioState> {
     if (this.closed) return Promise.reject(new Error("The snapshot builder is closed."));
     this.running = this.build().catch(async (error: unknown) => {
+      // An importer owns publication while it replaces a batch. Do not replace
+      // the last complete snapshot with an intermediate graph or a stale error.
+      if (error instanceof SourceGateError) throw error;
       // evaluate() has already replaced the previous workers. Never leave the
       // previous graph looking current while its preflight workers are gone.
       await this.pool.dispose();
@@ -175,6 +196,7 @@ export class SnapshotBuilder {
   }
 
   private async build(): Promise<StudioState> {
+    const publicationEpoch = sourcePublicationEpoch(this.repositoryRoot);
     const files = hashEditableFiles(this.repositoryRoot);
     const evaluation = await this.pool.evaluate();
     const freshDev = this.lastGood(evaluation.dev), freshProd = this.lastGood(evaluation.prod);
@@ -187,17 +209,6 @@ export class SnapshotBuilder {
     const schema = readDeclaredSchema(this.repositoryRoot);
     const localDatabase = readLocalDatabases(this.repositoryRoot);
     const clientMappings = readClientMappings(this.repositoryRoot);
-    // A disposable studio projection, never a configuration input. Replace atomically.
-    const directory = process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY ? path.resolve(process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY) : path.join(this.repositoryRoot, ".cache", "framework-studio");
-    mkdirSync(directory, { recursive: true });
-    const temporary = path.join(directory, `cdk-links-${randomUUID()}.tmp`);
-    try {
-      writeFileSync(temporary, `${JSON.stringify(built.index.cdkLinks, null, 2)}\n`, "utf8");
-      replaceFileAtomic(temporary, path.join(directory, "cdk-links.json"));
-    } finally {
-      rmSync(temporary, { force: true });
-    }
-    this.generation += 1;
     const content = sha256(JSON.stringify({ files, conditions: [dev.targets.map(target => target.lanes.when), prod.targets.map(target => target.lanes.when)], schema: schema.hash, localDatabase }));
     const project = (model: ModeModel): ModeModel => {
       const declared = model.stale ? model : withExportStacks(withClassMembers(model, built.catalog, built.index.cdkLinks.edges), built.exportStacks);
@@ -212,7 +223,7 @@ export class SnapshotBuilder {
       descriptions: readDescriptions(this.repositoryRoot),
       schema,
       databaseProblems: localDatabase.problems,
-      revision: `${this.generation}-${content.slice(0, 12)}`,
+      revision: `${this.generation + 1}-${content.slice(0, 12)}`,
       generatedAt: new Date().toISOString(),
       repositoryRoot: this.repositoryRoot,
       application: applicationSummary(this.repositoryRoot),
@@ -220,8 +231,21 @@ export class SnapshotBuilder {
       source: built.index,
       files,
     };
-    this.latest = { snapshot, evaluation, built };
-    return this.latest;
+    return publishSourceSnapshot(this.repositoryRoot, publicationEpoch, () => {
+      // Cache and public graph commit under the same source admission check.
+      // A writer cannot acquire a lease between checking the epoch and either write.
+      const directory = process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY ? path.resolve(process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY) : path.join(this.repositoryRoot, ".cache", "framework-studio");
+      mkdirSync(directory, { recursive: true });
+      const temporary = path.join(directory, `cdk-links-${randomUUID()}.tmp`);
+      try {
+        writeFileSync(temporary, `${JSON.stringify(built.index.cdkLinks, null, 2)}\n`, "utf8");
+        replaceFileAtomic(temporary, path.join(directory, "cdk-links.json"));
+      } finally { rmSync(temporary, { force: true }); }
+      this.generation += 1;
+      this.latestEpoch = publicationEpoch;
+      this.latest = { snapshot, evaluation, built };
+      return this.latest;
+    });
   }
 
   dispose(): Promise<void> {

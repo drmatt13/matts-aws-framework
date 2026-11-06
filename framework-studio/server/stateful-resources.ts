@@ -12,6 +12,7 @@ import { validateCognitoReference } from "../../cdk-app/lib/app/cognito-lifecycl
 import { inputMode } from "./deployment-input-edits";
 import { deploymentInputPath, inputText } from "./deployment-inputs";
 import { SourceJournal } from "./edits/journal";
+import { withSourceWrite } from "./edits/source-gate";
 import { EditError, writeSourceChange } from "./edits/io";
 import { diffOf } from "./edits/plan";
 import { assertWritable, hashEditableFiles, sha256 } from "./files";
@@ -120,6 +121,9 @@ export class StatefulResourceService {
     ], inspection, args, selection);
   }
   async apply(id: string) {
+    return withSourceWrite(this.root, () => this.applyOwned(id));
+  }
+  private async applyOwned(id: string) {
     const plan = this.plans.get(id);
     if (!plan || Date.now() >= Date.parse(plan.view.expiresAt)) throw new EditError(410, "This lifecycle review expired. Inspect and review again.");
     this.capture(plan.mode, plan.revision, plan.sourceHash);

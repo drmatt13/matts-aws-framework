@@ -23,6 +23,7 @@ import type {
 import { CONTRACT_FILE } from "./database";
 import { compileDatabaseSource, databaseConfigurationSourceFiles } from "./database-workbench";
 import { EditError, sourceContents, writeSourceChange } from "./edits/io";
+import { withSourceWrite } from "./edits/source-gate";
 import { sha256 } from "./files";
 import { databaseMigrationSourceFiles } from "../../packages/database/scripts/studio-migrations";
 
@@ -373,7 +374,7 @@ export class DatabaseHistoryService {
 
   install(input: { reviewId: string }): Promise<DatabaseMigrationInstallResult> {
     if (!input || typeof input.reviewId !== "string") return Promise.reject(new EditError(400, "Select an existing migration review before saving its artifacts."));
-    const operation = this.mutation.then(() => this.installReviewed(input));
+    const operation = this.mutation.then(() => withSourceWrite(this.root, () => this.installReviewed(input)));
     this.mutation = operation.catch(() => undefined);
     return operation;
   }

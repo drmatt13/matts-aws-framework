@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { withSourceWriteSync } from "./edits/source-gate";
 import path from "node:path";
 import { parseEnv } from "node:util";
 import { CDK_ENVIRONMENT_ID, FRAMEWORK_INPUT_GROUPS, type DeploymentInputEntry, type DeploymentInputFile, type FrameworkSettingOwner, type InputRequirement } from "../shared/deployment-inputs";
@@ -44,6 +45,14 @@ export function selectedDeploymentInput(root: string, mode: Mode): string {
 
 /** Used by interactive startup and explicit retry, never by snapshot reads or synthesis. */
 export function createDeploymentInput(root: string, mode: Mode): { file: string; created: boolean } {
+  if (mode !== "dev" && mode !== "prod") throw new Error("Choose development or production inputs.");
+  const file = deploymentInputPath(mode);
+  // Restarting Studio may hold a read lease while already-authored inputs are
+  // inspected. Only creation needs write ownership; recheck after acquiring it.
+  if (inputText(root, file) !== undefined) return { file, created: false };
+  return withSourceWriteSync(root, () => createDeploymentInputOwned(root, mode));
+}
+function createDeploymentInputOwned(root: string, mode: Mode): { file: string; created: boolean } {
   if (mode !== "dev" && mode !== "prod") throw new Error("Choose development or production inputs.");
   const file = deploymentInputPath(mode);
   if (inputText(root, file) !== undefined) return { file, created: false };

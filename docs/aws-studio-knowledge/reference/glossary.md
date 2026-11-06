@@ -29,7 +29,7 @@ related:
 | Secret binding | Private deployment-review record tying secret writes to reviewed values/versions; distinct from workload bindings |
 | IR / symbolic value | Declarative workflow nodes/terms and references, compiled or interpreted later |
 | Snapshot / revision | Studio serialized models + source facts at a generation/content identifier |
-| Sightline | What Studio can see from the current location and selection: a bounded, read-only projection of existing declarations, workspace choices and cached observations. Debug view only; the agent does not receive it yet. See [Sightline](../../framework-studio/sightline.md) |
+| Sightline | What Studio can see from the current location and selection: a bounded, read-only projection of declarations, workspace choices and cached observations. Available as a debug view and optional captured Coding context; never operational authority. See [Sightline](../../framework-studio/sightline.md) |
 | Provenance | Declared, derived or source-inferred relationship evidence; not runtime tracing |
 | Draft / review | Staged UI intent vs validated proposed source diff/plan; applying saves source |
 | Cloud assembly / deployment plan | Synthesized templates/assets vs reviewed AWS changes and apply gates |

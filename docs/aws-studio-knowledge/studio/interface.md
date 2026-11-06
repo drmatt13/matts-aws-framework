@@ -44,6 +44,9 @@ source:
   - framework-studio/shared/operations.ts
   - framework-studio/src/views/AgentLab.tsx
   - framework-studio/server/agent-lab.ts
+  - framework-studio/src/views/agent/CodingPanel.tsx
+  - framework-studio/src/agent-tasks.ts
+  - framework-studio/src/coding-task-navigation.ts
   - framework-studio/src/views/CreationWizard.tsx
   - framework-studio/shared/creation.ts
 related:
@@ -147,7 +150,9 @@ stopping and attention states from local observations; Docker availability alone
 enables startup. Its compact popover explains blockers, offers Docker setup or links to Deploy,
 and provides an explicit stop for partially running or differently bound services.
 Startup validates the dev destination and compatibility and exports current outputs;
-Activity shows its steps and logs. Running requires health/readiness and the exact
+Activity records its steps and logs. Starting or stopping preserves the tray's current
+mode and open state; **View activity** in runtime details explicitly reveals the job.
+Running requires health/readiness and the exact
 captured/exported profile, deployment, account and region. Failed reads and changed
 bindings clear the healthy indication. The switch remains on for active or starting/stopping
 work, including partial failures, until shutdown is confirmed. Source changes do not erase
@@ -207,7 +212,8 @@ own exact-text session and navigation protection.
 | Docker availability | One Shell-mounted observer and shared query cache; Deploy, Map and Activity consume the same current host observation |
 | Global Activity | `GlobalActivity` in the persistent shell owns open/selected state and operation reads; shared log storage and one global operation-event observer continue on every route. Execution belongs to the runner or the operation's legacy service |
 | Agent conversation | `useAgentChat` in the persistent shell owns provider, each provider's model selection, transcript, draft, pending request and unread state. These survive mode switches, collapse and navigation, and reset on page reload |
-| Sightline display and projection | `views/GlobalActivity.tsx` owns Conversation/Sightline display selection, `views/agent/AgentViewTabs.tsx` presents it in the bar and `sightline/AgentViews.tsx` shows the chosen view; the visible Sightline alone subscribes to route, Studio and cached evidence. Workspace owners register lazy typed readers in `sightline/bridge.ts`, removed on unmount; they never read the projection back. The agent receives none of it |
+| Sightline display and projection | `GlobalActivity` owns Conversation/Sightline/Coding view selection; only the visible Sightline or Coding consumer subscribes to route, Studio and cached evidence. Workspace owners register lazy typed readers in `sightline/bridge.ts`, removed on unmount; they never read the projection back. Coding can explicitly capture bounded context; Conversation does not receive it |
+| Coding task observation and review | `useCodingTasks` owns browser queries/replay and repository-scoped task selection; durable task/proposal/approval state belongs to the independent host. Browser unmount does not cancel execution. `CodingPanel` owns the disposable composer and explicit task actions |
 | Shared deployment target resolution and observations | Pure mode-aware resolver and one persistent observer; TanStack Query owns data/errors/freshness. Consumer hooks subscribe without polling or issuing reads |
 | Specialized operational destination, inspection and approval | Owning workspace; shared deployment defaults never replace its explicit target, inspection action or review |
 | Agent test prompt, provider and pending review | `AgentLab` owns local form/request state; `AgentLabService` owns expiring plans and the guarded write to `src/agent-lab-message.ts` |
@@ -233,13 +239,16 @@ not inspect AWS or deployment state.
 
 The bottom **Activity** tray belongs to `Shell` and is mounted once for every route.
 Its **Activity** and **Agent** tabs choose operation history or a question-and-answer
-conversation. Selecting a tab preserves the panel's open or closed state; the separate
-summary/chevron control opens and closes it. Arrow keys and Home/End select tabs;
+conversation. Clicking either tab selects its mode and opens the panel, including an
+already-selected tab. The summary/chevron control opens and closes it. Arrow keys and Home/End select tabs;
 Escape collapses the panel. While open, drag the tray's thin highlighted top edge to
-resize it; a drag leaves the panel open and retains its height across collapse,
+resize it. Dragging below its 100px minimum height closes the panel and restores the responsive
+default height when reopened. Other resizing retains its height across ordinary collapse,
 mode changes and navigation. The top-edge separator also supports Up/Down arrows
-and Home/End for resizing. The collapsed tray has no resize handle, highlight or
-resize cursor. The summary bar remains a click control. The tray can reach the top
+and Home/End for resizing. The collapsed tray has no separate resize handle; drag its
+summary bar upward to pull it open, or click to expand. A manual opening follows the
+pointer and closes again if released below 100px. Mode tabs and Docker controls remain
+independent. The open summary bar remains a click control. The tray can reach the top
 of the window, covering the navigation, and adapts to window size. Dragging follows
 the pointer immediately. The drawer slides with an interruptible 280ms
 `cubic-bezier(.22,1,.36,1)` transition, disabled under reduced motion. A registered CSS
@@ -249,7 +258,7 @@ closing finishes; collapsed contents are inert and hidden from accessibility nav
 Agent offers editable suggestions, a pinned multiline composer, Codex/Claude and model selection,
 Markdown answers, copy, stop, retry and confirmed New chat. Replies can finish while
 Activity is selected without changing modes; a new-reply dot marks the Agent tab.
-Explicit `openActivity(job.id)` switches back to Activity. The initial agent provides
+Explicit `openActivity(job.id)` switches back to Activity. Conversation provides
 general Q&A with a fixed Studio overview, without reading live source/graph/log context;
 see [local coding agents](../../framework-studio/local-agent-lab.md).
 `GlobalActivity` is memoized and consumes no route or Studio context, so navigation does
@@ -257,11 +266,20 @@ not render it again. Open state, selected job, log DOM, and the reader's scroll 
 survive navigation. Job/log changes and tray interactions still update it normally.
 Inside Agent, **Sightline** opens a collapsible JSON debug view with Copy JSON and a
 character count. Conversation DOM, draft and scroll remain mounted while it is selected.
-Only the visible Sightline mounts its input subscriptions; opening it initiates no data
+Only the visible Sightline or Coding view mounts context subscriptions; context capture initiates no data
 reads. The existing JSON viewer loads lazily, with keyboard expansion controls and Studio
 theme tokens. [Sightline](../../framework-studio/sightline.md) defines the read-only
 contract, privacy allow-list, workspace state seams and current gaps. The conversation
 still receives only its existing bounded messages and fixed server overview.
+**Coding** starts native source tasks in isolated copies, shows replayed progress, file
+diffs, validation and advisory architecture changes, and requires explicit digest-bound
+approval. Completed Studio source changes offer a separate **Restart Studio** action and
+reload recovery; dependency installation remains separately blocked. Inspector **Review
+as coding task** selects the accepted task in this tray while preserving the inspector
+draft. The **Agent host** disclosure reads host-upgrade status only when opened and exposes
+a separate **Restart agent host** action when tasks are idle. Its request UUID persists
+across retries/reload; inspection never initiates a restart. See
+[Coding tasks](../../framework-studio/local-agent-lab.md#coding-tasks).
 Opening the bottom panel shrinks the workspace, except the map's canvas, which [runs beneath it](rendering.md).
 The tray observes `/api/operations` through the shared operation transport and owns the
 global operation-event subscription. Deploy's event observer handles its plan-review/CloudFormation

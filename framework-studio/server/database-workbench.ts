@@ -16,6 +16,7 @@ import type { DatabaseHistory } from "../shared/database-history";
 import type { ControlClient } from "@prisma/orm-postgres/control";
 import { CONTRACT_FILE, parseDeclaredSchema } from "./database";
 import { EditError, writeSourceChange } from "./edits/io";
+import { withSourceWrite } from "./edits/source-gate";
 import { sha256 } from "./files";
 import { repositoryTargets } from "@repo/framework/deploy/node";
 import { execFileSync } from "node:child_process";
@@ -289,6 +290,9 @@ export class DatabaseWorkbenchService {
   }
 
   async save(reviewId: string): Promise<DatabaseSaveResult> {
+    return withSourceWrite(this.root, () => this.saveOwned(reviewId));
+  }
+  private async saveOwned(reviewId: string): Promise<DatabaseSaveResult> {
     if (this.saving) throw new EditError(409, "Another source save is running. Retry after it completes.");
     const review = this.reviews.get(reviewId);
     if (!review || Date.parse(review.expiresAt) <= Date.now()) throw new EditError(409, "This source review expired. Review the draft again; nothing was saved.");

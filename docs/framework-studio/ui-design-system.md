@@ -211,6 +211,10 @@ content, including on narrow screens. The map canvas is the one exception: it ke
 and runs beneath the tray, so opening it moves nothing on the map. `--activity-drawer` is the
 drawer's one height, notices included, and the `activity-open` variant styles anything that
 depends on the tray.
+Running source-watch and web-client processes use steady green indicators in the summary,
+history and steps. Temporary work, startup and stopping use neutral spinners. Yellow is
+reserved for warning or uncertain observations; process-running status does not establish
+the readiness of the whole local application.
 The map's bottom dock fades out over 140ms when the tray opens and returns over
 220ms after an 80ms lead-in as it closes. Opacity reverses from its current value
 on rapid toggles; visibility follows the exit fade and pointer input stops immediately.
@@ -218,8 +222,14 @@ The `activity-expanded` variant follows toggle intent, while `activity-open` ret
 the map's layout through the closing slide. The map's Motion toggle and OS reduced
 motion disable the dock fade. A dock above a stacked phone panel remains available.
 While open, only the thin top-edge separator resizes that shared height, preserving
-it for the mounted shell. The separator supports Up/Down and Home/End; window
+it for the mounted shell. Dragging below the 100px minimum closes the panel, returns focus
+to its toggle and resets to the responsive default height on reopening. The separator
+supports Up/Down and Home/End; window
 resizing bounds the drawer to the window; it can cover the navigation at full height.
+The collapsed summary bar also opens by dragging upward, following the pointer from
+zero height and closing again if released below 100px. Hovering only the collapsed bar's
+thin top edge shows the same blue highlight as the open panel's resize handle. A drag does not trigger the bar's
+click action; mode tabs and Docker controls keep their independent behavior.
 The shell keeps a small workspace reservation for hidden toolbar layout and caps the map compensation
 at that reservation, preserving its camera even when the tray covers the whole screen.
 Pointer resizing disables

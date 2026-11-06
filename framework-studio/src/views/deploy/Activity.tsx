@@ -44,6 +44,33 @@ function statusLabel(job: JobView): string {
   return STATUS_LABEL[job.status];
 }
 
+/** A persistent process stays running after startup; it is not unfinished work. */
+function isRunningProcess(job: JobView): boolean {
+  return (job.kind === "local-watch" || job.kind === "local-client") && job.status === "running"
+    && !job.cancelRequested && !job.observationProblem
+    && (job.execution === undefined || job.execution === "running")
+    && job.outcome !== "uncertain" && job.outcome !== "unverified";
+}
+
+function runningColor(job: JobView): string {
+  if (job.observationProblem || job.outcome === "uncertain" || job.outcome === "unverified")
+    return "text-[color-mix(in_srgb,var(--local)_70%,var(--ink))]";
+  return isRunningProcess(job) ? "text-accept" : "text-graphite";
+}
+
+function RunningIcon({ job, className, decorative = false }: {
+  readonly job: JobView;
+  readonly className?: string;
+  readonly decorative?: boolean;
+}) {
+  const steady = isRunningProcess(job);
+  const busy = job.status === "running" && !steady && !job.observationProblem
+    && job.outcome !== "uncertain" && job.outcome !== "unverified";
+  const Icon = busy ? LoaderCircle : CircleDot;
+  return <Icon size={13} className={cx(className, steady && "text-accept", busy && "animate-spin motion-reduce:animate-none")}
+    aria-hidden={decorative || undefined} aria-label={decorative ? undefined : "running"} />;
+}
+
 /** A startup records the past; only the live status says whether Docker is running now. */
 function summary(job: JobView, docker: DockerPresence): string | undefined {
   if (job.kind !== "docker-start" || job.status !== "succeeded") return job.summary;
@@ -57,16 +84,9 @@ function coveredByDockerStatus(job: JobView, jobs: readonly JobView[], docker: D
   return !unresolved || job !== jobs.find((entry) => entry.kind === "docker-start");
 }
 
-function StepIcon({ status }: { readonly status: string }) {
+function StepIcon({ status, job }: { readonly status: string; readonly job: JobView }) {
   if (status === "done") return <Check size={13} aria-label="done" />;
-  if (status === "running")
-    return (
-      <LoaderCircle
-        size={13}
-        className="animate-spin motion-reduce:animate-none"
-        aria-label="running"
-      />
-    );
+  if (status === "running") return <RunningIcon job={job} />;
   if (status === "failed") return <X size={13} aria-label="failed" />;
   if (status === "skipped") return <Minus size={13} aria-label="skipped" />;
   return <CircleDot size={13} aria-label="pending" />;
@@ -104,7 +124,11 @@ export function Activity(props: {
   const mode = props.mode ?? "activity";
   const drawer = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
-  const resize = useActivityResize({ drawer, bar, open: props.open });
+  const toggle = useRef<HTMLButtonElement>(null);
+  const resize = useActivityResize({ drawer, bar, open: props.open, onExpand: props.onToggle, onCollapse: () => {
+    props.onToggle();
+    toggle.current?.focus();
+  } });
   const motionRoot = useRef<HTMLElement | undefined>(undefined);
   const [revealed, setRevealed] = useState(props.open);
   const visible = props.open || revealed;
@@ -171,11 +195,12 @@ export function Activity(props: {
       {props.open ? <div role="separator" aria-label="Resize bottom panel" aria-orientation="horizontal"
         aria-controls="studio-activity-drawer" aria-valuemin={resize.min} aria-valuemax={resize.max} aria-valuenow={Math.round(resize.height)}
         aria-valuetext={`${Math.round(resize.height)} pixels`} tabIndex={0}
-        title="Drag to resize the bottom panel. Use Up and Down arrow keys when focused."
+        title="Drag to resize the bottom panel, or drag below its minimum height to close. Use Up and Down arrow keys when focused."
         className="absolute -top-1 left-0 z-10 h-2 w-full cursor-row-resize touch-none select-none hover:bg-dev/30 focus-visible:bg-dev/30 focus-visible:-outline-offset-2"
         {...resize.pointer} onKeyDown={event => { if (resize.resizeByKey(event.key)) event.preventDefault(); }} /> : null}
-      {/* Modes and collapse are separate actions; Docker is never nested in either. */}
-      <div ref={bar} data-ui="activity-bar" className={cx("grid min-w-0 items-center gap-x-3", props.agent ? "grid-cols-[auto_minmax(0,1fr)_auto_32px] pl-3 vp-480:pl-2" : "grid-cols-[minmax(0,1fr)_auto_auto] vp-480:grid-cols-[minmax(0,1fr)_auto]")}>
+      {/* Modes reveal their panel; the chevron toggles it. Docker remains independent. */}
+      <div ref={bar} data-ui="activity-bar" {...resize.pointer} className={cx("grid min-w-0 items-center gap-x-3", !props.open && "cursor-row-resize touch-none select-none", props.agent ? "grid-cols-[auto_minmax(0,1fr)_auto_32px] pl-3 vp-480:pl-2" : "grid-cols-[minmax(0,1fr)_auto_auto] vp-480:grid-cols-[minmax(0,1fr)_auto]")}>
+        {!props.open ? <span aria-hidden className="absolute -top-1 left-0 z-10 h-2 w-full hover:bg-dev/30" /> : null}
         {props.agent ? <div className="col-start-1 row-start-1 flex items-center gap-1 py-1" role="tablist" aria-label="Panel mode"
           onKeyDown={event => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -186,7 +211,7 @@ export function Activity(props: {
           }}>
           {(["activity", "agent"] as const).map(value => <button key={value} type="button" role="tab" data-mode={value}
             id={`studio-${value}-tab`} aria-label={value === "activity" ? "Activity" : "Agent"} aria-controls={`studio-${value}-panel`} aria-selected={mode === value} tabIndex={mode === value ? 0 : -1}
-            onClick={() => props.onModeChange?.(value)}
+            onClick={() => { props.onModeChange?.(value); if (!props.open) props.onToggle(); }}
             className={cx("inline-flex min-h-8 cursor-pointer items-center gap-2 rounded-md border px-3 py-1 text-label font-medium transition-colors vp-480:px-2", mode === value ? "border-rule-strong bg-wash text-ink" : "border-transparent bg-transparent text-graphite hover:bg-wash hover:text-ink")}>
             {/* The agent's state takes the icon's place and corner, so the views beside it never shift. */}
             {value === "activity" ? <ListTodo size={14} aria-hidden /> : props.agentPending ? <LoaderCircle size={14} className="animate-spin motion-reduce:animate-none" aria-label="Thinking" />
@@ -200,11 +225,13 @@ export function Activity(props: {
           {agentViews}
         </div> : null}
         <button
+          ref={toggle}
           className={cx("row-start-1 grid min-h-9 min-w-0 cursor-pointer grid-cols-subgrid items-center border-0 bg-transparent py-2 text-left text-inherit hover:bg-wash", props.agent ? "col-start-2 -col-end-1 pr-3" : "col-span-full px-4")}
           onClick={props.onToggle}
           aria-expanded={props.open}
           aria-controls="studio-activity-drawer"
           aria-label={props.agent ? `${mode === "activity" ? "Activity" : "Agent"}: ${props.open ? "collapse" : "expand"} panel` : undefined}
+          title={props.open ? undefined : "Click to expand or drag up to open the bottom panel."}
         >
           <span className={cx("col-start-1 flex min-w-0 items-center gap-3", !!props.agent && "pl-3 vp-480:invisible")}>
             {!props.agent ? <strong className="flex-none">Activity</strong> : null}
@@ -216,11 +243,7 @@ export function Activity(props: {
                 )}
               >
                 {headline.status === "running" ? (
-                  <LoaderCircle
-                    size={13}
-                    className="mr-1.5 animate-spin align-[-2px] motion-reduce:animate-none"
-                    aria-hidden
-                  />
+                  <RunningIcon job={headline} className="mr-1.5 align-[-2px]" decorative />
                 ) : null}
                 {headline.title}
                 {headline.steps?.length ? (
@@ -258,7 +281,7 @@ export function Activity(props: {
         {/* Fixed-height contents slide as a unit instead of squeezing during motion. */}
         <div hidden={!visible} className="flex h-(--activity-drawer) min-h-0 flex-col border-t border-rule">
           {props.agent ? <div id="studio-agent-panel" role="tabpanel" aria-labelledby="studio-agent-tab" hidden={mode !== "agent"} className="flex min-h-0 flex-1 flex-col">{props.agent}</div> : null}
-          <div id={props.agent ? "studio-activity-panel" : undefined} role={props.agent ? "tabpanel" : undefined} aria-labelledby={props.agent ? "studio-activity-tab" : undefined} hidden={mode !== "activity"} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div id={props.agent ? "studio-activity-panel" : undefined} role={props.agent ? "tabpanel" : undefined} aria-labelledby={props.agent ? "studio-activity-tab" : undefined} hidden={mode !== "activity"} tabIndex={0} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {props.problem ? (
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-4 py-2" role="alert">
               <span>{props.problem}</span>
@@ -282,14 +305,15 @@ export function Activity(props: {
                   <button
                     data-status={entry.status}
                     className={cx(
-                      "group/job grid w-full cursor-pointer gap-1 rounded-sm border-0 px-3 py-2 text-left text-inherit hover:bg-wash",
+                      "grid w-full cursor-pointer gap-1 rounded-sm border-0 px-3 py-2 text-left text-inherit hover:bg-wash",
                       entry.id === job?.id ? "bg-wash" : "bg-transparent",
                     )}
                     aria-current={entry.id === job?.id ? "true" : undefined}
                     onClick={() => props.onSelect(entry.id)}
                   >
                     <span className="truncate text-step-minus1 font-medium">{entry.title}</span>
-                    <span className="text-meta text-[color-mix(in_srgb,var(--graphite)_85%,var(--ink))] group-data-[status=running]/job:text-[color-mix(in_srgb,var(--local)_60%,var(--ink))] group-data-[status=failed]/job:text-refuse">
+                    <span className={cx("text-meta", entry.status === "running" ? runningColor(entry)
+                      : entry.status === "failed" ? "text-refuse" : "text-[color-mix(in_srgb,var(--graphite)_85%,var(--ink))]")}>
                       {statusLabel(entry)} · {relativeTime(entry.endedAt ?? entry.startedAt)}
                     </span>
                   </button>
@@ -305,7 +329,7 @@ export function Activity(props: {
                       className={cx(
                         "ml-2 text-meta tracking-[0.06em] uppercase",
                         job.status === "running"
-                          ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
+                          ? runningColor(job)
                           : job.status === "succeeded" && job.outcome !== "unverified" && job.outcome !== "uncertain"
                             ? "text-accept"
                             : job.status === "failed"
@@ -354,7 +378,7 @@ export function Activity(props: {
                         className={cx(
                           "inline-flex items-center gap-1",
                           step.status === "running"
-                            ? "text-[color-mix(in_srgb,var(--local)_60%,var(--ink))]"
+                            ? runningColor(job)
                             : step.status === "done"
                               ? "text-accept"
                               : step.status === "failed"
@@ -362,7 +386,7 @@ export function Activity(props: {
                                 : undefined,
                         )}
                       >
-                        <StepIcon status={step.status} /> {step.label}
+                        <StepIcon status={step.status} job={job} /> {step.label}
                       </li>
                     ))}
                   </ol>

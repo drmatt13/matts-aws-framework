@@ -574,9 +574,9 @@ test("single-edit verification failures restore source without recording an appl
   } finally {
     builder.refresh = refresh;
     writeFileSync(serviceFile, original);
-    await builder.refresh();
     const journal = new SourceJournal(fixture);
     for (const pending of journal.pending()) journal.keepCurrent(pending.id, pending.fingerprint, "KEEP CURRENT SOURCE");
+    await builder.refresh();
   }
 });
 
@@ -595,9 +595,11 @@ test("single-edit verification failures preserve a concurrent editor's deletion"
   } finally {
     builder.refresh = refresh;
     writeFileSync(serviceFile, original);
-    await builder.refresh();
     const journal = new SourceJournal(fixture);
+    assert.ok(journal.pending().length > 0);
+    await assert.rejects(builder.refresh(), /source transaction needs recovery/i);
     for (const pending of journal.pending()) journal.keepCurrent(pending.id, pending.fingerprint, "KEEP CURRENT SOURCE");
+    await builder.refresh();
   }
 });
 

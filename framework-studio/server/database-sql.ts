@@ -5,6 +5,7 @@ import path from "node:path";
 import express from "express";
 import { SQL_DIRECTORY, type SavedSqlCommand, type SqlCatalog, type SqlExecutionRecord, type SqlExecutionResult, type SqlExecutionReview, type SqlSourceReview } from "../shared/database-sql";
 import { EditError, writeSourceChange } from "./edits/io";
+import { withSourceWriteSync } from "./edits/source-gate";
 import { sha256 } from "./files";
 import { sendJson } from "./http";
 import { resolvePrivateDatabaseTargets, type PrivateDatabaseTarget } from "./database-workbench";
@@ -150,6 +151,9 @@ export class DatabaseSqlService {
     if (this.sourceReviews.size >= 20) this.sourceReviews.clear(); this.sourceReviews.set(review.id, review); return review;
   }
   saveSource(id: string) {
+    return withSourceWriteSync(this.root, () => this.saveSourceOwned(id));
+  }
+  private saveSourceOwned(id: string) {
     const review = this.sourceReviews.get(id); if (!review || Date.parse(review.expiresAt) < Date.now()) throw new EditError(409, "SQL source review expired. Review again; nothing was saved.");
     this.sourceReviews.delete(id);
     const file = guardPath(this.root, review.path); mkdirSync(path.dirname(file), { recursive: true }); guardPath(this.root, review.path);

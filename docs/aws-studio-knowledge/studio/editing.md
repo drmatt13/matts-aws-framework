@@ -40,12 +40,30 @@ source:
   - framework-studio/server/database-workbench.ts
   - framework-studio/server/database-history.ts
   - framework-studio/server/database-application.ts
+  - framework-studio/server/agent-runtime/integration.ts
+  - framework-studio/server/agent-runtime/structured-proposal.ts
+  - framework-studio/server/edits/source-gate.ts
 related:
   - studio.source-indexing
   - studio.snapshots
   - studio.creation-connections
 ---
 # Inspector drafts and source transactions
+
+Inspector batch review can choose **Review as coding task** instead of direct **Apply
+All**. `BatchEditor.exportReviewedSource` rechecks the accepted plan and source inputs;
+the host stages those exact changes in a private workspace without an LLM call, runs
+final validation and creates the same immutable proposal used by general Coding tasks.
+The browser preserves its draft and opens that durable task. Handoff writes no live source;
+Coding approval remains separate. A later source import can make the retained inspector
+draft stale, using its existing conflict/refresh handling.
+
+Coding imports and existing source writers share the durable source gate and publication
+epoch. Imports use complete baseline checks, exact proposal digests and a write-ahead
+journal; an interrupted multi-file import is recoverable, not crash-atomic. Explicit
+restore/keep recovery checks the inspected current-source fingerprint and preserves
+intervening edits. See [Coding tasks](../../framework-studio/local-agent-lab.md#coding-tasks)
+for validation, candidate refresh, runtime restart and operational boundaries.
 
 The shared Rename action stages code and display names in this same draft. Authored
 inputs, secrets and input groups support source refactoring; other resource families

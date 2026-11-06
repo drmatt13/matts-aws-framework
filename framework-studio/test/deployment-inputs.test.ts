@@ -7,6 +7,7 @@ import { createDeploymentInput, initializeDeploymentInputs, withDeploymentInputs
 import { CDK_ENVIRONMENT_ID, isUndeclaredEnvironmentInput } from "../shared/deployment-inputs";
 import { REQUIRED_FRAMEWORK_INPUTS } from "../../cdk-app/framework-inputs";
 import { InfrastructureService } from "../server/infrastructure";
+import { sourcePublicationEpoch, withSourceRead } from "../server/edits/source-gate";
 
 import type { ModeModel } from "../shared/model";
 import { buildScene } from "../src/scene/build";
@@ -21,6 +22,21 @@ function fixture() {
   return root;
 }
 function remove(root: string) { assert.ok(path.resolve(root).startsWith(cache + path.sep)); rmSync(root, { recursive: true }); }
+
+test("startup reads existing deployment inputs under a source read lease without advancing the publication epoch", async () => {
+  const root = fixture();
+  try {
+    createDeploymentInput(root, "dev");
+    const epoch = sourcePublicationEpoch(root);
+    await withSourceRead(root, async () => {
+      assert.deepEqual(createDeploymentInput(root, "dev"), { file: "cdk-app/.env.dev", created: false });
+      assert.equal(sourcePublicationEpoch(root), epoch);
+      assert.throws(() => createDeploymentInput(root, "prod"), /cannot upgrade/);
+      assert.equal(existsSync(path.join(root, "cdk-app/.env.prod")), false);
+    });
+    assert.equal(sourcePublicationEpoch(root), epoch);
+  } finally { remove(root); }
+});
 const model: ModeModel = { mode: "dev", status: "ok", targets: [], routes: [], workflows: [], diagnostics: [], fields: {}, evaluatedInMs: 0, edges: [], resources: [
   { id: "resource:setting", path: ["setting"], kind: "input", fromEnv: "SETTING", default: "default", absent: false },
   { id: "resource:token", path: ["token"], kind: "secret", fromEnv: "TOKEN", absent: false },

@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, mock, test } from "node:test";
 import { SnapshotBuilder } from "../server/snapshot";
 import { EditService } from "../server/edits/transaction";
+import { withSourceWriteSync } from "../server/edits/source-gate";
 
 const require = createRequire(import.meta.url);
 const atomic = require("../../scripts/atomic-replace.cjs") as typeof import("../../scripts/atomic-replace.cjs");
@@ -86,4 +87,44 @@ test("initial snapshot I/O failure rejects without publishing a usable graph", a
     await assert.rejects(f.builder.refresh(), error => error === failure);
     assert.equal(f.builder.current, undefined);
   } finally { mock.restoreAll(); await f.builder.dispose(); f.cleanup(); }
+});
+
+test("an integration epoch invalidates an in-flight graph without publishing mixed or stale evidence", async () => {
+  const f = fixture();
+  try {
+    const first = await f.builder.refresh();
+    const cacheBefore = readFileSync(path.join(f.root, ".cache/framework-studio/cdk-links.json"), "utf8");
+    const evaluate = f.builder.pool.evaluate.bind(f.builder.pool);
+    mock.method(f.builder.pool, "evaluate", async (...args: Parameters<typeof evaluate>) => {
+      const result = await evaluate(...args);
+      withSourceWriteSync(f.root, () => {
+        writeFileSync(path.join(f.root, "framework-config/http.ts"), 'export const http = { "/qa": { directory: "/lambda_functions/qa", methods: ["GET"], memorySize: 256 } };\n');
+      });
+      return result;
+    });
+    await assert.rejects(f.builder.refresh(), /incomplete snapshot was discarded/);
+    assert.equal(f.builder.current!.snapshot.revision, first.snapshot.revision, "retain the last complete graph until a clean refresh");
+    assert.equal(f.builder.current!.snapshot.models.dev.stale, true, "retained graph is explicitly stale until evaluated at the new epoch");
+    assert.equal(f.builder.publicationState.status, "refresh_required");
+    assert.equal(readFileSync(path.join(f.root, ".cache/framework-studio/cdk-links.json"), "utf8"), cacheBefore, "an invalidated evaluation cannot publish its disk projection");
+    mock.restoreAll();
+    const next = await f.builder.refresh();
+    assert.notEqual(next.snapshot.revision, first.snapshot.revision);
+    assert.equal(next.snapshot.models.dev.status, "ok");
+  } finally { mock.restoreAll(); await f.builder.dispose(); f.cleanup(); }
+});
+
+test("source ownership cannot promote a snapshot from before an earlier write reservation", async () => {
+  const f = fixture();
+  try {
+    await f.builder.refresh();
+    withSourceWriteSync(f.root, () => { assert.equal(f.builder.current!.snapshot.models.dev.status, "ok", "an editor retains its own starting graph"); });
+    assert.equal(f.builder.current!.snapshot.models.dev.stale, true);
+    withSourceWriteSync(f.root, () => {
+      assert.equal(f.builder.current!.snapshot.models.dev.stale, true, "a later owner must refresh rather than promote old evidence");
+      assert.notEqual(f.builder.publicationState.status, "ready");
+    });
+    await f.builder.refresh();
+    assert.equal(f.builder.current!.snapshot.models.dev.status, "ok");
+  } finally { await f.builder.dispose(); f.cleanup(); }
 });

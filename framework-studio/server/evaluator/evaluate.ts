@@ -48,6 +48,7 @@ function frameworkFrom(loaded: Record<string, unknown>): FrameworkConfig {
 
 const started = performance.now();
 let config: FrameworkConfig | undefined;
+let privateConditionsUnavailable = false;
 let loadedOverrides: Readonly<Record<string, string>> = {};
 // Source previews travel over IPC and never touch authored files or module caches in
 // the live evaluators. tsx ultimately uses _compile for these CommonJS config modules.
@@ -92,23 +93,30 @@ process.once("message", (message: { type?: string; overrides?: Record<string, st
 
 });
 
-process.on("message", (message: { readonly type?: string; readonly id?: number; readonly request?: PreflightRequest; readonly outcomes?: import("../model/project").ProjectionOptions["outcomes"]; readonly error?: string }) => {
+process.on("message", (message: { readonly type?: string; readonly id?: number; readonly request?: PreflightRequest; readonly outcomes?: import("../model/project").ProjectionOptions["outcomes"]; readonly error?: string; readonly privateConditionsUnavailable?: boolean }) => {
   if (message.type === "conditions") {
     try {
       if (message.error) throw new Error(message.error);
-      const outcomes = message.outcomes ?? {};
+      privateConditionsUnavailable = message.privateConditionsUnavailable === true;
+      const outcomes = privateConditionsUnavailable
+        ? Object.fromEntries(listDeployConditions(config!).map(condition => [deployKey({ when: condition }), { dev: "unset" as const, prod: "unset" as const }]))
+        : message.outcomes ?? {};
       const lane = (selected: Mode): DeployInputs => ({ holds: condition => {
         const outcome = outcomes[deployKey({ when: condition })]?.[selected];
         if (!outcome) throw new Error("Missing deployment condition outcome.");
         return outcome === "holds";
       } });
       projection = { mode, inputs: { dev: lane("dev"), prod: lane("prod") }, outcomes };
-      send({ type: "model", model: withImplementationHealth(config!, projectModel(config!, projection, Math.round(performance.now() - started)), repositoryRoot, loadedOverrides) });
+      const projected = projectModel(config!, projection, Math.round(performance.now() - started));
+      const model = withImplementationHealth(config!, projected, repositoryRoot, loadedOverrides);
+      send({ type: "model", model: privateConditionsUnavailable ? { ...model, diagnostics: [...model.diagnostics, { severity: "warning", stage: "load", message: "Private deployment conditions were not evaluated. Conditional lanes are unknown; source approval does not authorize private-input access or AWS actions." }] } : model });
     } catch (error) { send({ type: "model", model: failedModel(mode, error, Math.round(performance.now() - started)) }); }
     return;
   }
   if (message?.type !== "preflight" || typeof message.id !== "number" || !message.request) return;
-  const result = config
+  const result = privateConditionsUnavailable
+    ? { mode, ok: false, diagnostics: [{ severity: "error", stage: "validate", message: "Private deployment condition outcomes are unknown. Inspector preflight cannot assert these lanes; use an isolated coding proposal and review its validation." }] }
+    : config
     ? preflight(config, message.request, projection, { root: repositoryRoot, overrides: loadedOverrides })
     : {
         mode,

@@ -6,6 +6,7 @@ import type { DeploymentInputApply, DeploymentInputDetails, DeploymentInputEdit,
 import type { Mode, Snapshot } from "../shared/model";
 import { deploymentInputPath, inputText, sensitiveName } from "./deployment-inputs";
 import { EditError } from "./edits/io";
+import { withSourceWrite } from "./edits/source-gate";
 import { diffOf } from "./edits/plan";
 import { sha256 } from "./files";
 import { domainSettingsProblems } from "../shared/domain-settings";
@@ -143,6 +144,9 @@ export class DeploymentInputService {
     return response;
   }
   async apply(id: string): Promise<DeploymentInputApply> {
+    return withSourceWrite(this.root, () => this.applyOwned(id));
+  }
+  private async applyOwned(id: string): Promise<DeploymentInputApply> {
     const plan = this.plans.get(id);
     if (!plan) throw new EditError(410, "This inputs review expired. Review the draft again.");
     const unchanged = () => plan.files.every((file) => sha256(this.text(file.mode)) === file.hash);

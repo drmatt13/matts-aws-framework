@@ -10,6 +10,7 @@ import { callIpc, privateEndpoint } from "../server/operations/ipc";
 import { identityAlive } from "../server/operations/identity";
 import { prepareIntent } from "../server/operations/adapter";
 import { OperationStore } from "../server/operations/store";
+import { sourceCoordinationState } from "../server/edits/source-gate";
 
 const repository = path.resolve(__dirname, "../..");
 const clientModule = path.join(repository, "framework-studio/server/operations/client.ts");
@@ -187,7 +188,9 @@ test("worker death preserves uncertainty and locks across coordinator restart wi
     assert.match(interrupted!.view.recovery!, /not be replayed/);
     await until(async () => { try { process.kill(commandPid, 0); return false; } catch { return true; } }, Boolean);
     assert.equal((await client.submit({ kind: "framework-check", params: {}, requestKey: "worker-loss-request" })).id, job.id);
-    await assert.rejects(client.submit({ kind: "framework-check", params: {}, requestKey: "conflicting-new-attempt" }), /holds workspace-tooling/);
+    await assert.rejects(client.submit({ kind: "framework-check", params: {}, requestKey: "conflicting-new-attempt" }), /Source integration or tooling is active or interrupted/);
+    assert.equal(sourceCoordinationState(root).status, "recovery_required", "the killed worker retains source admission until explicit recovery");
+    assert.equal(sourceCoordinationState(root).ownerPid, worker.pid);
     const coordinator = await client.ping();
     process.kill(coordinator.pid, "SIGKILL");
     await until(async () => { try { process.kill(coordinator.pid, 0); return false; } catch { return true; } }, Boolean);

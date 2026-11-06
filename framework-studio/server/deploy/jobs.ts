@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import type { ChildProcess } from "node:child_process";
 import type { JobLogLine, JobStatus, JobView } from "../../shared/deploy";
 import { lineSplitter, start, stopTree, type CommandSpec } from "./process";
+import { withSourceRead, withSourceWrite } from "../edits/source-gate";
 
 /**
  * Every operation Deploy & Run performs runs as a job: an attached child
@@ -59,6 +60,8 @@ export interface JobSpec {
   readonly cancelNote?: string;
   /** Called once the job has ended, whatever the outcome. */
   readonly onSettled?: (job: JobView) => void;
+  /** Bounded tooling reserves source; persistent development watchers do not. */
+  readonly sourceReservation?: { readonly root: string; readonly mode: "read" | "write" };
 }
 
 interface Job {
@@ -273,6 +276,21 @@ export class JobManager {
   }
 
   private async execute(job: Job): Promise<void> {
+    try {
+      const reservation = job.spec!.sourceReservation;
+      if (!reservation) return await this.executeOwned(job);
+      const reserve = reservation.mode === "write" ? withSourceWrite : withSourceRead;
+      await reserve(reservation.root, () => this.executeOwned(job));
+    } catch (error) {
+      const summary = error instanceof Error ? error.message : "The source operation could not be admitted.";
+      this.append(job, summary, "err"); this.flushLog(job);
+      for (const lock of job.spec!.locks) if (this.locks.get(lock) === job.view.id) this.locks.delete(lock);
+      this.update(job, { status: job.cancelled ? "cancelled" : "failed", endedAt: new Date().toISOString(), summary });
+      try { job.spec!.onSettled?.(job.view); } catch { /* Preserve the admission failure. */ }
+      job.settle?.(job.view);
+    }
+  }
+  private async executeOwned(job: Job): Promise<void> {
     const spec = job.spec!;
     const context = this.context(job);
     let status: JobStatus = "succeeded";

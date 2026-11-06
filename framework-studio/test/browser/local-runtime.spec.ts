@@ -8,10 +8,9 @@ import { connectionCatalogFixture } from "./support/aws-connections";
 
 const controlFor = (page: Page) => page.getByRole("switch", { name: "Local runtime", exact: true, includeHidden: true });
 const detailsFor = (page: Page) => page.getByRole("button", { name: "Local runtime details", exact: true });
-async function closeActivity(page: Page) {
-  const collapse = page.getByRole("region", { name: "Activity", exact: true }).getByRole("button", { name: "Activity: collapse panel", exact: true });
-  await expect(collapse).toBeVisible();
-  await collapse.click();
+async function expectActivityClosed(page: Page) {
+  const toggle = page.getByRole("region", { name: "Activity", exact: true }).getByRole("button", { name: "Activity: expand panel", exact: true });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
 }
 const dockerJob = (status: JobView["status"]): JobView => ({
   id: "docker-start-job", kind: "docker-start", title: "Start Docker Desktop", params: {}, status, startedAt: NOW, lastSeq: 0,
@@ -35,14 +34,14 @@ for (const width of [1440, 390]) test(`runtime starts and stops only after obser
   await expect(control).toBeDisabled();
   await expect(control).toHaveAttribute("aria-busy", "true");
   await expect(control).toContainText("Starting");
-  await expect(page.getByRole("region", { name: "Activity", exact: true }).getByRole("button", { name: "Activity: collapse panel", exact: true })).toBeVisible();
+  await expectActivityClosed(page);
   // A completed startup command still cannot claim ready while the observation is pending.
   await runtime.finish(localRuntimeView("starting"));
   await expect(control).toBeChecked();
   await expect(control).not.toContainText("Running");
   await runtime.publish(localRuntimeView("ready"));
   await expect(control).toBeChecked();
-  await closeActivity(page);
+  await expectActivityClosed(page);
   await expect(control).toContainText("Running");
   await assertAccessible(page);
   await page.screenshot({ path: testInfo.outputPath("runtime-ready.png"), fullPage: true });
@@ -54,11 +53,39 @@ for (const width of [1440, 390]) test(`runtime starts and stops only after obser
   await expect(control).toContainText("Stopping");
   await runtime.finish(localRuntimeView());
   await expect(control).not.toBeChecked();
-  await closeActivity(page);
+  await expectActivityClosed(page);
   await expect(control).toContainText("Stopped");
   expect(runtime.submitted.map(entry => entry.kind)).toEqual(["local-start", "local-stop"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await assertAccessible(page);
+});
+
+for (const open of [false, true]) test(`accepting a runtime toggle preserves Agent mode with the tray ${open ? "open" : "closed"}`, async ({ page, studio }) => {
+  const runtime = installLocalRuntime(studio);
+  studio.reply("GET", "/api/agent-lab/status", route => route.fulfill({ json: {
+    providers: [{ id: "codex", label: "Codex", available: false, detail: "Fixture CLI is not installed." }], busy: false,
+  } }));
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let requested = false;
+  await page.route("**/api/deploy/operations", async route => {
+    requested = true;
+    await pending;
+    await route.fallback();
+  });
+  await studio.goto();
+  await controlFor(page).click();
+  await expect.poll(() => requested).toBe(true);
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
+  const agent = activity.getByRole("tab", { name: "Agent", exact: true });
+  await agent.click();
+  const toggle = activity.getByRole("button", { name: /^Agent:/ });
+  if (!open) await toggle.click();
+  release();
+  await expect.poll(() => runtime.submitted.length).toBe(1);
+  await runtime.finish(localRuntimeView("ready"));
+  await expect(agent).toHaveAttribute("aria-selected", "true");
+  await expect(toggle).toHaveAttribute("aria-expanded", String(open));
 });
 
 test("a pending local observation never claims stopped or starts compute", async ({ page, studio }) => {
@@ -130,7 +157,7 @@ test("a running local runtime can be stopped even after its AWS deployment disap
   await page.keyboard.press("Space");
   await expect.poll(() => runtime.submitted.map(entry => entry.kind)).toEqual(["local-stop"]);
   await runtime.finish(localRuntimeView());
-  await closeActivity(page);
+  await expectActivityClosed(page);
   await expect(control).not.toBeChecked();
   await expect(control).toBeDisabled();
   expect(runtime.submitted.some(entry => entry.kind === "local-start")).toBe(false);
@@ -200,22 +227,27 @@ test("partial startup failure keeps cleanup available and a later start is expli
   await control.click();
   await expect.poll(() => runtime.submitted.length).toBe(1);
   await runtime.finish(localRuntimeView("blocked"), "failed");
-  await closeActivity(page);
+  await expectActivityClosed(page);
   await expect(control).toBeChecked();
   await detailsFor(page).click();
   const help = page.getByRole("dialog", { name: "Local runtime", exact: true });
   await expect(help).toBeVisible();
   await expect(help).toContainText(/prisma-verify|Needs attention|Database/i);
   await expect(help.getByRole("button", { name: "View activity", exact: true })).toBeVisible();
+  await help.getByRole("button", { name: "View activity", exact: true }).click();
+  const collapse = page.getByRole("region", { name: "Activity", exact: true }).getByRole("button", { name: "Activity: collapse panel", exact: true });
+  await expect(collapse).toBeVisible();
+  await collapse.click();
+  await detailsFor(page).click();
   await help.getByRole("button", { name: "Stop runtime", exact: true }).click();
   await expect.poll(() => runtime.submitted.map(entry => entry.kind)).toEqual(["local-start", "local-stop"]);
   await runtime.finish(localRuntimeView());
-  await closeActivity(page);
+  await expectActivityClosed(page);
   await expect(control).not.toBeChecked();
   await control.click();
   await expect.poll(() => runtime.submitted.map(entry => entry.kind)).toEqual(["local-start", "local-stop", "local-start"]);
   await runtime.finish(localRuntimeView("ready"));
-  await closeActivity(page);
+  await expectActivityClosed(page);
   await expect(control).toBeChecked();
 });
 

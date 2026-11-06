@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type { CommandInfo, CommandResult } from "../shared/api";
 import { start, stopTree, tethered } from "./deploy/process";
+import { withSourceRead, withSourceWrite } from "./edits/source-gate";
 
 /**
  * The repository commands the studio can run, and no others.
@@ -61,7 +62,8 @@ export class CommandRunner {
     }
     if (this.running) throw Object.assign(new Error(`${this.running} is still running.`), { status: 409 });
     this.running = name;
-    const pending = this.execute(name, command);
+    const reserve = command.writes ? withSourceWrite : withSourceRead;
+    const pending = reserve(this.repositoryRoot, () => this.execute(name, command));
     this.pending = pending;
     try { return await pending; }
     finally { this.pending = undefined; this.running = undefined; }

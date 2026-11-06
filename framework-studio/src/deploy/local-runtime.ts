@@ -1,7 +1,6 @@
 import { queryOptions, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import type { JobView, LocalRunView } from "../../shared/deploy";
-import { openActivity } from "../activity";
 import { call } from "../http";
 import { operationsQuery } from "../operations/queries";
 import { useStudio } from "../studio";
@@ -44,7 +43,6 @@ export function useLocalRuntime() {
         account: status?.context.account, region: status?.context.region, mode: "dev", export: true };
       const accepted = await deployApi.operate(kind, params);
       rememberJob(client, accepted);
-      openActivity(accepted.id);
       await client.invalidateQueries({ queryKey: localRuntimeQuery(repository).queryKey });
       return accepted;
     },

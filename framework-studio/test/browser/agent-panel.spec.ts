@@ -27,26 +27,28 @@ const question = (page: Page) => agentPanel(page).getByRole("textbox", { name: "
 const toggle = (page: Page) => tray(page).getByRole("button", { name: /^(Activity|Agent): (expand|collapse) panel$/ });
 async function openAgent(page: Page) {
   await agentTab(page).click();
-  if (await toggle(page).getAttribute("aria-expanded") === "false") await toggle(page).click();
   await expect(agentPanel(page)).toBeVisible();
+  await expect(question(page)).toBeVisible();
 }
 
-for (const width of [1440, 390]) test(`Choosing a panel mode preserves the drawer state at ${width}px`, async ({ page, studio }) => {
+for (const width of [1440, 390]) test(`Clicking either panel mode opens its drawer and preserves drafts at ${width}px`, async ({ page, studio }) => {
   await page.setViewportSize({ width, height: 844 });
   installAgents(studio);
   await studio.goto("/graphql");
   const closed = (await tray(page).boundingBox())!;
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+  // The already-selected Activity tab opens the initially collapsed drawer too.
+  await activityTab(page).click();
+  await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(tray(page).getByRole("tabpanel", { name: "Activity", exact: true })).toBeVisible();
+  await activityTab(page).click();
+  await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+  await toggle(page).click();
+  await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await agentTab(page).click();
   await expect(agentTab(page)).toHaveAttribute("aria-selected", "true");
-  await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
-  await expect(agentPanel(page)).toBeHidden();
-  expect((await tray(page).boundingBox())!.height).toBe(closed.height);
-  await activityTab(page).click();
-  await expect(activityTab(page)).toHaveAttribute("aria-selected", "true");
-  await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await agentTab(page).click();
-  await toggle(page).click();
   await expect(agentPanel(page)).toBeVisible();
   const expanded = (await tray(page).boundingBox())!;
   expect(expanded.height).toBeGreaterThan(closed.height + 100);
@@ -62,8 +64,9 @@ for (const width of [1440, 390]) test(`Choosing a panel mode preserves the drawe
   await toggle(page).click();
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await activityTab(page).click();
-  await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
-  expect((await tray(page).boundingBox())!.height).toBe(closed.height);
+  await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(tray(page).getByRole("tabpanel", { name: "Activity", exact: true })).toBeVisible();
+  await assertAccessible(page);
 });
 
 test("The panel animates through intermediate heights and can reverse while opening", async ({ page, studio }) => {
@@ -161,7 +164,6 @@ test("Model choices belong to each provider and the selected model accompanies t
   await activityTab(page).click();
   await toggle(page).click();
   await agentTab(page).click();
-  await toggle(page).click();
   await expect(model).toHaveValue("codex-reasoning");
   await provider.selectOption("claude");
   await expect(model).toHaveValue("claude-deep");
@@ -383,13 +385,17 @@ test("Agent mode tabs support arrow, Home and End keyboard navigation", async ({
   await expect(activityTab(page)).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("End");
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
-  await toggle(page).click();
+  await page.keyboard.press("Enter");
+  await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await question(page).fill("A draft kept when Escape closes the panel.");
   await question(page).press("Escape");
   await expect(agentPanel(page)).toBeHidden();
   await expect(page.locator('[data-ui="activity-drawer"]')).toHaveCount(0);
   await expect(agentTab(page)).toBeFocused();
   await expect(tray(page).getByRole("button", { name: "Agent: expand panel", exact: true })).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Space");
+  await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(question(page)).toHaveValue("A draft kept when Escape closes the panel.");
 });
 
 test("A failed answer can be retried without duplicating the question, and clearing a chat is explicit", async ({ page, studio }) => {

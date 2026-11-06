@@ -24,6 +24,9 @@ source:
   - framework-studio/server/operations/worker.ts
   - framework-studio/server/operations/ipc.ts
   - framework-studio/shared/operations.ts
+  - framework-studio/server/agent-runtime/
+  - framework-studio/server/edits/source-gate.ts
+  - framework-studio/server/evaluator/restricted.ts
 related:
   - studio.interface
   - studio.snapshots
@@ -62,6 +65,10 @@ and disposal, and [operations](../deployment/operations.md) for runner lifecycle
 | `AwsConnectionsService` | Machine-local profile catalog, identity observations, native authentication coordination, reviewed non-secret AWS configuration and profile deletion | Deployment approval, complete IAM authorization or browser access to credentials |
 | `CommandRunner` | Fixed `framework:check` and confirmed `framework:generate` scripts | A request-controlled shell or the complete operations surface |
 | `AgentLabService` | Bounded question answering through local CLIs, experimental demo planning and a separate guarded save of one demo string declaration | Live source/graph/log inspection, arbitrary agent-authored code execution or general framework editing |
+| `AgentTaskService`, native provider adapters and pinned agent host | Durable Coding tasks, restricted native editing in private saved-source copies, validation, immutable proposals and explicit source approval | AWS/database/deployment authority, arbitrary permission expansion or automatic replay of uncertain commands |
+| Agent integration and shared source gate | Baseline/digest checks, serialized imports, durable recovery, publication coordination and explicit kept/restored outcomes | Atomic multi-file filesystem writes or undo of external command side effects |
+| Managed Studio runtime activation | Explicit restart of a registered observer after its reviewed source is applied | Source approval itself, dependency installation or arbitrary process control |
+| Agent-host runtime upgrade | Explicit request-identified transition to a newly pinned host implementation with retained task state | Source import, Studio observer restart or permission to terminate unrelated processes |
 
 Each authority has its own typed request and checks. The generic configuration writer
 allows existing `framework.config.ts` and `framework-config/**/*.ts` by real path,
@@ -116,11 +123,28 @@ the server-owned plan ID, rechecks files and revision, writes, reloads and verif
 predicted result. The browser does not supply arbitrary configuration text to the generic
 writer. The Prisma editor is a distinct fixed-file text authority.
 
-Batch/resource multi-file writes use `SourceJournal` and an exclusive checkout lock.
+Batch/resource multi-file writes use `SourceJournal` and the durable SQLite source gate
+shared with coding imports and source publication.
 The private write-ahead record supports explicit interrupted-write recovery. A multi-file
 apply is not a crash-atomic filesystem transaction; rollback restores only bytes still
 matching the transaction's writes and preserves intervening edits. In-memory reviews are
-lost on restart. Git remains the history mechanism.
+lost on restart. Coding tasks, immutable proposals and their approval records are durable
+in the independent host. Git remains an optional developer history mechanism; Coding does
+not create branches or commits to capture the saved working tree.
+
+Coding HTTP routes proxy to a private per-checkout Unix-socket host. Its pinned code and
+task state live outside editable source. Native CLIs own coding/tool execution inside the
+named execution policy; the host owns final validation, frozen blobs and digest-bound
+approval. Browser replay is observational and disconnection is not cancellation. Source
+review and runtime activation are separate durable outcomes. See
+[Coding tasks](../../framework-studio/local-agent-lab.md#coding-tasks) for the current
+workflow, limitations and source owners.
+
+An inspector `/edits/batch/coding-review` handoff exports an unchanged, accepted typed
+review to that same private proposal pipeline. No model call or live source write occurs
+at handoff. The original direct batch apply remains supported. Architecture previews are
+separate restricted evaluations of frozen baseline and candidate source; they never
+publish a live Studio snapshot or assert observed AWS state.
 
 ## API navigation
 
@@ -148,6 +172,7 @@ All prefixes in this table are relative to `/api`.
 | `/websockets/defaults` | Starting endpoint URLs; not a proxy for WebSocket traffic |
 | `/commands/:name` | Fixed allowlisted commands with bounded output and runtime |
 | `/agent-lab` | `/status` checks native CLI login; `/models?provider=codex\|claude` discovers the CLI's model choices without inference; `/chat` answers a bounded conversation with optional validated model selection, fixed product context and cancellation on disconnect; `/plan` and `/apply` retain the fixed demo edit experiment. See [local coding agents](../../framework-studio/local-agent-lab.md) |
+| `/agent-tasks` | Durable Coding list/submission; `/:id/events?after=<seq>` replay; proposal, cancel/resume, permission, reject, digest-bound approve/refresh/activate and terminal cleanup; `/recovery` inspection and explicit typed restore/keep; `/runtime-upgrade` inspected host status and explicit UUID-bound host restart |
 
 Unknown API routes return JSON 404. There are no `/edits/undo` or `/edits/redo` routes.
 The generic mutation protocol version is checked separately from authentication; a stale
@@ -168,8 +193,14 @@ record is preserved rather than automatically reclaimed. The runner is local mac
 infrastructure, separate from application Compose and its stop/cleanup lifecycle.
 
 Evaluator children receive synthetic mode inputs and condition outcomes rather than
-authored environment-file values. They still inherit the host process environment and
-execute repository code with filesystem access. Public `resource.value` values and
+authored environment-file values. The original trusted-source evaluator retains host
+filesystem/environment access. Before an agent import, the source gate durably requires
+the restricted evaluator for subsequent publication, including after restart. That
+evaluator reads source under the native policy with a restricted environment, writable
+scratch and bounded verified output artifacts. It does not use the private-condition
+broker; unresolved condition lanes remain unknown, and dependent inspector preflight
+fails closed. Missing native capability does not fall back to trusted evaluation.
+Public `resource.value` values and
 declared defaults are ordinary source metadata and may appear in snapshots. Private
 environment values are handled by the dedicated service, not the graph or source journal.
 

@@ -5,6 +5,7 @@ import { assertCreationFile } from "./creation";
 import { EditError, sourceContents, writeSourceChange } from "./io";
 import { sha256, toRelative } from "../files";
 import type { SourceRecovery } from "../../shared/source-recovery";
+import { assertSourceGateAvailable, withSourceRecoverySync } from "./source-gate";
 
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null; readonly authority?: "native" | "resource" }
 interface Journal { readonly version: 1; readonly id: string; readonly root: string; readonly ownerPid?: number; readonly authority?: "resource"; readonly label: string; readonly createdAt: string; readonly changes: readonly Change[]; readonly status: "pending" | "complete" | "restored" | "conflicted" }
@@ -83,6 +84,7 @@ export class SourceJournal {
     catch (error) { const code = (error as NodeJS.ErrnoException).code ?? ""; if (!["EINVAL", "ENOTSUP", "EISDIR"].includes(code) && !(process.platform === "win32" && ["EPERM", "EACCES"].includes(code))) throw error; }
   }
   begin(label: string, changes: readonly Change[], authority?: "resource"): string {
+    assertSourceGateAvailable(this.root);
     const root = realpathSync(this.root);
     if (active.get(root)?.size) throw new EditError(409, "A source transaction is still applying. Wait for its result before writing more source.");
     this.assertFolder();
@@ -141,6 +143,11 @@ export class SourceJournal {
   }
   private fingerprint(journal: Journal): string { return sha256(JSON.stringify(journal.changes.map(change => [change.file, sourceContents(this.sourceFile(journal, change.file, change.authority))]))); }
   keepCurrent(id: string, fingerprint: string, approval: string): readonly SourceRecovery[] {
+    if (approval !== "KEEP CURRENT SOURCE") throw new EditError(422, "Review the current files and type KEEP CURRENT SOURCE to finish recovery without restoring them.");
+    this.read(id); // Validate the selected record before claiming abandoned authority.
+    return withSourceRecoverySync(this.root, () => this.keepCurrentOwned(id, fingerprint, approval));
+  }
+  private keepCurrentOwned(id: string, fingerprint: string, approval: string): readonly SourceRecovery[] {
     const journal = this.read(id);
     return this.recover(journal, () => {
     if (approval !== "KEEP CURRENT SOURCE" || !["pending", "conflicted"].includes(journal.status) && !this.ownsStaleLock(journal)) throw new EditError(422, "Review the current files and type KEEP CURRENT SOURCE to finish recovery without restoring them.");
@@ -149,6 +156,11 @@ export class SourceJournal {
     });
   }
   restore(id: string, approval: string): readonly SourceRecovery[] {
+    if (approval !== "RESTORE SOURCE") throw new EditError(422, "Type RESTORE SOURCE to restore files still matching this interrupted transaction. Later user edits are preserved.");
+    this.read(id);
+    return withSourceRecoverySync(this.root, () => this.restoreOwned(id, approval));
+  }
+  private restoreOwned(id: string, approval: string): readonly SourceRecovery[] {
     if (approval !== "RESTORE SOURCE") throw new EditError(422, "Type RESTORE SOURCE to restore files still matching this interrupted transaction. Later user edits are preserved.");
     const journal = this.read(id);
     return this.recover(journal, () => {

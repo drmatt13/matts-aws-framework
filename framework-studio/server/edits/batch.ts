@@ -44,10 +44,12 @@ import { planImplementation } from "./implementation-scaffold";
 import { planConnection } from "./connections";
 import { planWorkloadRemoval } from "./removal";
 import { SourceJournal } from "./journal";
+import { withSourceWrite } from "./source-gate";
 import { readWorkloadOperation } from "../../shared/workload-operations";
 import { planIdentityPolicy } from "../identity-policy-source";
 import { presentRelationship } from "../../src/connection-presentation";
 import { indexModel } from "../../src/lookup";
+import type { ReviewedStructuredSource } from "../agent-runtime/structured-proposal";
 
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null }
 interface BatchChanges {
@@ -583,6 +585,28 @@ export class BatchEditor {
     } finally { await pool.dispose(); }
   }
   async apply(planId: string): Promise<ApplyResponse> {
+    const reviewed = this.plans.get(planId);
+    if (!reviewed) throw new EditError(410, "This review expired. Your draft is preserved; review it again.");
+    if (!reviewed.response.ok) throw new EditError(422, "Fix the rejected settings before applying this draft.");
+    // Reject known stale proposals before reserving a new publication epoch.
+    // The owned path repeats these checks to cover a competing writer.
+    this.unchanged(reviewed.revision, reviewed.hashes, reviewed.triggerSources, reviewed.generationInputs, reviewed.namingHashes);
+    this.namingUnchanged(reviewed);
+    for (const change of reviewed.changes) if (sourceContents(change.file) !== change.before) throw new EditError(409, `${toRelative(this.root, change.file)} changed after review.`);
+    this.checkRemovalConsumers(reviewed, this.state());
+    return withSourceWrite(this.root, () => this.applyOwned(planId));
+  }
+  /** Internal handoff to common immutable review; never reconstruct bytes from a browser diff. */
+  exportReviewedSource(planId: string): ReviewedStructuredSource {
+    const plan = this.plans.get(planId);
+    if (!plan) throw new EditError(410, "This review expired. Review current source again.");
+    if (!plan.response.ok) throw new EditError(422, "Fix rejected settings before creating a source proposal.");
+    this.unchanged(plan.revision, plan.hashes, plan.triggerSources, plan.generationInputs, plan.namingHashes);
+    this.namingUnchanged(plan);
+    for (const change of plan.changes) if (sourceContents(change.file) !== change.before) throw new EditError(409, `${toRelative(this.root, change.file)} changed after review.`);
+    return { planId, revision: plan.revision, changes: plan.changes.map(change => ({ path: toRelative(this.root, change.file), before: change.before, after: change.after })), preflight: structuredClone(plan.response.preflight), select: plan.response.select, entityRemap: plan.entityRemap ? { ...plan.entityRemap } : undefined };
+  }
+  private async applyOwned(planId: string): Promise<ApplyResponse> {
     const plan = this.plans.get(planId);
     if (!plan) throw new EditError(410, "This review expired. Your draft is preserved; review it again.");
     if (!plan.response.ok) throw new EditError(422, "Fix the rejected settings before applying this draft.");
@@ -592,6 +616,12 @@ export class BatchEditor {
   }
   private namingUnchanged(entry: BatchChanges): void {
     if (entry.namingFingerprint && namingSourceFingerprint(this.root) !== entry.namingFingerprint) throw new EditError(409, "Source files or project configuration changed since rename review. Your draft is preserved; review again.");
+  }
+  private checkRemovalConsumers(entry: BatchChanges, state: StudioState): void {
+    withCommentReview(this.root, entry.commentOptions, () => {
+      for (const edit of entry.edits) if (edit.kind === "removeNetwork") planNetworkRemoval(this.root, state, edit.network, new SourceFiles());
+      for (const edit of entry.edits) if (edit.kind === "removeWorkload") planWorkloadRemoval(this.root, state, edit.target, new Map());
+    });
   }
   private async write(entry: BatchChanges): Promise<ApplyResponse> {
     this.namingUnchanged(entry);
@@ -614,10 +644,7 @@ export class BatchEditor {
       else if (!handlers.includes(change.file)) assertWritable(this.root, toRelative(this.root, change.file));
       if (sourceContents(change.file) !== change.before) throw new EditError(409, `${toRelative(this.root, change.file)} changed. Your draft is preserved; no files were written.`);
     }
-    const checkNetworkConsumers = () => withCommentReview(this.root, entry.commentOptions, () => {
-      for (const edit of entry.edits) if (edit.kind === "removeNetwork") planNetworkRemoval(this.root, state, edit.network, new SourceFiles());
-      for (const edit of entry.edits) if (edit.kind === "removeWorkload") planWorkloadRemoval(this.root, state, edit.target, new Map());
-    });
+    const checkNetworkConsumers = () => this.checkRemovalConsumers(entry, state);
     checkNetworkConsumers();
     const routes = entry.routes;
     const checked = await this.validate(Object.fromEntries(changes.filter((change) => change.after !== null).map((change) => [change.file, change.after!])), state, routes, undefined, entry.creation, entry.edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), changes.filter(change => change.after === null).map(change => change.file), !!entry.entityRemap || entry.edits.some(edit => edit.kind === "resourceConfig"));

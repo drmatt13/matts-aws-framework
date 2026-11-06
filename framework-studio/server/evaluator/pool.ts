@@ -6,6 +6,8 @@ import { writeModeInputs, resolveDeployOutcomes } from "../inputs";
 import type { PreflightRequest, PreflightResult } from "../model/preflight";
 import { failedModel } from "../model/project";
 import { withCatalogContext } from "../model/catalog-context";
+import { restrictedSourceEvaluationRequired } from "../edits/source-gate";
+import { RestrictedEvaluator } from "./restricted";
 
 /**
  * The dev and prod evaluators, kept alive between questions and replaced
@@ -28,13 +30,13 @@ interface Pending {
 
 /** One Studio owner's active evaluators, including short-lived review pools. */
 export class EvaluatorLifetime {
-  private readonly evaluators = new Set<Evaluator>();
+  private readonly evaluators = new Set<{ dispose(): Promise<void> }>();
   private closed = false;
   private disposal: Promise<void> | undefined;
 
   assertOpen(): void { if (this.closed) throw new Error("The Studio evaluator lifetime is closed."); }
-  retain(evaluator: Evaluator): void { this.assertOpen(); this.evaluators.add(evaluator); }
-  release(evaluator: Evaluator): void { this.evaluators.delete(evaluator); }
+  retain(evaluator: { dispose(): Promise<void> }): void { this.assertOpen(); this.evaluators.add(evaluator); }
+  release(evaluator: { dispose(): Promise<void> }): void { this.evaluators.delete(evaluator); }
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     this.closed = true;
@@ -157,7 +159,7 @@ export interface Evaluation {
 
 /** Starts a dev and a prod evaluator and waits for both models. */
 export class EvaluatorPool {
-  private current: { dev: Evaluator; prod: Evaluator } | undefined;
+  private current: { dev: Evaluator | RestrictedEvaluator; prod: Evaluator | RestrictedEvaluator } | undefined;
 
   constructor(
     private readonly repositoryRoot: string,
@@ -167,9 +169,12 @@ export class EvaluatorPool {
 
   async evaluate(overrides: Readonly<Record<string, string>> = {}): Promise<Evaluation> {
     void this.dispose();
+    // The importer sets this durable requirement before the first replacement.
+    // Failed sandbox setup never falls back to privileged evaluation.
+    const Backend = restrictedSourceEvaluationRequired(this.repositoryRoot) ? RestrictedEvaluator : Evaluator;
     const pair = {
-      dev: new Evaluator("dev", this.repositoryRoot, this.log, overrides, this.lifetime),
-      prod: new Evaluator("prod", this.repositoryRoot, this.log, overrides, this.lifetime),
+      dev: new Backend("dev", this.repositoryRoot, this.log, overrides, this.lifetime),
+      prod: new Backend("prod", this.repositoryRoot, this.log, overrides, this.lifetime),
     };
     this.current = pair;
     const [dev, prod] = await Promise.all([pair.dev.model, pair.prod.model]);

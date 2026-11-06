@@ -1,16 +1,23 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from "react";
 
 /** Presentation only: the shared shell length also keeps the map stationary. */
-export function useActivityResize({ drawer, bar, open }: {
+export function useActivityResize({ drawer, bar, open, onExpand, onCollapse }: {
   drawer: RefObject<HTMLDivElement | null>;
   bar: RefObject<HTMLDivElement | null>;
   open: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
 }) {
   const [height, setHeight] = useState<number>();
   const [observedHeight, setObservedHeight] = useState(0);
-  const [limits, setLimits] = useState({ min: 120, max: 340 });
+  const [limits, setLimits] = useState({ min: 100, max: 340 });
   const root = useRef<HTMLElement | null>(null);
-  const gesture = useRef<{ id: number; y: number; height: number; moved: boolean } | undefined>(undefined);
+  const resetOnOpen = useRef(false);
+  const suppressClick = useRef(false);
+  const gesture = useRef<{
+    id: number; y: number; height: number; value: number; moved: boolean; opening: boolean;
+    target: HTMLElement; capture: HTMLElement;
+  } | undefined>(undefined);
 
   useLayoutEffect(() => {
     const element = drawer.current;
@@ -31,7 +38,7 @@ export function useActivityResize({ drawer, bar, open }: {
       const slotMax = Math.min(belowNavigation, Math.max(barHeight + 1, belowNavigation - 200));
       shell.style.setProperty("--activity-slot-max", `${slotMax}px`);
       const max = Math.max(0, Math.floor(shellHeight - barHeight - 1));
-      setLimits(previous => previous.max === max ? previous : { min: Math.min(120, max), max });
+      setLimits(previous => previous.max === max ? previous : { min: Math.min(100, max), max });
       setObservedHeight(element.firstElementChild?.getBoundingClientRect().height ?? 0);
     };
     measure();
@@ -53,45 +60,88 @@ export function useActivityResize({ drawer, bar, open }: {
   }, [bar, drawer]);
 
   useLayoutEffect(() => {
-    if (height !== undefined) root.current?.style.setProperty("--activity-drawer", `${Math.max(limits.min, Math.min(limits.max, height))}px`);
+    if (height !== undefined) root.current?.style.setProperty("--activity-drawer", `${Math.max(gesture.current?.opening ? 0 : limits.min, Math.min(limits.max, height))}px`);
   }, [height, limits]);
+
+  useLayoutEffect(() => {
+    if (!open || !resetOnOpen.current) return;
+    resetOnOpen.current = false;
+    setHeight(undefined);
+    // Reset only on reopening so the closing slide starts at the dragged height.
+    root.current?.style.removeProperty("--activity-drawer");
+  }, [open]);
 
   const resize = (value: number) => setHeight(Math.max(limits.min, Math.min(limits.max, value)));
   const finish = () => {
     gesture.current = undefined;
     root.current?.removeAttribute("data-activity-resizing");
   };
+  const collapse = () => {
+    finish();
+    resetOnOpen.current = true;
+    onCollapse();
+  };
+  const release = (event: PointerEvent<HTMLElement>) => {
+    const start = gesture.current;
+    if (!start || start.id !== event.pointerId || start.target !== event.currentTarget) return;
+    if (start.moved && start.value < limits.min) collapse();
+    else finish();
+    if (start.capture.hasPointerCapture(event.pointerId)) start.capture.releasePointerCapture(event.pointerId);
+  };
   const pointer = {
     onPointerDown(event: PointerEvent<HTMLElement>) {
-      if (!open || event.button !== 0 || !event.isPrimary) return;
-      gesture.current = { id: event.pointerId, y: event.clientY, height: drawer.current?.getBoundingClientRect().height ?? 0, moved: false };
-      event.currentTarget.setPointerCapture(event.pointerId);
+      suppressClick.current = false;
+      const fromBar = event.currentTarget === bar.current;
+      if (fromBar === open || event.button !== 0 || !event.isPrimary) return;
+      const control = (event.target as Element).closest<HTMLElement>("button, a, input, select, textarea");
+      if (fromBar && control && control.getAttribute("aria-controls") !== "studio-activity-drawer") return;
+      const value = open ? drawer.current?.getBoundingClientRect().height ?? 0 : 0;
+      // Capture on the toggle itself so a press without a drag still clicks it.
+      const capture = fromBar ? control ?? event.currentTarget : event.currentTarget;
+      gesture.current = { id: event.pointerId, y: event.clientY, height: value, value, moved: false, opening: !open, target: event.currentTarget, capture };
+      capture.setPointerCapture(event.pointerId);
     },
     onPointerMove(event: PointerEvent<HTMLElement>) {
       const start = gesture.current;
-      if (!start || start.id !== event.pointerId) return;
+      if (!start || start.id !== event.pointerId || start.target !== event.currentTarget) return;
       const delta = start.y - event.clientY;
-      if (!start.moved && Math.abs(delta) < 4) return;
+      if (!start.moved && (Math.abs(delta) < 4 || start.opening && delta < 0)) return;
       if (!start.moved) {
         start.moved = true;
+        suppressClick.current = true;
         root.current?.setAttribute("data-activity-resizing", "");
+        if (start.opening) {
+          resetOnOpen.current = false;
+          onExpand();
+        }
       }
-      resize(start.height + delta);
+      const next = Math.max(0, Math.min(limits.max, start.height + delta));
+      start.value = next;
+      if (!start.opening && next < limits.min) {
+        resize(limits.min);
+        collapse();
+        return;
+      }
+      if (next >= limits.min) start.opening = false;
+      setHeight(next);
     },
-    onPointerUp(event: PointerEvent<HTMLElement>) {
-      if (gesture.current?.id !== event.pointerId) return;
-      finish();
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    onPointerUp: release,
+    onPointerCancel: release,
+    onLostPointerCapture: release,
+    onClickCapture(event: MouseEvent<HTMLElement>) {
+      if (suppressClick.current && event.detail > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      suppressClick.current = false;
     },
-    onPointerCancel: finish,
-    onLostPointerCapture: finish,
   };
 
   return {
     pointer,
-    min: limits.min,
+    min: gesture.current?.opening ? 0 : limits.min,
     max: limits.max,
-    height: Math.max(limits.min, Math.min(limits.max, height ?? observedHeight)),
+    height: Math.max(gesture.current?.opening ? 0 : limits.min, Math.min(limits.max, height ?? observedHeight)),
     resizeByKey(key: string) {
       if (!open || !["ArrowUp", "ArrowDown", "Home", "End"].includes(key)) return false;
       const current = drawer.current?.getBoundingClientRect().height ?? limits.min;

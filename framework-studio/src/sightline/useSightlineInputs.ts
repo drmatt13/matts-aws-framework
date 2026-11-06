@@ -35,7 +35,7 @@ function deploymentInput(observation: ReturnType<typeof useDeploymentObservation
   };
 }
 
-/** Mounted only by the visible Sightline. Existing owners remain the only read initiators. */
+/** Mounted only by visible Sightline or Coding. Existing owners alone initiate reads. */
 export function useSightlineInputs(): SightlineInputs {
   const client = useQueryClient();
   const pathname = useLocation({ select: location => location.pathname });

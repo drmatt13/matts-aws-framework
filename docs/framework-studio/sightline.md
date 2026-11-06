@@ -3,15 +3,17 @@
 Sightline is what Studio can see from where the developer is right now. A `Sightline`
 is a bounded, read-only consumer projection of existing declarations, accepted Studio
 state, workspace choices and already available observations. It is a debug view in the
-Agent panel. **The agent receives none of it.** No prompt, chat payload, tool, operation,
-endpoint, declaration or core model changes belong to this proof of concept.
+Agent panel and an optional, explicitly inspectable context capture for **Coding** tasks.
+Conversation still receives only its existing bounded chat input and fixed overview.
+Coding captures the current projection when a task is submitted; a submission retry
+retains that exact context. The projection remains evidence, never operational authority.
 
-## Authority and design, before implementation
+## Authority and implementation
 
 The path remains declaration → normalize/validate → consumer projection. The pure
 `buildSightline(inputs)` accepts the capture time and existing evidence; it imports no
 React, browser APIs, clock or transport. Its output is deterministic and serializable.
-`useSightlineInputs()` exists only in the visible Sightline view. It reads the accepted
+`useSightlineInputs()` exists only in the visible Sightline or Coding view. It reads the accepted
 `useStudio().selected`, accepted baseline, live publication state, existing cache-only
 deployment subscriptions for **both** modes, and a disabled operation query. It never
 starts a read. Source mode and the deployment destination are separate fields.
@@ -19,7 +21,7 @@ starts a read. Source mode and the deployment destination are separate fields.
 The feature lives in `framework-studio/src/sightline/`. Existing files supply small
 presentation seams. `GlobalActivity` stays memoized and consumes no route or Studio
 context. Conversation DOM, draft and scroll remain mounted when Sightline is shown;
-only Sightline mounts/unmounts its input hook. The display choice in `GlobalActivity` keeps
+Sightline and Coding mount/unmount their input hooks with visibility. The display choice in `GlobalActivity` keeps
 replies unread while the conversation is hidden. Nothing reads workspace state from DOM.
 
 ### State inventory
@@ -70,7 +72,7 @@ A global query-cache scrape cannot see local state, and may disclose protected v
 Use a small browser-only registry of typed, lazy workspace readers. An owner registers
 a reader and removes it on unmount; a committed reader closure points at its existing
 local state. Workspaces never read Sightline back. The registry has no polling or network
-activity. With Sightline closed there are no projection, route, cache or observation
+activity. With both Sightline and Coding closed there are no projection, route, cache or observation
 subscriptions for this feature and no reader invocation. The unavoidable seam is reader
 registration/closure replacement during an owner's existing commit; it collects no data
 and schedules no owner render. This is preferable to a visibility subscription in every
@@ -85,6 +87,13 @@ an explicit contributor. Each contributor allow-lists its output again. Registra
 browser glue, not a second application state store or an API for workspaces to depend on.
 
 ## JSON contract
+
+The Coding composer serializes this same 12,000-character bounded object. It exposes
+**Inspect task context** and **Include current Studio context**; it never broadens the
+allow-list to fill missing evidence. The independent host stores the accepted bounded
+context with the task. No pull tools or fresh operational reads are implied by this
+first integration. See [Coding tasks](local-agent-lab.md#coding-tasks) for task lifecycle,
+source approval and the distinction between source permissions and operational authority.
 
 `schemaVersion: 1`, `capturedAt`, `location`, `source`, `focus`, `workspace`,
 `deployments: {dev, prod}`, `activity`, `issues`, and `omitted` are always present.
@@ -647,7 +656,11 @@ this matrix after implementation.
 | GraphQL `/graphql` | Is this implemented? What source mode? What is selected? | Explicit placeholder; mandatory source and focus |
 | Agent test `/test` | Where am I? What experiment? What else is running? | Minimal fixed-message experiment label; mandatory source/activity; no prompt/plan data |
 
-## Future delivery: analysis only
+## Future pull tools: analysis only
+
+The current Coding integration captures the bounded JSON once at submission. The
+following narrower pull-based design remains a future option; it is not an implemented
+tool API, and Conversation retains its unchanged inputs.
 
 A pull model is preferable to sending the full debug JSON with every question. Send a
 small question-time Sightline containing version, location, accepted source revision/mode,
@@ -733,7 +746,7 @@ exercise live cached AWS evidence, dirty drafts, source publication, operations,
 selection and WebSocket connection transitions without making those real-world changes.
 Real AWS observations and deployed behavior remain unverified by design.
 
-### Checks and known failures
+### Original Sightline proof-of-concept checks and known failures
 
 The final focused unit suite passed all 20 tests and covers every workspace, selectable kind and focus state,
 determinism, canaries, budget/omissions, availability, freshness and registry lifetimes.
@@ -772,6 +785,9 @@ baseline comparisons are retained in the evidence directory.
 
 ### Existing-file seams and removal
 
+This table records the original debug-view implementation. Coding now also consumes the
+projection; removing Sightline requires removing or replacing that context capture first.
+
 | Existing file (under `framework-studio/src/views/` unless stated) | Change and reason |
 | --- | --- |
 | `GlobalActivity.tsx` | Lazy-load `AgentViews`; own the display-only view choice, shown by `AgentViewTabs` in the bar, and pass its conversation visibility to the existing chat owner so hidden replies remain unread. No route/Studio subscription |
@@ -795,7 +811,7 @@ Remove `src/sightline/`, its new tests and canonical doc, undo the imports/publi
 the table, restore the old lazy AgentPanel import/chat visibility, and remove the four doc
 additions to remove the feature. No provider, model, server, core declaration or generator
 needs repair. Workspaces retain their owners, setters, URL behavior and render triggers.
-Only the visible consumer receives publication notifications. The closed-view constant
+Only the visible consumer receives publication notifications. With both consumer views closed, the constant
 registration cost is the documented exception to a literal zero-instruction interpretation
 of “no work”; there is no closed-view projection, subscriber, polling or data read.
 

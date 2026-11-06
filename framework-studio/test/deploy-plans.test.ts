@@ -142,7 +142,7 @@ test("normal deployment rejects stale synthesis while explicit saved-assembly re
   const f = synthesisStore();
   try {
     const before = f.before(); f.save(); f.plans.recordSynthesis(f.key, before);
-    const context = { plans: f.plans, env: f.env, profiles: async () => [{ name: "dev" }], jobs: { holder: () => undefined }, probeDocker: async () => ({ engine: "stopped" }), local: { assertStopped: async () => {} } } as unknown as OperationContext;
+    const context = { root: f.checkout, plans: f.plans, env: f.env, profiles: async () => [{ name: "dev" }], jobs: { holder: () => undefined }, probeDocker: async () => ({ engine: "stopped" }), local: { assertStopped: async () => {} } } as unknown as OperationContext;
     const request = { kind: "deploy-apply" as const, params: { plan: f.key, profile: "dev", currentSource: true } };
     assert.equal((await buildOperation(context, request)).params.currentSource, true);
     writeFileSync(f.handler, "export const handler = () => 2;\n");

@@ -7,6 +7,7 @@ import type { PlanStore, TeardownStore } from "./plans";
 import { clientCommand, composePlugin } from "./local-commands";
 import { studioEnvironment, tethered, type CommandSpec, type Runner, type Tools } from "./process";
 import { readAwsFiles } from "../../../scripts/aws-connections";
+import { sourcePublicationEpoch } from "../edits/source-gate";
 
 /**
  * The operations Deploy & Run can perform, and no others.
@@ -134,8 +135,11 @@ export async function buildOperation(context: OperationContext, request: Operati
   if (typeof params !== "object" || Array.isArray(params)) throw new OperationError(400, "An operation's parameters are named values.");
   const builder = Object.hasOwn(BUILDERS, request.kind) ? BUILDERS[request.kind] : undefined;
   if (!builder) throw new OperationError(404, `${String(request.kind)} is not an operation Studio performs.`);
+  const consumesSource = !["docker-start", "aws-login", "local-stop"].includes(request.kind);
+  if (consumesSource) sourcePublicationEpoch(context.root);
   if (changesDevelopmentResources(context, request)) await assertDevelopmentRuntimeStopped(context);
-  return builder(context, params);
+  const spec = await builder(context, params);
+  return consumesSource ? { ...spec, sourceReservation: { root: context.root, mode: request.kind === "framework-check" ? "read" : "write" } } : spec;
 }
 
 type Builder = (context: OperationContext, params: Params) => Promise<JobSpec>;

@@ -9,6 +9,7 @@ import { LocalRuntimeConflict } from "../deploy/local";
 import { processIdentity } from "./identity";
 import { StreamingRedactor } from "./redaction";
 import { OperationStore } from "./store";
+import { SourceGateError, withSourceRead, withSourceWrite } from "../edits/source-gate";
 
 /** One worker owns one attempt and every output pipe. Coordinator and Studio may disappear. */
 export async function runWorker(root: string, state: string, id: string, token: string): Promise<void> {
@@ -34,6 +35,10 @@ export async function runWorker(root: string, state: string, id: string, token: 
       store.update(id, { execution: "finished", status: "cancelled", outcome: "confirmed", endedAt: new Date().toISOString(), summary: "Cancelled before execution." });
       return;
     }
+    // Export/build/planning scripts can write generated projections. Reserve the
+    // checkout through their entire attempt so none consume a half-applied batch.
+    const reserveSource = record.intent.request.kind === "framework-check" ? withSourceRead : withSourceWrite;
+    await reserveSource(root, async () => {
     const sanitizer = new StreamingRedactor(privateValues(root, state, record.intent), () => {});
     const write = (text: string, stream: JobLogLine["stream"] = "info") => {
       if (storageFailure || closed) return;
@@ -132,11 +137,12 @@ export async function runWorker(root: string, state: string, id: string, token: 
     // Result persistence precedes releasing resource claims. Storage failure leaves recoverable uncertainty.
     update(result);
     try { spec.onSettled?.(store.get(id)!.view); } catch { /* Notification failure cannot change durable completion. */ }
+    });
   } catch (error) {
     stop();
     // Never persist raw exceptions: SDK/tool errors may contain credential or private input material.
     if (claimed && !storageFailure) {
-      try { store.update(id, { status: "interrupted", execution: "finished", outcome: executing ? "uncertain" : "unverified", endedAt: new Date().toISOString(), summary: error instanceof LocalRuntimeConflict ? error.message : "The operation could not finish. Inspect its review, prerequisites and recorded output.", recovery: executing ? "External effects may continue. This attempt will not be replayed." : "Recheck the reviewed inputs and host prerequisites before creating another operation." }); } catch { /* The durable running record becomes uncertain on reconciliation. */ }
+      try { store.update(id, { status: "interrupted", execution: "finished", outcome: executing ? "uncertain" : "unverified", endedAt: new Date().toISOString(), summary: error instanceof LocalRuntimeConflict || error instanceof SourceGateError ? error.message : "The operation could not finish. Inspect its review, prerequisites and recorded output.", recovery: executing ? "External effects may continue. This attempt will not be replayed." : "Recheck the reviewed inputs and host prerequisites before creating another operation." }); } catch { /* The durable running record becomes uncertain on reconciliation. */ }
     }
   } finally {
     closed = true;

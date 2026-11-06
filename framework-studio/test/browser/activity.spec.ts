@@ -18,6 +18,65 @@ const line = (seq: number, text = `Fixture activity line ${seq}`): JobLogLine =>
   seq, at: NOW, stream: "out", text,
 });
 
+for (const width of [1440, 390]) test(`Persistent processes use steady green while temporary work shows progress at ${width}px`, async ({ page, studio }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const client: JobView = { id: "steady-client", kind: "local-client", title: "Web client", params: {},
+    status: "running", execution: "running", startedAt: "2026-10-28T10:00:00.000Z", lastSeq: 1,
+    steps: [{ label: "Vite", status: "running" }] };
+  const watch: JobView = { ...client, id: "steady-watch", kind: "local-watch", title: "Source watch",
+    steps: [{ label: "docker compose watch", status: "running" }] };
+  studio.reply("GET", "/api/operations", route => route.fulfill({ json: { jobs: [client, watch] } }));
+  for (const job of [client, watch, older]) studio.reply("GET", `/api/operations/${job.id}/log`, route => route.fulfill({ json: { job, lines: [line(1)] } }));
+  await studio.goto("/graphql");
+  const activity = page.getByRole("region", { name: "Activity", exact: true });
+  const toggle = activity.getByRole("button", { name: /^Activity:/ });
+  const history = activity.getByRole("list", { name: "Operations", exact: true });
+  const tokenColor = (token: string) => page.evaluate(name => {
+    const probe = document.createElement("span");
+    probe.style.color = `var(${name})`;
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  }, token);
+  const green = await tokenColor("--accept"), neutral = await tokenColor("--graphite");
+  await expect(toggle).toContainText("Web client");
+  await expect(toggle.locator("svg").first()).toHaveCSS("animation-name", "none");
+  await expect(toggle.locator("svg").first()).toHaveCSS("color", green);
+  await toggle.click();
+  const stepIcon = activity.getByRole("img", { name: "running", exact: true });
+  for (const title of ["Web client", "Source watch"]) {
+    const row = history.getByRole("button", { name: new RegExp(`^${title} Running`) });
+    await expect(row.locator("span").last()).toHaveCSS("color", green);
+    await row.focus();
+    await page.keyboard.press("Enter");
+    await expect(stepIcon).toHaveCSS("animation-name", "none");
+    await expect(stepIcon).toHaveCSS("color", green);
+    await expect(activity.locator("header").locator("span").first()).toHaveCSS("color", green);
+  }
+  // Deployments remain active work rather than silently appearing ready.
+  await studio.emit("operation-job", older);
+  await history.getByRole("button", { name: /^Prepare fixture deployment/ }).click();
+  await expect(stepIcon).toHaveCSS("animation-name", "spin");
+  await expect(stepIcon).toHaveCSS("color", neutral);
+  await studio.emit("operation-job", { ...client, cancelRequested: true });
+  await history.getByRole("button", { name: /^Web client Stopping/ }).click();
+  await expect(stepIcon).toHaveCSS("animation-name", "spin");
+  await expect(stepIcon).toHaveCSS("color", neutral);
+  await expect(activity.getByRole("button", { name: "Stop", exact: true })).toBeDisabled();
+  const observationProblem = "Could not verify the web client process.";
+  await studio.emit("operation-job", { ...client, observationProblem });
+  await expect(activity.getByRole("status").filter({ hasText: observationProblem })).toBeVisible();
+  await expect(stepIcon).toHaveCSS("animation-name", "none");
+  await expect(stepIcon).not.toHaveCSS("color", green);
+  await studio.emit("operation-job", client);
+  await expect(stepIcon).toHaveCSS("color", green);
+  await expect(stepIcon).toHaveCSS("animation-name", "none");
+  expect(studio.requests.filter(request => request.method === "POST")).toEqual([]);
+  await assertAccessible(page);
+});
+
 test("Activity retains its selected job, log DOM and scroll across every primary route", async ({ page, studio }) => {
   const jobs = [newer, older];
   studio.reply("GET", "/api/operations", route => route.fulfill({ json: { ...overview(), jobs } }));

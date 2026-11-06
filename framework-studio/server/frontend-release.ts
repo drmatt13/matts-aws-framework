@@ -7,6 +7,7 @@ import { DEFAULT_FRONTEND_RELEASE, FRONTEND_RELEASE_FILE, type FrontendDestinati
 import { OperationError } from "./deploy/registry";
 import { runCommand, studioEnvironment, Tools, type CommandSpec, type Runner } from "./deploy/process";
 import { isAwsProfileName } from "../shared/aws-connections";
+import { withSourceWrite, withSourceWriteSync } from "./edits/source-gate";
 
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const fail = (message: string): never => { throw new OperationError(422, message); };
@@ -63,6 +64,9 @@ export class FrontendReleaseService {
     this.settingsReviews.clear(); this.settingsReviews.set(view.id, { view, hash: current.hash }); return view;
   }
   settingsApply(id: string): { file: string } {
+    return withSourceWriteSync(this.root, () => this.settingsApplyOwned(id));
+  }
+  private settingsApplyOwned(id: string): { file: string } {
     if (this.busy) throw new OperationError(409, "Wait for the active frontend operation before changing settings.");
     const review = this.settingsReviews.get(id);
     if (!review || this.settings().hash !== review.hash) throw new OperationError(409, "Frontend settings review is stale. Review again.");
@@ -161,6 +165,9 @@ export class FrontendReleaseService {
     return relative;
   }
   async generateEnvironment(input: { deployment: string; profile: string; region: string }): Promise<{ file: string; destination: FrontendDestination }> {
+    return withSourceWrite(this.root, () => this.generateEnvironmentOwned(input));
+  }
+  private async generateEnvironmentOwned(input: { deployment: string; profile: string; region: string }): Promise<{ file: string; destination: FrontendDestination }> {
     if (this.busy) throw new OperationError(409, "A frontend operation is already running.");
     this.busy = true;
     try { const evidence = await this.deployed(input); const file = await this.exportEnvironment(evidence, this.settings().settings); return { file, destination: evidence.destination }; }
@@ -215,6 +222,9 @@ export class FrontendReleaseService {
     }).sort((a, b) => b.review.createdAt.localeCompare(a.review.createdAt)).slice(0, 20);
   }
   async build(input: { deployment: string; profile: string; region: string }): Promise<FrontendReleaseReview> {
+    return withSourceWrite(this.root, () => this.buildOwned(input));
+  }
+  private async buildOwned(input: { deployment: string; profile: string; region: string }): Promise<FrontendReleaseReview> {
     if (this.busy) throw new OperationError(409, "A frontend operation is already running.");
     this.busy = true;
     try {

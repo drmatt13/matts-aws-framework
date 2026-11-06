@@ -12,6 +12,7 @@ import type { Mode } from "../shared/model";
 import type { InfrastructureState } from "../shared/infrastructure";
 import type { DeploymentInputDetails, DeploymentInputFileEdits, DeploymentInputPlan } from "../shared/deployment-inputs";
 import type { WebSocketDefaults } from "../shared/websockets";
+import type { CodingTask } from "../shared/agent-runtime";
 
 async function callInfrastructure(path: string, body?: unknown): Promise<InfrastructureState> {
   const state = await call<InfrastructureState>(path, body);
@@ -37,6 +38,7 @@ export const api = {
   synthesize: (mode: Mode, profile?: string) => callInfrastructure("/infrastructure/synthesize", { mode, ...(profile ? { profile } : {}) }),
   planBatch: (edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions) => call<BatchPlanResponse>("/edits/batch/plan", { edits, revision, ...(options ? { options } : {}) }),
   applyBatch: (planId: string) => call<ApplyResponse>("/edits/batch/apply", { planId }),
+  codingReviewBatch: (planId: string, requestKey: string) => call<CodingTask>("/edits/batch/coding-review", { planId, requestKey }),
   resourceDetails: (id: string, mode: Mode, signal?: AbortSignal) => call<ResourceDetails>(`/resources/details?id=${encodeURIComponent(id)}&mode=${mode}`, undefined, signal),
   refreshCdkLinks: () => call<{ edges: number; files: number }>("/cdk-links/refresh", {}),
   command: (name: string, confirmed = false) => call<CommandResult>(`/commands/${encodeURIComponent(name)}`, { confirmed, requestKey: crypto.randomUUID() }),

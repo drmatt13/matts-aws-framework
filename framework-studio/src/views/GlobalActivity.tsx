@@ -10,6 +10,8 @@ import { useDockerStart, useDockerStatus } from "../machine/docker";
 import { dockerPresence } from "../../shared/machine";
 import { useAgentChat } from "../agent-chat";
 import { AgentViewTabs, type AgentView } from "./agent/AgentViewTabs";
+import { OPEN_CODING_TASK_EVENT, type CodingTaskNavigation } from "../coding-task-navigation";
+import type { CodingTask } from "../../shared/agent-runtime";
 const AgentPanel = lazy(() => import("../sightline/AgentViews").then(module => ({ default: module.AgentViews })));
 
 const NO_JOBS: readonly JobView[] = [];
@@ -50,6 +52,19 @@ export const GlobalActivity = memo(function GlobalActivity() {
     };
     window.addEventListener(OPEN_ACTIVITY_EVENT, reveal);
     return () => window.removeEventListener(OPEN_ACTIVITY_EVENT, reveal);
+  }, [queryClient]);
+  useEffect(() => {
+    let focusFrame: number | undefined;
+    const reveal = (event: Event) => {
+      const detail = (event as CustomEvent<CodingTaskNavigation>).detail;
+      if (!detail?.repository || !detail.task?.id) return;
+      queryClient.setQueryData<{ tasks: readonly CodingTask[] }>(["coding-tasks", detail.repository], current => ({ tasks: [detail.task, ...(current?.tasks ?? []).filter(task => task.id !== detail.task.id)] }));
+      setAgentVisited(true); setAgentView("coding"); setMode("agent"); setOpen(true);
+      // The originating modal closes first so focus can move into the revealed tray.
+      focusFrame = requestAnimationFrame(() => document.getElementById("agent-coding-tab")?.focus());
+    };
+    window.addEventListener(OPEN_CODING_TASK_EVENT, reveal);
+    return () => { window.removeEventListener(OPEN_CODING_TASK_EVENT, reveal); if (focusFrame !== undefined) cancelAnimationFrame(focusFrame); };
   }, [queryClient]);
   const toggle = useCallback(() => setOpen(value => !value), []);
   const startDocker = useCallback(async () => {
